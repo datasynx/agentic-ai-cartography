@@ -1,6 +1,6 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "AI-powered infrastructure cartography & SOP generation CLI — built on Claude Agent SDK",
   "type": "module",
   "bin": {
@@ -55,15 +55,8 @@
     "url": "https://github.com/datasynx-ai/agentic-ai-discovery/issues"
   },
   "license": "MIT",
-  "peerDependencies": {
-    "@anthropic-ai/claude-code": ">=1.0.0 <2.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@anthropic-ai/claude-code": {
-      "optional": true
-    }
-  },
   "dependencies": {
+    "@anthropic-ai/claude-code": "1.0.128",
     "@anthropic-ai/sdk": "^0.74.0",
     "better-sqlite3": "^12.6.0",
     "commander": "^12.1.0",
@@ -73,7 +66,6 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-code": "^1.0.128",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
     "tsup": "^8.3.0",
