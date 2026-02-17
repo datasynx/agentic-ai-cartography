@@ -131,7 +131,7 @@ export function forkDaemon(config: CartographyConfig): number {
   // The daemon entry is the same cli.ts but with --daemon flag via env
   const child = spawn(
     process.execPath,
-    [process.argv[1] ?? 'cartography', 'shadow', 'start', '--foreground', '--daemon-child'],
+    [process.argv[1] ?? 'datasynx-cartography', 'shadow', 'start', '--foreground', '--daemon-child'],
     {
       detached: true,
       stdio: 'ignore',

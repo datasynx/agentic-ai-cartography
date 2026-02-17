@@ -7,7 +7,7 @@ import type { CartographyConfig, DaemonMessage, ShadowStatus } from './types.js'
 
 export class ForegroundClient {
   async run(config: CartographyConfig): Promise<void> {
-    process.stderr.write('👁 Cartography Shadow (foreground) gestartet\n');
+    process.stderr.write('👁 Datasynx Cartography Shadow (foreground) gestartet\n');
     process.stderr.write(`   Intervall: ${config.pollIntervalMs / 1000}s | Modell: ${config.shadowModel}\n`);
     process.stderr.write('   Ctrl+C zum Beenden\n\n');
 
@@ -27,7 +27,7 @@ export class AttachClient {
       await client.connect(socketPath);
     } catch {
       process.stderr.write(`❌ Kann nicht an Daemon ankoppeln: ${socketPath}\n`);
-      process.stderr.write('   Ist der Daemon gestartet? cartography shadow status\n');
+      process.stderr.write('   Ist der Daemon gestartet? datasynx-cartography shadow status\n');
       process.exitCode = 1;
       return;
     }
