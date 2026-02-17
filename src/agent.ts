@@ -12,6 +12,8 @@ export type DiscoveryEvent =
   | { kind: 'turn'; turn: number }
   | { kind: 'done' };
 
+export type AskUserFn = (question: string, context?: string) => Promise<string>;
+
 // ── runDiscovery ─────────────────────────────────────────────────────────────
 
 export async function runDiscovery(
@@ -19,43 +21,59 @@ export async function runDiscovery(
   db: CartographyDB,
   sessionId: string,
   onEvent?: (event: DiscoveryEvent) => void,
+  onAskUser?: AskUserFn,
 ): Promise<void> {
   const { query } = await import('@anthropic-ai/claude-code');
-  const tools = await createCartographyTools(db, sessionId);
+  const tools = await createCartographyTools(db, sessionId, { onAskUser });
 
-  const systemPrompt = `Du bist ein Infrastruktur-Discovery-Agent.
-Kartographiere die gesamte Systemlandschaft — lokale Infrastruktur UND SaaS-Tools.
+  const systemPrompt = `Du bist ein Infrastruktur-Discovery-Agent. Kartographiere die gesamte Systemlandschaft — lokale Services UND SaaS-Tools des Users.
 
-STRATEGIE:
-1. ss -tlnp + ps aux → Überblick lokaler Services
-2. Jeden Service tiefer (Datenbanken→Tabellen, APIs→Endpoints, Queues→Topics)
-3. scan_bookmarks → Browser-Lesezeichen analysieren: Welche Domains sind Business-Tools?
-   - Nur Tools mit Business-Daten als saas_tool speichern (GitHub, Notion, Jira, AWS, etc.)
-   - Persönliches (Social Media, News, Shopping) IGNORIEREN
-   - Interne Hosts (IP-Adressen, custom.domain.com) als web_service speichern
-4. save_node + save_edge für alles. get_catalog → keine Duplikate.
-5. Config-Files folgen: .env (nur Host:Port!), docker-compose.yml, application.yml
-6. Backtrack wenn Spur erschöpft. Stop wenn alles explored.
+━━ PFLICHT-REIHENFOLGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SCHRITT 1 — Browser-Lesezeichen (IMMER ZUERST):
+  scan_bookmarks() aufrufen → jede zurückgegebene Domain klassifizieren:
+  • Business-Tools (GitHub, Notion, Jira, Linear, Vercel, AWS, Datadog, etc.) → save_node als saas_tool
+  • Interne Hosts (IPs, custom.company.com:PORT) → save_node als web_service
+  • Persönliches (Social Media, News, Streaming, Shopping) → IGNORIEREN, NICHT speichern
+
+SCHRITT 2 — Lokale Infrastruktur:
+  ss -tlnp && ps aux → alle lauschenden Ports/Prozesse identifizieren
+  Jeden Service vertiefen: DB→Schemas, API→Endpoints, Queue→Topics
+
+SCHRITT 3 — Config-Files:
+  .env, docker-compose.yml, application.yml, kubernetes/*.yml
+  Nur Host:Port extrahieren — KEINE Credentials
+
+SCHRITT 4 — Rückfragen bei Unklarheit:
+  ask_user() nutzen wenn: Dienst unklar ist, Kontext fehlt, oder User Input sinnvoll wäre
+  Beispiele: "Welche Umgebung ist das (dev/staging/prod)?", "Ist <host> ein internes Tool?"
+
+SCHRITT 5 — Fertig wenn alle Spuren erschöpft.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PORT-MAPPING: 5432=postgres, 3306=mysql, 27017=mongodb, 6379=redis,
 9092=kafka, 5672=rabbitmq, 80/443/8080/3000=web_service,
 9090=prometheus, 8500=consul, 8200=vault, 2379=etcd
 
 REGELN:
-- NUR read-only Commands (ss, ps, cat, head, curl -s, docker inspect, kubectl get)
-- Targets NUR Host:Port — KEINE URLs, Pfade, Credentials
-- Node IDs: "{type}:{host}:{port}" oder "{type}:{name}"
-- saas_tool Node IDs: "saas_tool:{hostname}" (z.B. "saas_tool:github.com")
-- Confidence: 0.9 direkt beobachtet, 0.7 aus Config/Lesezeichen, 0.5 Vermutung
-- KEINE Credentials, KEINE persönlichen Daten speichern
-- metadata: { description, url_base, category } — NUR technische Daten
+• Nur read-only (ss, ps, cat, head, curl -s, docker inspect, kubectl get)
+• Node IDs: "type:host:port" oder "type:name" — keine Pfade, keine Credentials
+• saas_tool IDs: "saas_tool:github.com", "saas_tool:notion.so"
+• Confidence: 0.9 direkt gesehen, 0.7 aus Config/Bookmarks, 0.5 Vermutung
+• metadata erlaubt: { description, category, port, version } — keine Passwörter
+• get_catalog vor save_node → Duplikate vermeiden
+• Edges speichern wenn Verbindungen klar erkennbar sind
 
 Entrypoints: ${config.entryPoints.join(', ')}`;
+
+  const initialPrompt = `Starte Discovery jetzt.
+Führe SOFORT als erstes scan_bookmarks aus — noch bevor du ss oder ps verwendest.
+Dann systematisch lokale Services, dann Config-Files.
+Nutze ask_user wenn du Kontext vom User brauchst.`;
 
   let turnCount = 0;
 
   for await (const msg of query({
-    prompt: systemPrompt,
+    prompt: initialPrompt,
     options: {
       model: config.agentModel,
       maxTurns: config.maxTurns,
@@ -67,6 +85,7 @@ Entrypoints: ${config.entryPoints.join(', ')}`;
         'mcp__cartograph__save_edge',
         'mcp__cartograph__get_catalog',
         'mcp__cartograph__scan_bookmarks',
+        'mcp__cartograph__ask_user',
       ],
       hooks: {
         PreToolUse: [{ matcher: 'Bash', hooks: [safetyHook] }],

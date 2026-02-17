@@ -7,6 +7,11 @@ import { scanAllBookmarks } from './bookmarks.js';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type McpServer = any;
 
+export interface CartographyToolsOptions {
+  /** Called when the agent needs a human answer. Return the user's response. */
+  onAskUser?: (question: string, context?: string) => Promise<string>;
+}
+
 export function stripSensitive(target: string): string {
   try {
     const url = new URL(target.startsWith('http') ? target : `tcp://${target}`);
@@ -19,7 +24,11 @@ export function stripSensitive(target: string): string {
   }
 }
 
-export async function createCartographyTools(db: CartographyDB, sessionId: string): Promise<McpServer> {
+export async function createCartographyTools(
+  db: CartographyDB,
+  sessionId: string,
+  opts: CartographyToolsOptions = {},
+): Promise<McpServer> {
   // Dynamically import the SDK so missing package doesn't crash at load time
   const sdk = await import('@anthropic-ai/claude-code');
   const { tool, createSdkMcpServer } = sdk as {
@@ -117,6 +126,24 @@ export async function createCartographyTools(db: CartographyDB, sessionId: strin
       }
       db.updateTaskDescription(sessionId, args['description'] as string);
       return { content: [{ type: 'text', text: '✓ Beschreibung aktualisiert' }] };
+    }),
+
+    tool('ask_user', 'Rückfrage an den User stellen — bei Unklarheiten, fehlenden Credentials-Hinweisen oder wenn Kontext fehlt', {
+      question: z.string().describe('Die Frage an den User (klar und konkret)'),
+      context: z.string().optional().describe('Optionaler Zusatzkontext warum die Frage relevant ist'),
+    }, async (args) => {
+      const question = args['question'] as string;
+      const context = args['context'] as string | undefined;
+
+      if (opts.onAskUser) {
+        const answer = await opts.onAskUser(question, context);
+        return { content: [{ type: 'text', text: answer }] };
+      }
+
+      // Fallback when not interactive (piped input, daemon, etc.)
+      return {
+        content: [{ type: 'text', text: '(Kein interaktiver Modus — bitte ohne diese Information fortfahren)' }],
+      };
     }),
 
     tool('scan_bookmarks', 'Alle Browser-Lesezeichen scannen — nur Hostnamen, keine persönlichen Daten', {

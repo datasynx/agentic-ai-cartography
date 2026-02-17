@@ -24,11 +24,20 @@ if (process.env.CARTOGRAPHYY_DAEMON === '1') {
   main();
 }
 
+// ── Shared color helpers (module-level for reuse across commands) ─────────────
+const bold    = (s: string) => `\x1b[1m${s}\x1b[0m`;
+const dim     = (s: string) => `\x1b[2m${s}\x1b[0m`;
+const cyan    = (s: string) => `\x1b[36m${s}\x1b[0m`;
+const green   = (s: string) => `\x1b[32m${s}\x1b[0m`;
+const yellow  = (s: string) => `\x1b[33m${s}\x1b[0m`;
+const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
+const red     = (s: string) => `\x1b[31m${s}\x1b[0m`;
+
 function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.1.7';
+  const VERSION = '0.1.8';
 
   program
     .name(CMD)
@@ -67,12 +76,6 @@ function main(): void {
       const sessionId = db.createSession('discover', config);
 
       const w = process.stderr.write.bind(process.stderr);
-      const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
-      const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-      const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
-      const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
-      const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
-      const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
 
       const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
       let spinIdx = 0;
@@ -149,6 +152,13 @@ function main(): void {
               startSpinner(`Turn ${turnNum}/${config.maxTurns}  ${dim(`nodes:${nodeCount} edges:${edgeCount}`)}`);
             } else if (toolName === 'get_catalog') {
               startSpinner(`Catalog-Check ${dim('(Duplikate vermeiden)')}`);
+            } else if (toolName === 'scan_bookmarks') {
+              logLine(cyan('🔖'), `Browser-Lesezeichen werden gescannt…`);
+              startSpinner(`scan_bookmarks`);
+            } else if (toolName === 'ask_user') {
+              // Just display; actual interaction is handled by onAskUser below
+              const q = (event.input['question'] as string ?? '').substring(0, 100);
+              logLine(yellow('?'), `${bold('Agent fragt:')} ${q}`);
             } else {
               startSpinner(`${toolName}...`);
             }
@@ -165,8 +175,28 @@ function main(): void {
         }
       };
 
+      // Human-in-the-loop: Agent kann Rückfragen stellen
+      const onAskUser = async (question: string, context?: string): Promise<string> => {
+        stopSpinner();
+        w('\n');
+        w(dim('  ────────────────────────────────────────────────\n'));
+        w(`  ${yellow(bold('?'))}  ${bold('Agent fragt:')} ${question}\n`);
+        if (context) w(`     ${dim(context)}\n`);
+
+        if (!process.stdin.isTTY) {
+          w(`  ${dim('(Kein Terminal — Agent fährt ohne Antwort fort)')}\n\n`);
+          return '(Kein interaktiver Modus — bitte ohne diese Information fortfahren)';
+        }
+
+        const rl = createInterface({ input: process.stdin, output: process.stderr });
+        const answer = await new Promise<string>(resolve => rl.question(`  ${cyan('→')} `, resolve));
+        rl.close();
+        w('\n');
+        return answer || '(Keine Antwort — bitte fortfahren)';
+      };
+
       try {
-        await runDiscovery(config, db, sessionId, handleEvent);
+        await runDiscovery(config, db, sessionId, handleEvent, onAskUser);
       } catch (err) {
         stopSpinner();
         w(`\n  ${bold('\x1b[31m✗\x1b[0m')}  Discovery fehlgeschlagen: ${err}\n`);
@@ -465,6 +495,179 @@ function main(): void {
       db.close();
     });
 
+  // ── OVERVIEW ──────────────────────────────────────────────────────────────
+
+  program
+    .command('overview')
+    .description('Übersicht aller Cartographies + SOPs')
+    .option('--db <path>', 'DB-Pfad')
+    .action((opts) => {
+      const config = defaultConfig();
+      const db = new CartographyDB((opts as { db?: string }).db ?? config.dbPath);
+      const sessions = db.getSessions();
+
+      const b = bold, d = dim;
+      const w = (s: string) => process.stdout.write(s);
+
+      w('\n');
+      w(`  ${b('CARTOGRAPHY OVERVIEW')}\n`);
+      w(d('  ─────────────────────────────────────────────────────\n'));
+
+      if (sessions.length === 0) {
+        w(`  ${d('Noch keine Sessions. Starte mit:')} ${green('datasynx-cartography discover')}\n\n`);
+        db.close();
+        return;
+      }
+
+      // Aggregate totals
+      let totalNodes = 0, totalEdges = 0, totalSops = 0;
+      for (const s of sessions) {
+        const st = db.getStats(s.id);
+        totalNodes += st.nodes; totalEdges += st.edges;
+        totalSops += db.getSOPs(s.id).length;
+      }
+
+      w(`  ${b(String(sessions.length))} Sessions · ${b(String(totalNodes))} Nodes · `);
+      w(`${b(String(totalEdges))} Edges · ${b(String(totalSops))} SOPs\n\n`);
+
+      for (const session of sessions) {
+        const stats = db.getStats(session.id);
+        const nodes = db.getNodes(session.id);
+        const sops = db.getSOPs(session.id);
+        const status = session.completedAt ? green('✓') : yellow('●');
+        const age = session.startedAt.substring(0, 16).replace('T', ' ');
+        const sid = cyan(session.id.substring(0, 8));
+
+        w(`  ${status} ${sid}  ${b('[' + session.mode + ']')}  ${d(age)}\n`);
+        w(`    ${d('Nodes: ' + stats.nodes + '  Edges: ' + stats.edges + '  SOPs: ' + sops.length)}\n`);
+
+        // Node type breakdown
+        const byType = new Map<string, number>();
+        for (const n of nodes) byType.set(n.type, (byType.get(n.type) ?? 0) + 1);
+        if (byType.size > 0) {
+          const parts = [...byType.entries()].map(([t, c]) => `${t}:${c}`).join('  ');
+          w(`    ${d(parts)}\n`);
+        }
+
+        // Top nodes
+        const topNodes = nodes.slice(0, 5).map(n => n.id).join(', ');
+        if (topNodes) w(`    ${d('Nodes: ' + topNodes + (nodes.length > 5 ? ' …' : ''))}\n`);
+
+        // SOPs
+        for (const sop of sops.slice(0, 3)) {
+          w(`    ${green('►')} ${sop.title} ${d('(' + sop.estimatedDuration + ')')}\n`);
+        }
+        if (sops.length > 3) w(`    ${d('… +' + (sops.length - 3) + ' weitere SOPs')}\n`);
+
+        w('\n');
+      }
+
+      db.close();
+    });
+
+  // ── CHAT ──────────────────────────────────────────────────────────────────
+
+  program
+    .command('chat [session-id]')
+    .description('Interaktiver Chat über die kartographierte Infrastruktur')
+    .option('--db <path>', 'DB-Pfad')
+    .option('--model <m>', 'Model', 'claude-sonnet-4-5-20250929')
+    .action(async (sessionIdArg: string | undefined, opts) => {
+      const config = defaultConfig();
+      const db = new CartographyDB((opts as { db?: string }).db ?? config.dbPath);
+      const sessions = db.getSessions();
+
+      const session = sessionIdArg
+        ? sessions.find(s => s.id.startsWith(sessionIdArg))
+        : sessions.filter(s => s.completedAt).at(-1) ?? sessions.at(-1);
+
+      if (!session) {
+        process.stderr.write('Keine Session gefunden. Führe zuerst discover aus.\n');
+        db.close();
+        return;
+      }
+
+      const nodes = db.getNodes(session.id);
+      const edges = db.getEdges(session.id);
+      const sops = db.getSOPs(session.id);
+
+      const w = (s: string) => process.stdout.write(s);
+
+      w('\n');
+      w(dim(`  ─────────────────────────────────────────────────────\n`));
+      w(`  ${bold('CARTOGRAPHY CHAT')}  ${dim('Session ' + session.id.substring(0, 8))}\n`);
+      w(`  ${dim(String(nodes.length) + ' Nodes · ' + edges.length + ' Edges · ' + sops.length + ' SOPs')}\n`);
+      w(dim(`  ─────────────────────────────────────────────────────\n`));
+      w(`  ${dim('Frage alles über deine Infrastruktur. exit = beenden.\n\n')}`);
+
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic();
+
+      // Build a compact infra summary for context (avoid token overflow)
+      const infraSummary = JSON.stringify({
+        nodes: nodes.map(n => ({
+          id: n.id, name: n.name, type: n.type,
+          confidence: n.confidence,
+          metadata: n.metadata,
+          tags: n.tags,
+        })),
+        edges: edges.map(e => ({ from: e.sourceId, to: e.targetId, rel: e.relationship, conf: e.confidence })),
+        sops: sops.map(s => ({ title: s.title, description: s.description, steps: s.steps.length, duration: s.estimatedDuration })),
+      });
+
+      const systemPrompt = `Du bist ein Infrastruktur-Analyst für Cartography.
+Du hast Zugriff auf die vollständig kartographierte Infrastruktur dieser Session.
+Beantworte Fragen präzise und hilfreich. Nutze die Daten konkret.
+Du kannst SOPs erklären, Abhängigkeiten analysieren, Risiken benennen, Optimierungen vorschlagen.
+
+INFRASTRUKTUR-SNAPSHOT (${nodes.length} Nodes, ${edges.length} Edges, ${sops.length} SOPs):
+${infraSummary.substring(0, 12000)}`;
+
+      // Multi-turn conversation history
+      type MsgParam = { role: 'user' | 'assistant'; content: string };
+      const history: MsgParam[] = [];
+
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+      const ask = () => new Promise<string>(resolve => rl.question(`  ${cyan('>')} `, resolve));
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        let userInput: string;
+        try { userInput = await ask(); } catch { break; }
+
+        if (!userInput.trim()) continue;
+        if (['exit', 'quit', ':q'].includes(userInput.trim().toLowerCase())) break;
+
+        history.push({ role: 'user', content: userInput });
+
+        try {
+          const resp = await client.messages.create({
+            model: (opts as { model: string }).model,
+            max_tokens: 1024,
+            system: systemPrompt,
+            messages: history,
+          });
+
+          const reply = resp.content.find(b => b.type === 'text')?.text ?? '';
+          history.push({ role: 'assistant', content: reply });
+
+          w('\n');
+          // Word-wrap at 80 cols with indent
+          for (const line of reply.split('\n')) {
+            w(`  ${line}\n`);
+          }
+          w('\n');
+        } catch (err) {
+          w(`  ${red('✗')}  Fehler: ${err}\n\n`);
+        }
+      }
+
+      rl.close();
+      db.close();
+      w(`\n  ${dim('Chat beendet.')}\n\n`);
+    });
+
   // ── DOCS ──────────────────────────────────────────────────────────────────
 
   program
@@ -472,11 +675,7 @@ function main(): void {
     .description('Alle Features und Befehle auf einen Blick')
     .action(() => {
       const out = process.stdout.write.bind(process.stdout);
-      const b = (s: string) => `\x1b[1m${s}\x1b[0m`;
-      const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-      const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
-      const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
-      const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+      const b = bold;
       const line = () => out(dim('─'.repeat(60)) + '\n');
 
       out('\n');
