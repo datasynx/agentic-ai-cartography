@@ -300,6 +300,155 @@ function main(): void {
       db.close();
     });
 
+  // ── DOCS ──────────────────────────────────────────────────────────────────
+
+  program
+    .command('docs')
+    .description('Alle Features und Befehle auf einen Blick')
+    .action(() => {
+      const out = process.stdout.write.bind(process.stdout);
+      const b = (s: string) => `\x1b[1m${s}\x1b[0m`;
+      const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+      const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
+      const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+      const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+      const line = () => out(dim('─'.repeat(60)) + '\n');
+
+      out('\n');
+      out(b('  CARTOGRAPH') + '  ' + dim('v0.1.0') + '\n');
+      out(dim('  AI-powered Infrastructure Cartography & SOP Generation\n'));
+      out('\n');
+      line();
+
+      // ── DISCOVERY
+      out(b(cyan('  DISCOVERY\n')));
+      out('\n');
+      out(`  ${green('cartograph discover')}\n`);
+      out(`    Scannt die lokale Infrastruktur (Claude Sonnet).\n`);
+      out(`    Claude führt eigenständig ss, ps, curl, docker inspect, kubectl get\n`);
+      out(`    aus und speichert alles in SQLite.\n`);
+      out('\n');
+      out(dim('    Optionen:\n'));
+      out(dim('      --entry <hosts...>    Startpunkte          (default: localhost)\n'));
+      out(dim('      --depth <n>           Max Tiefe            (default: 8)\n'));
+      out(dim('      --max-turns <n>       Max Agent-Turns      (default: 50)\n'));
+      out(dim('      --model <m>           Model                (default: claude-sonnet-4-5-...)\n'));
+      out(dim('      --org <name>          Organisation für Backstage YAML\n'));
+      out(dim('      -o, --output <dir>    Output-Verzeichnis   (default: ./cartograph-output)\n'));
+      out(dim('      -v, --verbose         Agent-Reasoning anzeigen\n'));
+      out('\n');
+      out(dim('    Output:\n'));
+      out(dim('      cartograph-output/\n'));
+      out(dim('        catalog.json          Maschinenlesbarer Komplett-Dump\n'));
+      out(dim('        catalog-info.yaml     Backstage Service-Katalog\n'));
+      out(dim('        topology.mermaid      Infrastruktur-Topologie (graph TB)\n'));
+      out(dim('        dependencies.mermaid  Service-Dependencies (graph LR)\n'));
+      out(dim('        topology.html         Interaktiver D3.js Force-Graph\n'));
+      out(dim('        sops/                 Generierte SOPs als Markdown\n'));
+      out(dim('        workflows/            Workflow-Flowcharts als Mermaid\n'));
+      out('\n');
+      line();
+
+      // ── SHADOW
+      out(b(cyan('  SHADOW DAEMON\n')));
+      out('\n');
+      out(`  ${green('cartograph shadow start')}\n`);
+      out(`    Startet einen Background-Daemon, der alle 30s einen System-Snapshot\n`);
+      out(`    nimmt (ss + ps). Nur bei Änderung ruft er Claude Haiku auf.\n`);
+      out('\n');
+      out(dim('    Optionen:\n'));
+      out(dim('      --interval <ms>       Poll-Intervall       (default: 30000, min: 15000)\n'));
+      out(dim('      --inactivity <ms>     Task-Grenze          (default: 300000 = 5 min)\n'));
+      out(dim('      --model <m>           Analysis-Model       (default: claude-haiku-4-5-...)\n'));
+      out(dim('      --track-windows       Fenster-Focus tracken (benötigt xdotool)\n'));
+      out(dim('      --auto-save           Nodes ohne Rückfrage speichern\n'));
+      out(dim('      --no-notifications    Desktop-Notifications deaktivieren\n'));
+      out(dim('      --foreground          Kein Daemon, im Terminal bleiben\n'));
+      out('\n');
+      out(`  ${green('cartograph shadow stop')}     ${dim('Daemon per SIGTERM beenden')}\n`);
+      out(`  ${green('cartograph shadow status')}   ${dim('PID + Socket-Pfad anzeigen')}\n`);
+      out(`  ${green('cartograph shadow attach')}   ${dim('Live-Events im Terminal, Hotkeys: [T] [S] [D] [Q]')}\n`);
+      out('\n');
+      out(dim('    Hotkeys im Attach-Modus:\n'));
+      out(dim('      [T]  Neuen Task starten (mit Beschreibung)\n'));
+      out(dim('      [S]  Status-Dump anzeigen (Nodes, Events, Tasks, Cycles)\n'));
+      out(dim('      [D]  Trennen — Daemon läuft weiter\n'));
+      out(dim('      [Q]  Daemon stoppen und beenden\n'));
+      out('\n');
+      line();
+
+      // ── ANALYSE & EXPORT
+      out(b(cyan('  ANALYSE & EXPORT\n')));
+      out('\n');
+      out(`  ${green('cartograph sops [session-id]')}\n`);
+      out(`    Clustert abgeschlossene Tasks und generiert SOPs via Claude Sonnet.\n`);
+      out(`    Nutzt die Anthropic Messages API (kein Agent-Loop, ein Request pro Cluster).\n`);
+      out('\n');
+      out(`  ${green('cartograph export [session-id]')}\n`);
+      out(dim('    --format <fmt...>   mermaid, json, yaml, html, sops  (default: alle)\n'));
+      out(dim('    -o, --output <dir>  Output-Verzeichnis\n'));
+      out('\n');
+      out(`  ${green('cartograph show [session-id]')}    ${dim('Session-Details + Node-Liste')}\n`);
+      out(`  ${green('cartograph sessions')}             ${dim('Alle Sessions tabellarisch auflisten')}\n`);
+      out('\n');
+      line();
+
+      // ── KOSTEN
+      out(b(cyan('  KOSTEN (Richtwerte)\n')));
+      out('\n');
+      out(yellow('  Modus          Model    Intervall    pro Stunde   pro 8h-Tag\n'));
+      out(dim('  ─────────────────────────────────────────────────────────────\n'));
+      out(`  Discovery      Sonnet   einmalig     $0.15–0.50   einmalig\n`);
+      out(`  Shadow         Haiku    30s          $0.12–0.36   $0.96–2.88\n`);
+      out(`  Shadow         Haiku    60s          $0.06–0.18   $0.48–1.44\n`);
+      out(`  Shadow (ruhig) Haiku    30s          ~$0.02       ~$0.16\n`);
+      out(`  SOP-Gen        Sonnet   einmalig     $0.01–0.03   einmalig\n`);
+      out('\n');
+      out(dim('  * "ruhig" = Diff-Check überspringt 90%+ Cycles, wenn System unverändert\n'));
+      out('\n');
+      line();
+
+      // ── ARCHITEKTUR
+      out(b(cyan('  ARCHITEKTUR\n')));
+      out('\n');
+      out(dim('  CLI (Commander)\n'));
+      out(dim('    └── Preflight: Claude CLI check + API key + Intervall-Validierung\n'));
+      out(dim('        └── Agent Orchestrator (agent.ts)\n'));
+      out(dim('            ├── runDiscovery()    → Claude Sonnet + Bash + MCP Tools\n'));
+      out(dim('            ├── runShadowCycle()  → Claude Haiku + nur MCP Tools (kein Bash!)\n'));
+      out(dim('            └── generateSOPs()    → Anthropic Messages API (kein Agent-Loop)\n'));
+      out(dim('                └── Custom MCP Tools (tools.ts)\n'));
+      out(dim('                    save_node, save_edge, save_event,\n'));
+      out(dim('                    get_catalog, manage_task, save_sop\n'));
+      out(dim('                    └── CartographDB (SQLite WAL)\n'));
+      out(dim('  Shadow Daemon (daemon.ts)\n'));
+      out(dim('    ├── takeSnapshot() → ss + ps  [kein Claude!]\n'));
+      out(dim('    ├── Diff-Check → nur bei Änderung: runShadowCycle()\n'));
+      out(dim('    ├── IPC Server (Unix Socket ~/.cartograph/daemon.sock)\n'));
+      out(dim('    └── NotificationService (Desktop wenn kein Client attached)\n'));
+      out('\n');
+      line();
+
+      // ── SETUP
+      out(b(cyan('  SETUP\n')));
+      out('\n');
+      out(dim('  # 1. Claude CLI (Runtime-Dependency)\n'));
+      out('  npm install -g @anthropic-ai/claude-code\n');
+      out('  claude login\n');
+      out('\n');
+      out(dim('  # 2. API Key (falls nicht via claude login)\n'));
+      out('  export ANTHROPIC_API_KEY=sk-ant-...\n');
+      out('\n');
+      out(dim('  # 3. Los\n'));
+      out('  cartograph discover\n');
+      out('  cartograph shadow start\n');
+      out('\n');
+      out(dim('  Daten: ~/.cartograph/cartograph.db\n'));
+      out(dim('  Socket: ~/.cartograph/daemon.sock\n'));
+      out(dim('  PID:    ~/.cartograph/daemon.pid\n'));
+      out('\n');
+    });
+
   // ── Parse ──────────────────────────────────────────────────────────────────
 
   program.exitOverride((err) => {
