@@ -315,7 +315,7 @@ function main(): void {
       const line = () => out(dim('─'.repeat(60)) + '\n');
 
       out('\n');
-      out(b('  CARTOGRAPHY') + '  ' + dim('v0.1.0') + '\n');
+      out(b('  CARTOGRAPHY') + '  ' + dim('v0.1.2') + '\n');
       out(dim('  AI-powered Infrastructure Cartography & SOP Generation\n'));
       out('\n');
       line();
@@ -447,6 +447,95 @@ function main(): void {
       out(dim('  Socket: ~/.cartography/daemon.sock\n'));
       out(dim('  PID:    ~/.cartography/daemon.pid\n'));
       out('\n');
+    });
+
+  // ── Doctor ─────────────────────────────────────────────────────────────────
+
+  program
+    .command('doctor')
+    .description('Prüft ob alle Voraussetzungen erfüllt sind')
+    .action(async () => {
+      const { execSync } = await import('node:child_process');
+      const { existsSync, readFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const out = (s: string) => process.stdout.write(s);
+      const ok  = (msg: string) => out(`  \x1b[32m✓\x1b[0m  ${msg}\n`);
+      const err = (msg: string) => out(`  \x1b[31m✗\x1b[0m  ${msg}\n`);
+      const warn = (msg: string) => out(`  \x1b[33m⚠\x1b[0m  ${msg}\n`);
+      const dim  = (s: string) => `\x1b[2m${s}\x1b[0m`;
+      let allGood = true;
+
+      out('\n  \x1b[1mCartography — Doctor\x1b[0m\n');
+      out(dim('  ─────────────────────────────────\n'));
+
+      // 1. Node.js Version
+      const nodeVer = process.versions.node;
+      const [major] = nodeVer.split('.').map(Number);
+      if ((major ?? 0) >= 18) {
+        ok(`Node.js ${nodeVer}`);
+      } else {
+        err(`Node.js ${nodeVer} — benötigt >=18`);
+        allGood = false;
+      }
+
+      // 2. Claude CLI
+      try {
+        const v = execSync('claude --version', { stdio: 'pipe' }).toString().trim();
+        ok(`Claude CLI  ${dim(v)}`);
+      } catch {
+        err('Claude CLI nicht gefunden — npm i -g @anthropic-ai/claude-code');
+        allGood = false;
+      }
+
+      // 3. Auth
+      const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
+      const home = process.env.HOME ?? process.env.USERPROFILE ?? '/tmp';
+      let hasOAuth = false;
+      try {
+        const creds = JSON.parse(readFileSync(join(home, '.claude', '.credentials.json'), 'utf8')) as Record<string, unknown>;
+        const oauth = creds['claudeAiOauth'] as Record<string, unknown> | undefined;
+        hasOAuth = typeof oauth?.['accessToken'] === 'string' && oauth['accessToken'].length > 0;
+      } catch { /* no creds file */ }
+
+      if (hasApiKey) {
+        ok('ANTHROPIC_API_KEY gesetzt');
+      } else if (hasOAuth) {
+        ok('claude login (Subscription)');
+      } else {
+        err('Keine Authentifizierung — claude login  oder  export ANTHROPIC_API_KEY=sk-ant-...');
+        allGood = false;
+      }
+
+      // 4. Optionale Tools
+      const optional: Array<[string, string]> = [
+        ['docker', 'docker --version'],
+        ['kubectl', 'kubectl version --client --short'],
+        ['ss', 'ss --version'],
+      ];
+      for (const [name, cmd] of optional) {
+        try {
+          execSync(cmd, { stdio: 'pipe' });
+          ok(`${name}  ${dim('(Discovery-Tool)')}`);
+        } catch {
+          warn(`${name} nicht gefunden  ${dim('— Discovery ohne ' + name + ' eingeschränkt')}`);
+        }
+      }
+
+      // 5. SQLite data dir
+      const dbDir = join(home, '.cartography');
+      if (existsSync(dbDir)) {
+        ok(`~/.cartography  ${dim('(Daten-Verzeichnis vorhanden)')}`);
+      } else {
+        warn('~/.cartography existiert noch nicht  ' + dim('— wird beim ersten Start angelegt'));
+      }
+
+      out(dim('  ─────────────────────────────────\n'));
+      if (allGood) {
+        out('  \x1b[32m\x1b[1mAlle Checks bestanden — cartography discover\x1b[0m\n\n');
+      } else {
+        out('  \x1b[31m\x1b[1mEinige Checks fehlgeschlagen. Bitte oben beheben.\x1b[0m\n\n');
+        process.exitCode = 1;
+      }
     });
 
   // ── Parse ──────────────────────────────────────────────────────────────────

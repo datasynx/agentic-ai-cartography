@@ -1,11 +1,22 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "AI-powered infrastructure cartography & SOP generation CLI — built on Claude Agent SDK",
   "type": "module",
-  "bin": { "cartography": "./dist/cli.js" },
-  "exports": { ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" } },
-  "files": ["dist", "README.md", "LICENSE"],
+  "bin": {
+    "cartography": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli.ts",
@@ -15,11 +26,21 @@
     "prepublishOnly": "npm run lint && npm run test && npm run build",
     "postinstall": "node -e \"try{require('child_process').execSync('claude --version',{stdio:'pipe'})}catch{console.warn('\\n⚠ cartography requires Claude CLI: npm i -g @anthropic-ai/claude-code\\n')}\""
   },
-  "engines": { "node": ">=18.0.0" },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "keywords": [
-    "infrastructure", "cartography", "discovery", "sop",
-    "claude", "ai-agent", "devops", "mermaid", "backstage",
-    "network-topology", "observability"
+    "infrastructure",
+    "cartography",
+    "discovery",
+    "sop",
+    "claude",
+    "ai-agent",
+    "devops",
+    "mermaid",
+    "backstage",
+    "network-topology",
+    "observability"
   ],
   "author": {
     "name": "Datasynx AI",
@@ -34,8 +55,15 @@
     "url": "https://github.com/datasynx-ai/agentic-ai-discovery/issues"
   },
   "license": "MIT",
+  "peerDependencies": {
+    "@anthropic-ai/claude-code": ">=1.0.0 <2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-code": {
+      "optional": true
+    }
+  },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.0",
     "@anthropic-ai/sdk": "^0.74.0",
     "better-sqlite3": "^12.6.0",
     "commander": "^12.1.0",
@@ -45,6 +73,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-code": "^1.0.128",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
     "tsup": "^8.3.0",
