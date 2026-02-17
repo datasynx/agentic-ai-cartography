@@ -1,5 +1,5 @@
 {
-  "name": "@datasynx-ai/agentic-ai-catograph",
+  "name": "@datasynx/agentic-ai-catograph",
   "version": "0.1.0",
   "description": "AI-powered infrastructure cartography & SOP generation CLI — built on Claude Agent SDK",
   "type": "module",
