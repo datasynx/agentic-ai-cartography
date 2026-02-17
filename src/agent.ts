@@ -39,15 +39,22 @@ SCHRITT 2 — Lokale Infrastruktur:
   ss -tlnp && ps aux → alle lauschenden Ports/Prozesse identifizieren
   Jeden Service vertiefen: DB→Schemas, API→Endpoints, Queue→Topics
 
-SCHRITT 3 — Config-Files:
+SCHRITT 3 — Cloud & Kubernetes (falls CLI vorhanden):
+  scan_k8s_resources() → Nodes, Services, Pods, Deployments, Ingresses
+  scan_aws_resources()  → EC2, RDS, ELB, EKS, ElastiCache, S3 (falls AWS CLI + Credentials)
+  scan_gcp_resources()  → Compute, SQL, GKE, Cloud Run, Functions (falls gcloud + Auth)
+  scan_azure_resources() → VMs, AKS, SQL, Redis, WebApps (falls az CLI + Login)
+  Fehler / "nicht verfügbar" → ignorieren, weiter mit nächstem Tool
+
+SCHRITT 4 — Config-Files:
   .env, docker-compose.yml, application.yml, kubernetes/*.yml
   Nur Host:Port extrahieren — KEINE Credentials
 
-SCHRITT 4 — Rückfragen bei Unklarheit:
+SCHRITT 5 — Rückfragen bei Unklarheit:
   ask_user() nutzen wenn: Dienst unklar ist, Kontext fehlt, oder User Input sinnvoll wäre
   Beispiele: "Welche Umgebung ist das (dev/staging/prod)?", "Ist <host> ein internes Tool?"
 
-SCHRITT 5 — Fertig wenn alle Spuren erschöpft.
+SCHRITT 6 — Fertig wenn alle Spuren erschöpft.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PORT-MAPPING: 5432=postgres, 3306=mysql, 27017=mongodb, 6379=redis,
@@ -85,6 +92,10 @@ Nutze ask_user wenn du Kontext vom User brauchst.`;
         'mcp__cartograph__save_edge',
         'mcp__cartograph__get_catalog',
         'mcp__cartograph__scan_bookmarks',
+        'mcp__cartograph__scan_k8s_resources',
+        'mcp__cartograph__scan_aws_resources',
+        'mcp__cartograph__scan_gcp_resources',
+        'mcp__cartograph__scan_azure_resources',
         'mcp__cartograph__ask_user',
       ],
       hooks: {

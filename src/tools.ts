@@ -167,6 +167,124 @@ export async function createCartographyTools(
       };
     }),
 
+    tool('scan_k8s_resources', 'Kubernetes-Cluster via kubectl scannen — 100% readonly (get, describe)', {
+      namespace: z.string().optional().describe('Namespace filtern — leer = alle Namespaces'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const ns = args['namespace'] as string | undefined;
+      const nsFlag = ns ? `-n ${ns}` : '--all-namespaces';
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 15_000, shell: '/bin/sh' }).toString().trim();
+        } catch (e) {
+          return `(error: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`;
+        }
+      };
+      const sections: [string, string][] = [
+        ['CONTEXT', 'kubectl config current-context 2>/dev/null || echo "(kein Context gesetzt)"'],
+        ['NODES', 'kubectl get nodes -o wide'],
+        ['NAMESPACES', 'kubectl get namespaces'],
+        ['SERVICES', `kubectl get services ${nsFlag}`],
+        ['DEPLOYMENTS', `kubectl get deployments ${nsFlag}`],
+        ['STATEFULSETS', `kubectl get statefulsets ${nsFlag}`],
+        ['INGRESSES', `kubectl get ingress ${nsFlag} 2>/dev/null || echo "(keine)"`],
+        ['PODS_RUNNING', `kubectl get pods ${nsFlag} --field-selector=status.phase=Running 2>/dev/null | head -60`],
+        ['CONFIGMAPS_SYSTEM', 'kubectl get configmaps -n kube-system 2>/dev/null | head -30'],
+      ];
+      const out = sections.map(([l, c]) => `=== ${l} ===\n${run(c)}`).join('\n\n');
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
+    tool('scan_aws_resources', 'AWS-Infrastruktur via AWS CLI scannen — 100% readonly (describe, list)', {
+      region: z.string().optional().describe('AWS Region — default: AWS_DEFAULT_REGION oder Profil'),
+      profile: z.string().optional().describe('AWS CLI Profil'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const region = args['region'] as string | undefined;
+      const profile = args['profile'] as string | undefined;
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      if (region) env['AWS_DEFAULT_REGION'] = region;
+      const pf = profile ? `--profile ${profile}` : '';
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 20_000, shell: '/bin/sh', env }).toString().trim();
+        } catch (e) {
+          return `(error: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`;
+        }
+      };
+      const sections: [string, string][] = [
+        ['IDENTITY', `aws sts get-caller-identity ${pf} --output json`],
+        ['EC2', `aws ec2 describe-instances ${pf} --query 'Reservations[*].Instances[*].[InstanceId,InstanceType,State.Name,PublicIpAddress,PrivateIpAddress,Tags[?Key==\`Name\`].Value|[0]]' --output table`],
+        ['RDS', `aws rds describe-db-instances ${pf} --query 'DBInstances[*].[DBInstanceIdentifier,Engine,DBInstanceStatus,Endpoint.Address,Endpoint.Port]' --output table`],
+        ['ELB_V2', `aws elbv2 describe-load-balancers ${pf} --query 'LoadBalancers[*].[LoadBalancerName,DNSName,Type,State.Code]' --output table`],
+        ['EKS', `aws eks list-clusters ${pf} --output json`],
+        ['ELASTICACHE', `aws elasticache describe-cache-clusters ${pf} --query 'CacheClusters[*].[CacheClusterId,Engine,CacheClusterStatus]' --output table 2>/dev/null || echo "(nicht verfügbar)"`],
+        ['S3', `aws s3 ls ${pf} 2>/dev/null || echo "(nicht verfügbar)"`],
+        ['VPC', `aws ec2 describe-vpcs ${pf} --query 'Vpcs[*].[VpcId,CidrBlock,IsDefault,Tags[?Key==\`Name\`].Value|[0]]' --output table`],
+      ];
+      const out = sections.map(([l, c]) => `=== ${l} ===\n${run(c)}`).join('\n\n');
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
+    tool('scan_gcp_resources', 'Google Cloud Platform via gcloud CLI scannen — 100% readonly (list, describe)', {
+      project: z.string().optional().describe('GCP Project ID — default: aktuelles gcloud-Projekt'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const project = args['project'] as string | undefined;
+      const pf = project ? `--project ${project}` : '';
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 20_000, shell: '/bin/sh' }).toString().trim();
+        } catch (e) {
+          return `(error: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`;
+        }
+      };
+      const sections: [string, string][] = [
+        ['IDENTITY', `gcloud config list account --format='value(core.account)' 2>/dev/null; gcloud config get-value project 2>/dev/null`],
+        ['COMPUTE_INSTANCES', `gcloud compute instances list ${pf} 2>/dev/null || echo "(error)"`],
+        ['SQL_INSTANCES', `gcloud sql instances list ${pf} 2>/dev/null || echo "(error)"`],
+        ['GKE_CLUSTERS', `gcloud container clusters list ${pf} 2>/dev/null || echo "(error)"`],
+        ['CLOUD_RUN', `gcloud run services list ${pf} --platform managed 2>/dev/null || echo "(error)"`],
+        ['CLOUD_FUNCTIONS', `gcloud functions list ${pf} 2>/dev/null || echo "(error)"`],
+        ['REDIS', `gcloud redis instances list ${pf} --regions=- 2>/dev/null || echo "(error)"`],
+        ['PUBSUB', `gcloud pubsub topics list ${pf} 2>/dev/null || echo "(error)"`],
+        ['SPANNER', `gcloud spanner instances list ${pf} 2>/dev/null || echo "(error)"`],
+      ];
+      const out = sections.map(([l, c]) => `=== ${l} ===\n${run(c)}`).join('\n\n');
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
+    tool('scan_azure_resources', 'Azure-Infrastruktur via az CLI scannen — 100% readonly (list, show)', {
+      subscription: z.string().optional().describe('Azure Subscription ID'),
+      resourceGroup: z.string().optional().describe('Resource Group filtern'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const sub = args['subscription'] as string | undefined;
+      const rg = args['resourceGroup'] as string | undefined;
+      const sf = sub ? `--subscription ${sub}` : '';
+      const rf = rg ? `--resource-group ${rg}` : '';
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 20_000, shell: '/bin/sh' }).toString().trim();
+        } catch (e) {
+          return `(error: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`;
+        }
+      };
+      const sections: [string, string][] = [
+        ['IDENTITY', `az account show --output json ${sf} 2>/dev/null || echo "(nicht eingeloggt — az login)"`],
+        ['VMS', `az vm list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['AKS', `az aks list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['SQL_SERVERS', `az sql server list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['POSTGRES', `az postgres server list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['REDIS', `az redis list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['WEBAPPS', `az webapp list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['CONTAINER_APPS', `az containerapp list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['FUNCTIONS', `az functionapp list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+      ];
+      const out = sections.map(([l, c]) => `=== ${l} ===\n${run(c)}`).join('\n\n');
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
     tool('save_sop', 'Standard Operating Procedure speichern', {
       workflowId: z.string(),
       title: z.string(),

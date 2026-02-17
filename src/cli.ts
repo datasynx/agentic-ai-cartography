@@ -37,7 +37,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.1.9';
+  const VERSION = '0.2.0';
 
   program
     .name(CMD)
@@ -813,6 +813,197 @@ ${infraSummary.substring(0, 12000)}`;
       out('\n');
     });
 
+  // ── Bookmarks ──────────────────────────────────────────────────────────────
+
+  program
+    .command('bookmarks')
+    .description('Alle Browser-Lesezeichen anzeigen (Chrome, Edge, Brave, Firefox)')
+    .action(async () => {
+      const { scanAllBookmarks } = await import('./bookmarks.js');
+      const out = (s: string) => process.stdout.write(s);
+
+      process.stderr.write('  Scanning bookmarks...\n\n');
+      const hosts = await scanAllBookmarks();
+
+      if (hosts.length === 0) {
+        out('  (Keine Lesezeichen gefunden — Chrome, Edge, Brave und Firefox werden unterstützt)\n\n');
+        return;
+      }
+
+      // Group by source browser
+      const bySource = new Map<string, typeof hosts>();
+      for (const h of hosts) {
+        if (!bySource.has(h.source)) bySource.set(h.source, []);
+        bySource.get(h.source)!.push(h);
+      }
+
+      for (const [source, entries] of bySource) {
+        out(bold(cyan(`  ${source.toUpperCase()}`)) + dim(`  (${entries.length} Hosts)\n`));
+        out(dim('  ─────────────────────────────────────────\n'));
+        for (const h of entries) {
+          const isDefault = (h.protocol === 'https' && h.port === 443) || (h.protocol === 'http' && h.port === 80);
+          const portStr = isDefault ? '' : `:${h.port}`;
+          out(`  ${cyan(h.protocol + '://')}${h.hostname}${dim(portStr)}\n`);
+        }
+        out('\n');
+      }
+
+      out(dim(`  Total: ${hosts.length} unique hosts\n\n`));
+      out(dim('  Tipp: ') + 'datasynx-cartography discover' + dim(' — scannt + klassifiziert alle Lesezeichen automatisch\n\n'));
+    });
+
+  // ── Seed ───────────────────────────────────────────────────────────────────
+
+  program
+    .command('seed')
+    .description('Bekannte Infrastruktur manuell eintragen (Tools, DBs, APIs, etc.)')
+    .option('--file <path>', 'JSON-Datei mit Node-Definitionen einlesen')
+    .option('--session <id>', 'In existierende Session eintragen (default: neue Session)')
+    .option('--db <path>', 'DB-Pfad')
+    .action(async (opts) => {
+      const config = defaultConfig({ ...(opts.db ? { dbPath: opts.db } : {}) });
+      const db = new CartographyDB(config.dbPath);
+      const sessionId = opts.session ?? db.createSession('discover', config);
+
+      const out = (s: string) => process.stdout.write(s);
+      const w   = (s: string) => process.stderr.write(s);
+
+      // ── File mode ────────────────────────────────────────────────────────
+      if (opts.file) {
+        let raw: unknown;
+        try {
+          raw = JSON.parse(readFileSync(resolve(opts.file), 'utf8'));
+        } catch (e) {
+          w(red(`\n  ✗  Datei konnte nicht gelesen werden: ${e}\n\n`));
+          process.exitCode = 1;
+          return;
+        }
+
+        if (!Array.isArray(raw)) {
+          w(red('\n  ✗  JSON muss ein Array sein: [{ "type": "...", "name": "...", "host": "..." }]\n\n'));
+          process.exitCode = 1;
+          return;
+        }
+
+        let saved = 0;
+        for (const entry of raw as Record<string, unknown>[]) {
+          const type = entry['type'] as string;
+          const name = entry['name'] as string;
+          const host = entry['host'] as string | undefined;
+          const port = entry['port'] as number | undefined;
+          const tags = (entry['tags'] as string[] | undefined) ?? [];
+          const metadata = (entry['metadata'] as Record<string, unknown> | undefined) ?? {};
+
+          if (!type || !name) {
+            w(yellow(`  ⚠  Übersprungen (kein type/name): ${JSON.stringify(entry)}\n`));
+            continue;
+          }
+
+          const id = host
+            ? `${type}:${host}${port ? ':' + port : ''}`
+            : `${type}:${name.toLowerCase().replace(/\s+/g, '-')}`;
+
+          db.upsertNode(sessionId, {
+            id,
+            type: type as typeof import('./types.js').NODE_TYPES[number],
+            name,
+            discoveredVia: 'manual',
+            confidence: 1.0,
+            metadata: { ...metadata, ...(host ? { host } : {}), ...(port ? { port } : {}) },
+            tags,
+          });
+          out(`  ${green('+')}  ${cyan(id)}  ${dim('(' + type + ')')}\n`);
+          saved++;
+        }
+
+        db.endSession(sessionId);
+        w(`\n  ${green(bold('DONE'))}  ${saved} Nodes gespeichert  ${dim('Session: ' + sessionId)}\n\n`);
+        return;
+      }
+
+      // ── Interactive mode ─────────────────────────────────────────────────
+      const { NODE_TYPES } = await import('./types.js');
+
+      if (!process.stdin.isTTY) {
+        w(red('\n  ✗  Interaktiver Modus benötigt ein Terminal (--file für nicht-interaktiven Betrieb)\n\n'));
+        process.exitCode = 1;
+        return;
+      }
+
+      w('\n');
+      w(dim('  ────────────────────────────────────────────────\n'));
+      w(bold('  Bekannte Infrastruktur eintragen\n'));
+      w(dim('  Beispiele: Datenbanken, APIs, SaaS-Tools, Cloud-Services\n'));
+      w(dim('  ────────────────────────────────────────────────\n'));
+      w('\n');
+
+      const rl = createInterface({ input: process.stdin, output: process.stderr });
+      const ask = (q: string): Promise<string> => new Promise(res => rl.question(q, res));
+
+      let saved = 0;
+
+      const typeList = NODE_TYPES.map((t, i) => `${dim((i + 1).toString().padStart(2))}  ${t}`).join('\n  ');
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        w('\n');
+        w(dim('  Node-Typen:\n'));
+        w(`  ${typeList}\n\n`);
+
+        const typeInput = (await ask(`  ${cyan('Typ')} ${dim('[Nr. oder Name, Enter=abbrechen]')}: `)).trim();
+        if (!typeInput) break;
+
+        let nodeType: string;
+        const asNum = parseInt(typeInput, 10);
+        if (!isNaN(asNum) && asNum >= 1 && asNum <= NODE_TYPES.length) {
+          nodeType = NODE_TYPES[asNum - 1] as string;
+        } else if (NODE_TYPES.includes(typeInput as typeof NODE_TYPES[number])) {
+          nodeType = typeInput;
+        } else {
+          w(yellow(`  ⚠  Unbekannter Typ: "${typeInput}"\n`));
+          continue;
+        }
+
+        const name = (await ask(`  ${cyan('Name')} ${dim('[z.B. "Prod PostgreSQL"]')}: `)).trim();
+        if (!name) { w(dim('  (Abgebrochen)\n')); continue; }
+
+        const hostRaw = (await ask(`  ${cyan('Host / IP')} ${dim('[optional, Enter=überspringen]')}: `)).trim();
+        const portRaw = (await ask(`  ${cyan('Port')} ${dim('[optional]')}: `)).trim();
+        const tagsRaw = (await ask(`  ${cyan('Tags')} ${dim('[komma-getrennt, optional]')}: `)).trim();
+
+        const host = hostRaw || undefined;
+        const port = portRaw ? parseInt(portRaw, 10) : undefined;
+        const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+        const id = host
+          ? `${nodeType}:${host}${port ? ':' + port : ''}`
+          : `${nodeType}:${name.toLowerCase().replace(/\s+/g, '-')}`;
+
+        db.upsertNode(sessionId, {
+          id,
+          type: nodeType as typeof NODE_TYPES[number],
+          name,
+          discoveredVia: 'manual',
+          confidence: 1.0,
+          metadata: { ...(host ? { host } : {}), ...(port ? { port } : {}) },
+          tags,
+        });
+        out(`  ${green('+')}  ${cyan(id)}\n`);
+        saved++;
+
+        const again = (await ask(`  ${dim('Weiteren Node hinzufügen? [Y/n]')}: `)).trim().toLowerCase();
+        if (again === 'n' || again === 'nein') break;
+      }
+
+      rl.close();
+      db.endSession(sessionId);
+      w('\n');
+      w(dim('  ────────────────────────────────────────────────\n'));
+      w(`  ${green(bold('DONE'))}  ${saved} Node${saved !== 1 ? 's' : ''} gespeichert\n`);
+      w(`  ${dim('Session: ' + sessionId)}\n`);
+      w(`  ${dim('Tipp: datasynx-cartography show ' + sessionId)}\n\n`);
+    });
+
   // ── Doctor ─────────────────────────────────────────────────────────────────
 
   program
@@ -870,13 +1061,35 @@ ${infraSummary.substring(0, 12000)}`;
         allGood = false;
       }
 
-      // 4. Optionale Tools
-      const optional: Array<[string, string]> = [
-        ['docker', 'docker --version'],
-        ['kubectl', 'kubectl version --client --short'],
-        ['ss', 'ss --version'],
+      // 4. kubectl — wichtig für K8s Discovery
+      try {
+        const v = execSync('kubectl version --client --short 2>/dev/null || kubectl version --client', { stdio: 'pipe' }).toString().split('\n')[0]?.trim() ?? '';
+        ok(`kubectl  ${dim(v || '(Client OK)')}`);
+      } catch {
+        warn(`kubectl nicht gefunden  ${dim('— Installation: https://kubernetes.io/docs/tasks/tools/')}`);
+      }
+
+      // 5. Cloud CLIs (optional)
+      const cloudClis: Array<[string, string, string]> = [
+        ['aws',    'aws --version',    'AWS CLI — https://aws.amazon.com/cli/'],
+        ['gcloud', 'gcloud --version', 'Google Cloud SDK — https://cloud.google.com/sdk/'],
+        ['az',     'az --version',     'Azure CLI — https://aka.ms/installazurecliwindows'],
       ];
-      for (const [name, cmd] of optional) {
+      for (const [name, cmd, hint] of cloudClis) {
+        try {
+          execSync(cmd, { stdio: 'pipe' });
+          ok(`${name}  ${dim('(Cloud-Scanning verfügbar)')}`);
+        } catch {
+          warn(`${name} nicht gefunden  ${dim('— Cloud-Scan übersprungen | ' + hint)}`);
+        }
+      }
+
+      // 6. Lokale Discovery-Tools
+      const localTools: Array<[string, string]> = [
+        ['docker', 'docker --version'],
+        ['ss',     'ss --version'],
+      ];
+      for (const [name, cmd] of localTools) {
         try {
           execSync(cmd, { stdio: 'pipe' });
           ok(`${name}  ${dim('(Discovery-Tool)')}`);
@@ -885,7 +1098,7 @@ ${infraSummary.substring(0, 12000)}`;
         }
       }
 
-      // 5. SQLite data dir
+      // 7. SQLite data dir
       const dbDir = join(home, '.cartography');
       if (existsSync(dbDir)) {
         ok(`~/.cartography  ${dim('(Daten-Verzeichnis vorhanden)')}`);
@@ -932,6 +1145,8 @@ ${infraSummary.substring(0, 12000)}`;
     o(_b('  Commands:\n'));
     o('\n');
     o(`  ${_g('discover')}             ${_d('Infrastruktur scannen (Claude Sonnet)')}\n`);
+    o(`  ${_g('seed')}                 ${_d('Bekannte Tools/DBs/APIs manuell eintragen')}\n`);
+    o(`  ${_g('bookmarks')}            ${_d('Browser-Lesezeichen anzeigen')}\n`);
     o(`  ${_g('shadow start')}         ${_d('Background-Daemon starten (Claude Haiku)')}\n`);
     o(`  ${_g('shadow stop')}          ${_d('Daemon stoppen')}\n`);
     o(`  ${_g('shadow status')}        ${_d('Daemon-Status anzeigen')}\n`);
@@ -940,7 +1155,7 @@ ${infraSummary.substring(0, 12000)}`;
     o(`  ${_g('export')} ${_d('[session]')}    ${_d('Mermaid, JSON, YAML, HTML exportieren')}\n`);
     o(`  ${_g('show')} ${_d('[session]')}      ${_d('Session-Details anzeigen')}\n`);
     o(`  ${_g('sessions')}             ${_d('Alle Sessions auflisten')}\n`);
-    o(`  ${_g('doctor')}               ${_d('Installations-Check')}\n`);
+    o(`  ${_g('doctor')}               ${_d('Installations-Check (kubectl, aws, gcloud, az)')}\n`);
     o(`  ${_g('docs')}                 ${_d('Vollständige Dokumentation')}\n`);
     o('\n');
     o(_d('  ────────────────────────────────────────────────\n'));
@@ -948,6 +1163,7 @@ ${infraSummary.substring(0, 12000)}`;
     o(_b('  Quick Start:\n'));
     o('\n');
     o(`  ${_m('$')} ${_b('datasynx-cartography doctor')}         ${_d('Alles bereit?')}\n`);
+    o(`  ${_m('$')} ${_b('datasynx-cartography seed')}           ${_d('Bekannte Infra eintragen')}\n`);
     o(`  ${_m('$')} ${_b('datasynx-cartography discover')}       ${_d('Einmal-Scan')}\n`);
     o(`  ${_m('$')} ${_b('datasynx-cartography shadow start')}   ${_d('Dauerhaft beobachten')}\n`);
     o('\n');
