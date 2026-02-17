@@ -4,7 +4,9 @@ import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
 import { runDiscovery, generateSOPs } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
-import { exportAll } from './exporter.js';
+import { exportAll, generateTopologyMermaid } from './exporter.js';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import {
   forkDaemon, isDaemonRunning, stopDaemon, startDaemonProcess,
 } from './daemon.js';
@@ -25,7 +27,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.1.5';
+  const VERSION = '0.1.6';
 
   program
     .name(CMD)
@@ -183,7 +185,6 @@ function main(): void {
       w('\n');
 
       exportAll(db, sessionId, config.outputDir);
-      w(`  ${green('✓')}  Exported to ${bold(config.outputDir)}\n`);
 
       const nodeList = db.getNodes(sessionId).slice(0, 8);
       if (nodeList.length > 0) {
@@ -196,7 +197,29 @@ function main(): void {
         if (stats.nodes > 8) w(dim(`    ... +${stats.nodes - 8} more\n`));
       }
 
+      // ── Mermaid Links ──────────────────────────────────────────────────────
+      const link = (url: string, label: string) =>
+        `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
+
+      const topoPath = resolve(config.outputDir, 'topology.mermaid');
+      const htmlPath = resolve(config.outputDir, 'topology.html');
+
+      let mermaidLiveUrl = '';
+      try {
+        const mermaidCode = readFileSync(topoPath, 'utf8');
+        const payload = JSON.stringify({ code: mermaidCode, mermaid: { theme: 'dark' } });
+        const b64 = Buffer.from(payload).toString('base64');
+        mermaidLiveUrl = `https://mermaid.live/view#base64:${b64}`;
+      } catch { /* file not present if 0 nodes */ }
+
       w('\n');
+      w(`  ${bold('Diagramm öffnen:')}\n`);
+      w(`    ${green('→')}  ${link(`file://${htmlPath}`, 'Lokal  topology.html')}  ${dim('(D3 interaktiv)')}\n`);
+      if (mermaidLiveUrl) {
+        w(`    ${cyan('→')}  ${link(mermaidLiveUrl, 'mermaid.live')}  ${dim('(im Browser rendert Mermaid)')}\n`);
+      }
+      w('\n');
+
       db.close();
     });
 
