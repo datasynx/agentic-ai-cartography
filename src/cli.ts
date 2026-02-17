@@ -13,6 +13,15 @@ import {
 } from './daemon.js';
 import { ForegroundClient, AttachClient } from './client.js';
 
+// ── Shared color helpers ─────────────────────────────────────────────────────
+const bold    = (s: string) => `\x1b[1m${s}\x1b[0m`;
+const dim     = (s: string) => `\x1b[2m${s}\x1b[0m`;
+const cyan    = (s: string) => `\x1b[36m${s}\x1b[0m`;
+const green   = (s: string) => `\x1b[32m${s}\x1b[0m`;
+const yellow  = (s: string) => `\x1b[33m${s}\x1b[0m`;
+const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
+const red     = (s: string) => `\x1b[31m${s}\x1b[0m`;
+
 // ── Daemon child-process entry ────────────────────────────────────────────────
 if (process.env.CARTOGRAPHYY_DAEMON === '1') {
   const config = JSON.parse(process.env.CARTOGRAPHYY_CONFIG ?? '{}') as ReturnType<typeof defaultConfig>;
@@ -24,20 +33,11 @@ if (process.env.CARTOGRAPHYY_DAEMON === '1') {
   main();
 }
 
-// ── Shared color helpers (module-level for reuse across commands) ─────────────
-const bold    = (s: string) => `\x1b[1m${s}\x1b[0m`;
-const dim     = (s: string) => `\x1b[2m${s}\x1b[0m`;
-const cyan    = (s: string) => `\x1b[36m${s}\x1b[0m`;
-const green   = (s: string) => `\x1b[32m${s}\x1b[0m`;
-const yellow  = (s: string) => `\x1b[33m${s}\x1b[0m`;
-const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
-const red     = (s: string) => `\x1b[31m${s}\x1b[0m`;
-
 function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.1.8';
+  const VERSION = '0.1.9';
 
   program
     .name(CMD)
