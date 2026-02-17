@@ -1,4 +1,4 @@
-# @majone-software/cartograph
+# @datasynx-ai/agentic-ai-catograph
 
 **AI-powered Infrastructure Cartography & SOP Generation**
 
@@ -44,7 +44,7 @@ claude login
 ## Install
 
 ```bash
-npm install -g @majone-software/cartograph
+npm install -g @datasynx-ai/agentic-ai-catograph
 ```
 
 ---
@@ -191,11 +191,11 @@ import {
   exportAll,
   safetyHook,
   defaultConfig,
-} from '@majone-software/cartograph';
+} from '@datasynx-ai/agentic-ai-catograph';
 ```
 
 ---
 
 ## License
 
-MIT — © Majone Software
+MIT — © Datasynx AI

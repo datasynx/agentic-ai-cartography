@@ -1,5 +1,5 @@
 {
-  "name": "@majone-software/cartograph",
+  "name": "@datasynx-ai/agentic-ai-catograph",
   "version": "0.1.0",
   "description": "AI-powered infrastructure cartography & SOP generation CLI — built on Claude Agent SDK",
   "type": "module",
@@ -22,16 +22,16 @@
     "network-topology", "observability"
   ],
   "author": {
-    "name": "Majone Software",
-    "url": "https://github.com/majone-software"
+    "name": "Datasynx AI",
+    "url": "https://github.com/datasynx-ai"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/majone-software/agentic-ai-discovery.git"
+    "url": "https://github.com/datasynx-ai/agentic-ai-discovery.git"
   },
-  "homepage": "https://github.com/majone-software/agentic-ai-discovery#readme",
+  "homepage": "https://github.com/datasynx-ai/agentic-ai-discovery#readme",
   "bugs": {
-    "url": "https://github.com/majone-software/agentic-ai-discovery/issues"
+    "url": "https://github.com/datasynx-ai/agentic-ai-discovery/issues"
   },
   "license": "MIT",
   "dependencies": {
