@@ -181,7 +181,7 @@ export interface ShadowStatus {
 
 export const MIN_POLL_INTERVAL_MS = 15_000; // 15s Minimum (Agent SDK Overhead)
 
-export interface CartographConfig {
+export interface CartographyConfig {
   mode: 'discover' | 'shadow';
   maxDepth: number;
   maxTurns: number;
@@ -203,7 +203,7 @@ export interface CartographConfig {
   verbose: boolean;
 }
 
-export function defaultConfig(overrides: Partial<CartographConfig> = {}): CartographConfig {
+export function defaultConfig(overrides: Partial<CartographyConfig> = {}): CartographyConfig {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? '/tmp';
   return {
     mode: 'discover',
@@ -219,10 +219,10 @@ export function defaultConfig(overrides: Partial<CartographConfig> = {}): Cartog
     autoSaveNodes: false,
     enableNotifications: true,
     shadowModel: 'claude-haiku-4-5-20251001',
-    outputDir: './cartograph-output',
-    dbPath: `${home}/.cartograph/cartograph.db`,
-    socketPath: `${home}/.cartograph/daemon.sock`,
-    pidFile: `${home}/.cartograph/daemon.pid`,
+    outputDir: './cartography-output',
+    dbPath: `${home}/.cartography/cartography.db`,
+    socketPath: `${home}/.cartography/daemon.sock`,
+    pidFile: `${home}/.cartography/daemon.pid`,
     verbose: false,
     ...overrides,
   };

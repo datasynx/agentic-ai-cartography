@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CartographDB } from './db.js';
+import type { CartographyDB } from './db.js';
 import { NODE_TYPES, EDGE_RELATIONSHIPS, EVENT_TYPES, SOPStepSchema } from './types.js';
 
 // Lazy import to avoid hard-wiring SDK at module parse time
@@ -18,7 +18,7 @@ export function stripSensitive(target: string): string {
   }
 }
 
-export async function createCartographTools(db: CartographDB, sessionId: string): Promise<McpServer> {
+export async function createCartographyTools(db: CartographyDB, sessionId: string): Promise<McpServer> {
   // Dynamically import the SDK so missing package doesn't crash at load time
   const sdk = await import('@anthropic-ai/claude-code');
   const { tool, createSdkMcpServer } = sdk as {
@@ -143,7 +143,7 @@ export async function createCartographTools(db: CartographDB, sessionId: string)
   ];
 
   return createSdkMcpServer({
-    name: 'cartograph',
+    name: 'cartography',
     version: '0.1.0',
     tools,
   });

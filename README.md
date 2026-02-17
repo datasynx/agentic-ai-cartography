@@ -1,11 +1,11 @@
-# @datasynx-ai/agentic-ai-catograph
+# @datasynx-ai/agentic-ai-cartography
 
 **AI-powered Infrastructure Cartography & SOP Generation**
 
-Cartograph uses the **Claude Agent SDK** to automatically discover your infrastructure, map dependencies, and generate Standard Operating Procedures from observed workflows — all from your terminal.
+Cartography uses the **Claude Agent SDK** to automatically discover your infrastructure, map dependencies, and generate Standard Operating Procedures from observed workflows — all from your terminal.
 
 ```
-$ cartograph discover
+$ cartography discover
 🔍 Scanning localhost...
    ├── postgres:5432 (3 databases, 47 tables)
    ├── redis:6379 (standalone, 12 keys)
@@ -16,11 +16,11 @@ $ cartograph discover
 ✓ 8 nodes, 11 edges discovered
 ✓ Exported: catalog.json, topology.mermaid, catalog-info.yaml
 
-$ cartograph shadow start
+$ cartography shadow start
 👁 Shadow daemon started (PID 48291)
    Observing network + processes every 30s...
 
-$ cartograph shadow stop
+$ cartography shadow stop
 ✓ Shadow stopped. 142 events, 3 tasks, 2 workflows detected.
 ✓ Generated: sops/deploy-check.md, sops/db-migration.md
 ```
@@ -44,7 +44,7 @@ claude login
 ## Install
 
 ```bash
-npm install -g @datasynx-ai/agentic-ai-catograph
+npm install -g @datasynx-ai/agentic-ai-cartography
 ```
 
 ---
@@ -53,22 +53,22 @@ npm install -g @datasynx-ai/agentic-ai-catograph
 
 ```bash
 # Discover your infrastructure (one-shot, Claude Sonnet)
-cartograph discover
+cartography discover
 
 # Start background observer (Claude Haiku, every 30s)
-cartograph shadow start
+cartography shadow start
 
 # Attach to see live events
-cartograph shadow attach
+cartography shadow attach
 
 # After observing: generate SOPs from workflows
-cartograph sops
+cartography sops
 
 # Stop daemon
-cartograph shadow stop
+cartography shadow stop
 
 # Full feature overview
-cartograph docs
+cartography docs
 ```
 
 ---
@@ -78,21 +78,21 @@ cartograph docs
 ### Discovery
 
 ```
-cartograph discover [options]
+cartography discover [options]
 
   --entry <hosts...>    Start hosts          (default: localhost)
   --depth <n>           Max crawl depth      (default: 8)
   --max-turns <n>       Max agent turns      (default: 50)
   --model <m>           Claude model         (default: claude-sonnet-4-5-...)
   --org <name>          Org name for Backstage YAML
-  -o, --output <dir>    Output directory     (default: ./cartograph-output)
+  -o, --output <dir>    Output directory     (default: ./cartography-output)
   -v, --verbose         Show agent reasoning
 ```
 
 ### Shadow Daemon
 
 ```
-cartograph shadow start [options]
+cartography shadow start [options]
 
   --interval <ms>       Poll interval        (default: 30000, min: 15000)
   --inactivity <ms>     Task boundary gap    (default: 300000)
@@ -101,21 +101,21 @@ cartograph shadow start [options]
   --auto-save           Save nodes without prompting
   --foreground          Run in foreground (no fork)
 
-cartograph shadow stop
-cartograph shadow status
-cartograph shadow attach    # hotkeys: [T] new task  [S] status  [D] detach  [Q] stop
+cartography shadow stop
+cartography shadow status
+cartography shadow attach    # hotkeys: [T] new task  [S] status  [D] detach  [Q] stop
 ```
 
 ### Analysis & Export
 
 ```
-cartograph sops [session-id]              Generate SOPs from observed workflows
-cartograph export [session-id] [options]  Export all formats
+cartography sops [session-id]              Generate SOPs from observed workflows
+cartography export [session-id] [options]  Export all formats
   --format <fmt...>    mermaid, json, yaml, html, sops  (default: all)
   -o, --output <dir>   Output directory
-cartograph show [session-id]              Session details + node list
-cartograph sessions                       List all sessions
-cartograph docs                           Full feature reference
+cartography show [session-id]              Session details + node list
+cartography sessions                       List all sessions
+cartography docs                           Full feature reference
 ```
 
 ---
@@ -123,7 +123,7 @@ cartograph docs                           Full feature reference
 ## Output Files
 
 ```
-cartograph-output/
+cartography-output/
 ├── catalog.json               Full machine-readable dump
 ├── catalog-info.yaml          Backstage service catalog
 ├── topology.mermaid           Infrastructure topology (graph TB)
@@ -163,12 +163,12 @@ CLI (Commander)
           └── generateSOPs()     Anthropic Messages API (no agent loop)
               └── Custom MCP Tools: save_node, save_edge, save_event,
                                     get_catalog, manage_task, save_sop
-                  └── CartographDB (SQLite WAL, ~/.cartograph/cartograph.db)
+                  └── CartographyDB (SQLite WAL, ~/.cartography/cartography.db)
 
 Shadow Daemon
   ├── takeSnapshot()  →  ss + ps  (no Claude!)
   ├── Diff-check      →  only calls Claude when something changed
-  ├── IPC Server      →  Unix socket ~/.cartograph/daemon.sock
+  ├── IPC Server      →  Unix socket ~/.cartography/daemon.sock
   └── Notifications   →  desktop alerts when no client attached
 ```
 
@@ -184,14 +184,14 @@ Claude only reads — never writes, never deletes.
 
 ```typescript
 import {
-  CartographDB,
+  CartographyDB,
   runDiscovery,
   runShadowCycle,
   generateSOPs,
   exportAll,
   safetyHook,
   defaultConfig,
-} from '@datasynx-ai/agentic-ai-catograph';
+} from '@datasynx-ai/agentic-ai-cartography';
 ```
 
 ---

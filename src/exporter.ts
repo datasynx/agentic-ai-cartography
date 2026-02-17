@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CartographDB } from './db.js';
+import type { CartographyDB } from './db.js';
 import type { NodeRow, EdgeRow, SOP } from './types.js';
 
 // ── Icons & Labels ───────────────────────────────────────────────────────────
@@ -140,8 +140,8 @@ export function exportBackstageYAML(nodes: NodeRow[], edges: EdgeRow[], org?: st
       `metadata:`,
       `  name: ${sanitize(node.id)}`,
       `  annotations:`,
-      `    cartograph/discovered-at: "${node.discoveredAt}"`,
-      `    cartograph/confidence: "${node.confidence}"`,
+      `    cartography/discovered-at: "${node.discoveredAt}"`,
+      `    cartography/confidence: "${node.confidence}"`,
       `spec:`,
       `  type: ${node.type}`,
       `  lifecycle: production`,
@@ -157,7 +157,7 @@ export function exportBackstageYAML(nodes: NodeRow[], edges: EdgeRow[], org?: st
 
 // ── JSON ─────────────────────────────────────────────────────────────────────
 
-export function exportJSON(db: CartographDB, sessionId: string): string {
+export function exportJSON(db: CartographyDB, sessionId: string): string {
   const nodes = db.getNodes(sessionId);
   const edges = db.getEdges(sessionId);
   const events = db.getEvents(sessionId);
@@ -189,7 +189,7 @@ export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>Cartograph — Topology</title>
+  <title>Cartography — Topology</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     body { margin: 0; background: #1a1a2e; color: #eee; font-family: monospace; }
@@ -203,7 +203,7 @@ export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
 </head>
 <body>
 <div id="info">
-  <strong>Cartograph</strong><br>
+  <strong>Cartography</strong><br>
   Nodes: ${nodes.length} | Edges: ${edges.length}<br>
   <small>Drag to explore</small>
 </div>
@@ -284,7 +284,7 @@ export function exportSOPMarkdown(sop: SOP): string {
 // ── exportAll ─────────────────────────────────────────────────────────────────
 
 export function exportAll(
-  db: CartographDB,
+  db: CartographyDB,
   sessionId: string,
   outputDir: string,
   formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'sops'],

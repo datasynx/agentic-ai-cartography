@@ -1,14 +1,14 @@
 import { execSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { CartographDB } from './db.js';
+import { CartographyDB } from './db.js';
 import { IPCServer, cleanStaleSocket } from './ipc.js';
 import { NotificationService } from './notify.js';
 import { runShadowCycle } from './agent.js';
-import type { CartographConfig, ShadowStatus } from './types.js';
+import type { CartographyConfig, ShadowStatus } from './types.js';
 
 // ── Snapshot ─────────────────────────────────────────────────────────────────
 
-export function takeSnapshot(config: CartographConfig): string {
+export function takeSnapshot(config: CartographyConfig): string {
   const run = (cmd: string): string => {
     try {
       return execSync(cmd, { stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }).toString();
@@ -44,8 +44,8 @@ export class ShadowDaemon {
   private cyclesSkipped = 0;
 
   constructor(
-    private config: CartographConfig,
-    private db: CartographDB,
+    private config: CartographyConfig,
+    private db: CartographyDB,
     private ipc: IPCServer,
     private notify: NotificationService,
   ) {}
@@ -127,18 +127,18 @@ export class ShadowDaemon {
 
 // ── Daemon Lifecycle ──────────────────────────────────────────────────────────
 
-export function forkDaemon(config: CartographConfig): number {
+export function forkDaemon(config: CartographyConfig): number {
   // The daemon entry is the same cli.ts but with --daemon flag via env
   const child = spawn(
     process.execPath,
-    [process.argv[1] ?? 'cartograph', 'shadow', 'start', '--foreground', '--daemon-child'],
+    [process.argv[1] ?? 'cartography', 'shadow', 'start', '--foreground', '--daemon-child'],
     {
       detached: true,
       stdio: 'ignore',
       env: {
         ...process.env,
-        CARTOGRAPH_DAEMON: '1',
-        CARTOGRAPH_CONFIG: JSON.stringify(config),
+        CARTOGRAPHYY_DAEMON: '1',
+        CARTOGRAPHYY_CONFIG: JSON.stringify(config),
       },
     }
   );
@@ -180,17 +180,17 @@ export function stopDaemon(pidFile: string): boolean {
   }
 }
 
-function cleanup(config: CartographConfig): void {
+function cleanup(config: CartographyConfig): void {
   try { unlinkSync(config.socketPath); } catch { /* already gone */ }
   try { unlinkSync(config.pidFile); } catch { /* already gone */ }
 }
 
 // ── startDaemonProcess ───────────────────────────────────────────────────────
 
-export async function startDaemonProcess(config: CartographConfig): Promise<void> {
+export async function startDaemonProcess(config: CartographyConfig): Promise<void> {
   cleanStaleSocket(config.socketPath);
 
-  const db = new CartographDB(config.dbPath);
+  const db = new CartographyDB(config.dbPath);
   const ipc = new IPCServer();
   const notify = new NotificationService(config.enableNotifications);
 

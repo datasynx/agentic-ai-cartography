@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
-const SOCKET = join(tmpdir(), `cartograph-test-${Date.now()}.sock`);
+const SOCKET = join(tmpdir(), `cartography-test-${Date.now()}.sock`);
 
 let server: IPCServer | null = null;
 let client: IPCClient | null = null;
