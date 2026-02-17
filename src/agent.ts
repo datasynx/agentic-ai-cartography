@@ -3,13 +3,22 @@ import { createCartographyTools } from './tools.js';
 import { safetyHook } from './safety.js';
 import type { CartographyConfig, TaskRow } from './types.js';
 
+// ── Discovery Event Types ────────────────────────────────────────────────────
+
+export type DiscoveryEvent =
+  | { kind: 'thinking'; text: string }
+  | { kind: 'tool_call'; tool: string; input: Record<string, unknown> }
+  | { kind: 'tool_result'; tool: string; output: string }
+  | { kind: 'turn'; turn: number }
+  | { kind: 'done' };
+
 // ── runDiscovery ─────────────────────────────────────────────────────────────
 
 export async function runDiscovery(
   config: CartographyConfig,
   db: CartographyDB,
   sessionId: string,
-  onOutput?: (text: string) => void,
+  onEvent?: (event: DiscoveryEvent) => void,
 ): Promise<void> {
   const { query } = await import('@anthropic-ai/claude-code');
   const tools = await createCartographyTools(db, sessionId);
@@ -37,6 +46,8 @@ REGELN:
 
 Entrypoints: ${config.entryPoints.join(', ')}`;
 
+  let turnCount = 0;
+
   for await (const msg of query({
     prompt: systemPrompt,
     options: {
@@ -56,14 +67,43 @@ Entrypoints: ${config.entryPoints.join(', ')}`;
       permissionMode: 'bypassPermissions',
     },
   })) {
-    if (msg.type === 'assistant' && onOutput) {
+    if (!onEvent) continue;
+
+    if (msg.type === 'assistant') {
+      turnCount++;
+      onEvent({ kind: 'turn', turn: turnCount });
+
       for (const block of msg.message.content) {
         if (block.type === 'text') {
-          onOutput(block.text);
+          onEvent({ kind: 'thinking', text: block.text });
+        }
+        if (block.type === 'tool_use') {
+          onEvent({
+            kind: 'tool_call',
+            tool: block.name as string,
+            input: block.input as Record<string, unknown>,
+          });
         }
       }
     }
-    if (msg.type === 'result') return;
+
+    if (msg.type === 'user') {
+      const content = msg.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (typeof block === 'object' && block !== null && 'type' in block && (block as { type: string }).type === 'tool_result') {
+            const tb = block as { tool_use_id?: string; content?: unknown };
+            const text = typeof tb.content === 'string' ? tb.content : '';
+            onEvent({ kind: 'tool_result', tool: tb.tool_use_id ?? '', output: text });
+          }
+        }
+      }
+    }
+
+    if (msg.type === 'result') {
+      onEvent({ kind: 'done' });
+      return;
+    }
   }
 }
 

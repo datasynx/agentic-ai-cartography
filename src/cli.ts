@@ -3,6 +3,7 @@ import { checkPrerequisites, checkPollInterval } from './preflight.js';
 import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
 import { runDiscovery, generateSOPs } from './agent.js';
+import type { DiscoveryEvent } from './agent.js';
 import { exportAll } from './exporter.js';
 import {
   forkDaemon, isDaemonRunning, stopDaemon, startDaemonProcess,
@@ -24,7 +25,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
 
   program
     .name(CMD)
@@ -62,28 +63,140 @@ function main(): void {
       const db = new CartographyDB(config.dbPath);
       const sessionId = db.createSession('discover', config);
 
-      process.stderr.write(`🔍 Scanning ${config.entryPoints.join(', ')}...\n`);
-      process.stderr.write(`   Model: ${config.agentModel} | MaxTurns: ${config.maxTurns}\n\n`);
+      const w = process.stderr.write.bind(process.stderr);
+      const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
+      const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+      const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
+      const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+      const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+      const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
+
+      const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+      let spinIdx = 0;
+      let spinnerTimer: ReturnType<typeof setInterval> | null = null;
+      let spinnerMsg = '';
+
+      const startSpinner = (msg: string) => {
+        spinnerMsg = msg;
+        if (spinnerTimer) clearInterval(spinnerTimer);
+        spinnerTimer = setInterval(() => {
+          const frame = cyan(SPINNER[spinIdx % SPINNER.length] ?? '⠋');
+          w(`\r  ${frame} ${spinnerMsg}\x1b[K`);
+          spinIdx++;
+        }, 80);
+      };
+
+      const stopSpinner = () => {
+        if (spinnerTimer) { clearInterval(spinnerTimer); spinnerTimer = null; }
+        w(`\r\x1b[K`);
+      };
+
+      const startTime = Date.now();
+      let turnNum = 0;
+      let nodeCount = 0;
+      let edgeCount = 0;
+
+      w('\n');
+      w(`  ${bold('DISCOVERY')}  ${dim(config.entryPoints.join(', '))}\n`);
+      w(`  ${dim('Model: ' + config.agentModel + ' | MaxTurns: ' + config.maxTurns)}\n`);
+      w(dim('  ────────────────────────────────────────────────\n'));
+      w('\n');
+
+      const logLine = (icon: string, msg: string) => {
+        stopSpinner();
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        w(`  ${icon}  ${msg}  ${dim(elapsed + 's')}\n`);
+      };
+
+      const handleEvent = (event: DiscoveryEvent) => {
+        switch (event.kind) {
+          case 'turn':
+            turnNum = event.turn;
+            startSpinner(`Turn ${turnNum}/${config.maxTurns}  ${dim(`nodes:${nodeCount} edges:${edgeCount}`)}`);
+            break;
+
+          case 'thinking':
+            if (config.verbose) {
+              stopSpinner();
+              const lines = event.text.split('\n').slice(0, 3);
+              for (const line of lines) {
+                w(`  ${dim('  ' + line.substring(0, 80))}\n`);
+              }
+            }
+            break;
+
+          case 'tool_call': {
+            const toolName = event.tool.replace('mcp__cartograph__', '');
+
+            if (toolName === 'Bash') {
+              const cmd = (event.input['command'] as string ?? '').substring(0, 70);
+              startSpinner(`${yellow('$')} ${cmd}`);
+            } else if (toolName === 'save_node') {
+              const id = event.input['id'] as string ?? '?';
+              const type = event.input['type'] as string ?? '?';
+              nodeCount++;
+              logLine(green('+'), `${bold('Node')} ${cyan(id)} ${dim('(' + type + ')')}`);
+              startSpinner(`Turn ${turnNum}/${config.maxTurns}  ${dim(`nodes:${nodeCount} edges:${edgeCount}`)}`);
+            } else if (toolName === 'save_edge') {
+              const src = event.input['sourceId'] as string ?? '?';
+              const tgt = event.input['targetId'] as string ?? '?';
+              const rel = event.input['relationship'] as string ?? '→';
+              edgeCount++;
+              logLine(magenta('~'), `${bold('Edge')} ${src} ${dim(rel)} ${cyan(tgt)}`);
+              startSpinner(`Turn ${turnNum}/${config.maxTurns}  ${dim(`nodes:${nodeCount} edges:${edgeCount}`)}`);
+            } else if (toolName === 'get_catalog') {
+              startSpinner(`Catalog-Check ${dim('(Duplikate vermeiden)')}`);
+            } else {
+              startSpinner(`${toolName}...`);
+            }
+            break;
+          }
+
+          case 'tool_result':
+            // Spinner continues, no special output for results
+            break;
+
+          case 'done':
+            stopSpinner();
+            break;
+        }
+      };
 
       try {
-        await runDiscovery(config, db, sessionId, (text) => {
-          if (config.verbose) process.stdout.write(text + '\n');
-        });
+        await runDiscovery(config, db, sessionId, handleEvent);
       } catch (err) {
-        process.stderr.write(`❌ Discovery fehlgeschlagen: ${err}\n`);
+        stopSpinner();
+        w(`\n  ${bold('\x1b[31m✗\x1b[0m')}  Discovery fehlgeschlagen: ${err}\n`);
         db.close();
         process.exitCode = 1;
         return;
       }
 
+      stopSpinner();
       db.endSession(sessionId);
       const stats = db.getStats(sessionId);
+      const totalSec = ((Date.now() - startTime) / 1000).toFixed(1);
 
-      process.stderr.write(`\n✓ ${stats.nodes} nodes, ${stats.edges} edges discovered\n`);
+      w('\n');
+      w(dim('  ────────────────────────────────────────────────\n'));
+      w(`  ${green(bold('DONE'))}  ${bold(String(stats.nodes))} nodes, ${bold(String(stats.edges))} edges  ${dim('in ' + totalSec + 's')}\n`);
+      w('\n');
 
       exportAll(db, sessionId, config.outputDir);
-      process.stderr.write(`✓ Exported to: ${config.outputDir}\n`);
+      w(`  ${green('✓')}  Exported to ${bold(config.outputDir)}\n`);
 
+      const nodeList = db.getNodes(sessionId).slice(0, 8);
+      if (nodeList.length > 0) {
+        w('\n');
+        w(`  ${bold('Discovered:')}\n`);
+        for (const n of nodeList) {
+          const tag = dim(`[${n.type}]`);
+          w(`    ${cyan('●')} ${n.id} ${tag}\n`);
+        }
+        if (stats.nodes > 8) w(dim(`    ... +${stats.nodes - 8} more\n`));
+      }
+
+      w('\n');
       db.close();
     });
 
