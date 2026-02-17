@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { checkPrerequisites, checkPollInterval } from './preflight.js';
-import { CartographDB } from './db.js';
+import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
 import { runDiscovery, generateSOPs } from './agent.js';
 import { exportAll } from './exporter.js';
@@ -10,8 +10,8 @@ import {
 import { ForegroundClient, AttachClient } from './client.js';
 
 // ── Daemon child-process entry ────────────────────────────────────────────────
-if (process.env.CARTOGRAPH_DAEMON === '1') {
-  const config = JSON.parse(process.env.CARTOGRAPH_CONFIG ?? '{}') as ReturnType<typeof defaultConfig>;
+if (process.env.CARTOGRAPHYY_DAEMON === '1') {
+  const config = JSON.parse(process.env.CARTOGRAPHYY_CONFIG ?? '{}') as ReturnType<typeof defaultConfig>;
   startDaemonProcess(config).catch((err) => {
     process.stderr.write(`Daemon fatal: ${err}\n`);
     process.exitCode = 1;
@@ -24,7 +24,7 @@ function main(): void {
   const program = new Command();
 
   program
-    .name('cartograph')
+    .name('cartography')
     .description('AI-powered Infrastructure Cartography & SOP Generation')
     .version('0.1.0');
 
@@ -38,7 +38,7 @@ function main(): void {
     .option('--max-turns <n>', 'Max Agent-Turns', '50')
     .option('--model <m>', 'Agent-Model', 'claude-sonnet-4-5-20250929')
     .option('--org <name>', 'Organisation (für Backstage)')
-    .option('-o, --output <dir>', 'Output-Dir', './cartograph-output')
+    .option('-o, --output <dir>', 'Output-Dir', './cartography-output')
     .option('--db <path>', 'DB-Pfad')
     .option('-v, --verbose', 'Agent-Reasoning anzeigen', false)
     .action(async (opts) => {
@@ -56,7 +56,7 @@ function main(): void {
         verbose: opts.verbose,
       });
 
-      const db = new CartographDB(config.dbPath);
+      const db = new CartographyDB(config.dbPath);
       const sessionId = db.createSession('discover', config);
 
       process.stderr.write(`🔍 Scanning ${config.entryPoints.join(', ')}...\n`);
@@ -120,7 +120,7 @@ function main(): void {
       // Check if already running
       const { running } = isDaemonRunning(config.pidFile);
       if (running) {
-        process.stderr.write('❌ Shadow-Daemon läuft bereits. cartograph shadow status\n');
+        process.stderr.write('❌ Shadow-Daemon läuft bereits. cartography shadow status\n');
         process.exitCode = 1;
         return;
       }
@@ -132,8 +132,8 @@ function main(): void {
         const pid = forkDaemon(config);
         process.stderr.write(`👁 Shadow daemon started (PID ${pid})\n`);
         process.stderr.write(`   Intervall: ${intervalMs / 1000}s | Modell: ${config.shadowModel}\n`);
-        process.stderr.write('   cartograph shadow attach  — ankoppeln\n');
-        process.stderr.write('   cartograph shadow stop    — stoppen\n\n');
+        process.stderr.write('   cartography shadow attach  — ankoppeln\n');
+        process.stderr.write('   cartography shadow stop    — stoppen\n\n');
       }
     });
 
@@ -182,14 +182,14 @@ function main(): void {
       checkPrerequisites();
 
       const config = defaultConfig();
-      const db = new CartographDB(config.dbPath);
+      const db = new CartographyDB(config.dbPath);
 
       const session = sessionId
         ? db.getSession(sessionId)
         : db.getLatestSession('shadow');
 
       if (!session) {
-        process.stderr.write('❌ Keine Shadow-Session gefunden. cartograph shadow start\n');
+        process.stderr.write('❌ Keine Shadow-Session gefunden. cartography shadow start\n');
         db.close();
         process.exitCode = 1;
         return;
@@ -205,11 +205,11 @@ function main(): void {
   program
     .command('export [session-id]')
     .description('Alle Outputs generieren')
-    .option('-o, --output <dir>', 'Output-Dir', './cartograph-output')
+    .option('-o, --output <dir>', 'Output-Dir', './cartography-output')
     .option('--format <fmt...>', 'Formate: mermaid,json,yaml,html,sops')
     .action((sessionId: string | undefined, opts) => {
       const config = defaultConfig({ outputDir: opts.output });
-      const db = new CartographDB(config.dbPath);
+      const db = new CartographyDB(config.dbPath);
 
       const session = sessionId
         ? db.getSession(sessionId)
@@ -234,7 +234,7 @@ function main(): void {
     .description('Session-Details anzeigen')
     .action((sessionId?: string) => {
       const config = defaultConfig();
-      const db = new CartographDB(config.dbPath);
+      const db = new CartographyDB(config.dbPath);
 
       const session = sessionId
         ? db.getSession(sessionId)
@@ -278,7 +278,7 @@ function main(): void {
     .description('Alle Sessions auflisten')
     .action(() => {
       const config = defaultConfig();
-      const db = new CartographDB(config.dbPath);
+      const db = new CartographyDB(config.dbPath);
       const sessions = db.getSessions();
 
       if (sessions.length === 0) {
@@ -315,7 +315,7 @@ function main(): void {
       const line = () => out(dim('─'.repeat(60)) + '\n');
 
       out('\n');
-      out(b('  CARTOGRAPH') + '  ' + dim('v0.1.0') + '\n');
+      out(b('  CARTOGRAPHY') + '  ' + dim('v0.1.0') + '\n');
       out(dim('  AI-powered Infrastructure Cartography & SOP Generation\n'));
       out('\n');
       line();
@@ -323,7 +323,7 @@ function main(): void {
       // ── DISCOVERY
       out(b(cyan('  DISCOVERY\n')));
       out('\n');
-      out(`  ${green('cartograph discover')}\n`);
+      out(`  ${green('cartography discover')}\n`);
       out(`    Scannt die lokale Infrastruktur (Claude Sonnet).\n`);
       out(`    Claude führt eigenständig ss, ps, curl, docker inspect, kubectl get\n`);
       out(`    aus und speichert alles in SQLite.\n`);
@@ -334,11 +334,11 @@ function main(): void {
       out(dim('      --max-turns <n>       Max Agent-Turns      (default: 50)\n'));
       out(dim('      --model <m>           Model                (default: claude-sonnet-4-5-...)\n'));
       out(dim('      --org <name>          Organisation für Backstage YAML\n'));
-      out(dim('      -o, --output <dir>    Output-Verzeichnis   (default: ./cartograph-output)\n'));
+      out(dim('      -o, --output <dir>    Output-Verzeichnis   (default: ./cartography-output)\n'));
       out(dim('      -v, --verbose         Agent-Reasoning anzeigen\n'));
       out('\n');
       out(dim('    Output:\n'));
-      out(dim('      cartograph-output/\n'));
+      out(dim('      cartography-output/\n'));
       out(dim('        catalog.json          Maschinenlesbarer Komplett-Dump\n'));
       out(dim('        catalog-info.yaml     Backstage Service-Katalog\n'));
       out(dim('        topology.mermaid      Infrastruktur-Topologie (graph TB)\n'));
@@ -352,7 +352,7 @@ function main(): void {
       // ── SHADOW
       out(b(cyan('  SHADOW DAEMON\n')));
       out('\n');
-      out(`  ${green('cartograph shadow start')}\n`);
+      out(`  ${green('cartography shadow start')}\n`);
       out(`    Startet einen Background-Daemon, der alle 30s einen System-Snapshot\n`);
       out(`    nimmt (ss + ps). Nur bei Änderung ruft er Claude Haiku auf.\n`);
       out('\n');
@@ -365,9 +365,9 @@ function main(): void {
       out(dim('      --no-notifications    Desktop-Notifications deaktivieren\n'));
       out(dim('      --foreground          Kein Daemon, im Terminal bleiben\n'));
       out('\n');
-      out(`  ${green('cartograph shadow stop')}     ${dim('Daemon per SIGTERM beenden')}\n`);
-      out(`  ${green('cartograph shadow status')}   ${dim('PID + Socket-Pfad anzeigen')}\n`);
-      out(`  ${green('cartograph shadow attach')}   ${dim('Live-Events im Terminal, Hotkeys: [T] [S] [D] [Q]')}\n`);
+      out(`  ${green('cartography shadow stop')}     ${dim('Daemon per SIGTERM beenden')}\n`);
+      out(`  ${green('cartography shadow status')}   ${dim('PID + Socket-Pfad anzeigen')}\n`);
+      out(`  ${green('cartography shadow attach')}   ${dim('Live-Events im Terminal, Hotkeys: [T] [S] [D] [Q]')}\n`);
       out('\n');
       out(dim('    Hotkeys im Attach-Modus:\n'));
       out(dim('      [T]  Neuen Task starten (mit Beschreibung)\n'));
@@ -380,16 +380,16 @@ function main(): void {
       // ── ANALYSE & EXPORT
       out(b(cyan('  ANALYSE & EXPORT\n')));
       out('\n');
-      out(`  ${green('cartograph sops [session-id]')}\n`);
+      out(`  ${green('cartography sops [session-id]')}\n`);
       out(`    Clustert abgeschlossene Tasks und generiert SOPs via Claude Sonnet.\n`);
       out(`    Nutzt die Anthropic Messages API (kein Agent-Loop, ein Request pro Cluster).\n`);
       out('\n');
-      out(`  ${green('cartograph export [session-id]')}\n`);
+      out(`  ${green('cartography export [session-id]')}\n`);
       out(dim('    --format <fmt...>   mermaid, json, yaml, html, sops  (default: alle)\n'));
       out(dim('    -o, --output <dir>  Output-Verzeichnis\n'));
       out('\n');
-      out(`  ${green('cartograph show [session-id]')}    ${dim('Session-Details + Node-Liste')}\n`);
-      out(`  ${green('cartograph sessions')}             ${dim('Alle Sessions tabellarisch auflisten')}\n`);
+      out(`  ${green('cartography show [session-id]')}    ${dim('Session-Details + Node-Liste')}\n`);
+      out(`  ${green('cartography sessions')}             ${dim('Alle Sessions tabellarisch auflisten')}\n`);
       out('\n');
       line();
 
@@ -420,11 +420,11 @@ function main(): void {
       out(dim('                └── Custom MCP Tools (tools.ts)\n'));
       out(dim('                    save_node, save_edge, save_event,\n'));
       out(dim('                    get_catalog, manage_task, save_sop\n'));
-      out(dim('                    └── CartographDB (SQLite WAL)\n'));
+      out(dim('                    └── CartographyDB (SQLite WAL)\n'));
       out(dim('  Shadow Daemon (daemon.ts)\n'));
       out(dim('    ├── takeSnapshot() → ss + ps  [kein Claude!]\n'));
       out(dim('    ├── Diff-Check → nur bei Änderung: runShadowCycle()\n'));
-      out(dim('    ├── IPC Server (Unix Socket ~/.cartograph/daemon.sock)\n'));
+      out(dim('    ├── IPC Server (Unix Socket ~/.cartography/daemon.sock)\n'));
       out(dim('    └── NotificationService (Desktop wenn kein Client attached)\n'));
       out('\n');
       line();
@@ -440,12 +440,12 @@ function main(): void {
       out('  export ANTHROPIC_API_KEY=sk-ant-...\n');
       out('\n');
       out(dim('  # 3. Los\n'));
-      out('  cartograph discover\n');
-      out('  cartograph shadow start\n');
+      out('  cartography discover\n');
+      out('  cartography shadow start\n');
       out('\n');
-      out(dim('  Daten: ~/.cartograph/cartograph.db\n'));
-      out(dim('  Socket: ~/.cartograph/daemon.sock\n'));
-      out(dim('  PID:    ~/.cartograph/daemon.pid\n'));
+      out(dim('  Daten: ~/.cartography/cartography.db\n'));
+      out(dim('  Socket: ~/.cartography/daemon.sock\n'));
+      out(dim('  PID:    ~/.cartography/daemon.pid\n'));
       out('\n');
     });
 

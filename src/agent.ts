@@ -1,18 +1,18 @@
-import type { CartographDB } from './db.js';
-import { createCartographTools } from './tools.js';
+import type { CartographyDB } from './db.js';
+import { createCartographyTools } from './tools.js';
 import { safetyHook } from './safety.js';
-import type { CartographConfig, TaskRow } from './types.js';
+import type { CartographyConfig, TaskRow } from './types.js';
 
 // ── runDiscovery ─────────────────────────────────────────────────────────────
 
 export async function runDiscovery(
-  config: CartographConfig,
-  db: CartographDB,
+  config: CartographyConfig,
+  db: CartographyDB,
   sessionId: string,
   onOutput?: (text: string) => void,
 ): Promise<void> {
   const { query } = await import('@anthropic-ai/claude-code');
-  const tools = await createCartographTools(db, sessionId);
+  const tools = await createCartographyTools(db, sessionId);
 
   const systemPrompt = `Du bist ein Infrastruktur-Discovery-Agent.
 Kartographiere die gesamte Systemlandschaft.
@@ -43,7 +43,7 @@ Entrypoints: ${config.entryPoints.join(', ')}`;
       model: config.agentModel,
       maxTurns: config.maxTurns,
       customSystemPrompt: systemPrompt,
-      mcpServers: { cartograph: tools },
+      mcpServers: { cartography: tools },
       allowedTools: [
         'Bash',
         'mcp__cartograph__save_node',
@@ -70,15 +70,15 @@ Entrypoints: ${config.entryPoints.join(', ')}`;
 // ── runShadowCycle ───────────────────────────────────────────────────────────
 
 export async function runShadowCycle(
-  config: CartographConfig,
-  db: CartographDB,
+  config: CartographyConfig,
+  db: CartographyDB,
   sessionId: string,
   prevSnapshot: string,
   currSnapshot: string,
   onOutput?: (msg: unknown) => void,
 ): Promise<void> {
   const { query } = await import('@anthropic-ai/claude-code');
-  const tools = await createCartographTools(db, sessionId);
+  const tools = await createCartographyTools(db, sessionId);
 
   const prompt = `Analysiere den Diff zwischen diesen beiden System-Snapshots.
 Finde:
@@ -99,7 +99,7 @@ ${currSnapshot}`;
     options: {
       model: config.shadowModel,
       maxTurns: 5,
-      mcpServers: { cartograph: tools },
+      mcpServers: { cartography: tools },
       allowedTools: [
         'mcp__cartograph__save_event',
         'mcp__cartograph__save_node',
@@ -116,7 +116,7 @@ ${currSnapshot}`;
 
 // ── generateSOPs ─────────────────────────────────────────────────────────────
 
-export async function generateSOPs(db: CartographDB, sessionId: string): Promise<number> {
+export async function generateSOPs(db: CartographyDB, sessionId: string): Promise<number> {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const client = new Anthropic();
 

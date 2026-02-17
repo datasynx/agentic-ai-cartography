@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CartographDB } from '../src/db.js';
+import { CartographyDB } from '../src/db.js';
 import { defaultConfig } from '../src/types.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync, existsSync } from 'node:fs';
 
-const TEST_DB = join(tmpdir(), `cartograph-test-${Date.now()}.db`);
+const TEST_DB = join(tmpdir(), `cartography-test-${Date.now()}.db`);
 
-let db: CartographDB;
+let db: CartographyDB;
 
 beforeEach(() => {
-  db = new CartographDB(TEST_DB);
+  db = new CartographyDB(TEST_DB);
 });
 
 afterEach(() => {
@@ -18,7 +18,7 @@ afterEach(() => {
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
 });
 
-describe('CartographDB', () => {
+describe('CartographyDB', () => {
   it('creates and retrieves a session', () => {
     const config = defaultConfig();
     const id = db.createSession('discover', config);

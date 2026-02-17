@@ -24,7 +24,7 @@ export function checkPrerequisites(): void {
   } catch {
     process.stderr.write(
       '\n❌ Claude CLI nicht gefunden.\n' +
-      '   Cartograph braucht die Claude CLI als Runtime-Dependency.\n\n' +
+      '   Cartography braucht die Claude CLI als Runtime-Dependency.\n\n' +
       '   Installieren:\n' +
       '     npm install -g @anthropic-ai/claude-code\n' +
       '     # oder\n' +

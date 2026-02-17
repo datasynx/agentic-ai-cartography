@@ -1,9 +1,9 @@
 {
-  "name": "@datasynx/agentic-ai-catograph",
+  "name": "@datasynx/agentic-ai-cartography",
   "version": "0.1.0",
   "description": "AI-powered infrastructure cartography & SOP generation CLI — built on Claude Agent SDK",
   "type": "module",
-  "bin": { "cartograph": "./dist/cli.js" },
+  "bin": { "cartography": "./dist/cli.js" },
   "exports": { ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" } },
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
@@ -13,7 +13,7 @@
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run lint && npm run test && npm run build",
-    "postinstall": "node -e \"try{require('child_process').execSync('claude --version',{stdio:'pipe'})}catch{console.warn('\\n⚠ cartograph requires Claude CLI: npm i -g @anthropic-ai/claude-code\\n')}\""
+    "postinstall": "node -e \"try{require('child_process').execSync('claude --version',{stdio:'pipe'})}catch{console.warn('\\n⚠ cartography requires Claude CLI: npm i -g @anthropic-ai/claude-code\\n')}\""
   },
   "engines": { "node": ">=18.0.0" },
   "keywords": [

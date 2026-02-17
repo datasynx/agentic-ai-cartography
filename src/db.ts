@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
-  CartographConfig, DiscoveryNode, DiscoveryEdge, ActivityEvent,
+  CartographyConfig, DiscoveryNode, DiscoveryEdge, ActivityEvent,
   NodeRow, EdgeRow, EventRow, TaskRow, WorkflowRow, SessionRow, SOP,
 } from './types.js';
 
@@ -110,7 +110,7 @@ CREATE INDEX IF NOT EXISTS idx_events_task ON activity_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
 `;
 
-export class CartographDB {
+export class CartographyDB {
   private db: Database.Database;
 
   constructor(dbPath: string) {
@@ -137,7 +137,7 @@ export class CartographDB {
 
   // ── Sessions ────────────────────────────
 
-  createSession(mode: 'discover' | 'shadow', config: CartographConfig): string {
+  createSession(mode: 'discover' | 'shadow', config: CartographyConfig): string {
     const id = crypto.randomUUID();
     this.db.prepare(
       'INSERT INTO sessions (id, mode, started_at, config) VALUES (?, ?, ?, ?)'
