@@ -209,6 +209,14 @@ export class CartographyDB {
     }));
   }
 
+  deleteNode(sessionId: string, nodeId: string): void {
+    this.db.prepare('DELETE FROM nodes WHERE session_id = ? AND id = ?').run(sessionId, nodeId);
+    // Remove orphaned edges
+    this.db.prepare(
+      'DELETE FROM edges WHERE session_id = ? AND (source_id = ? OR target_id = ?)'
+    ).run(sessionId, nodeId, nodeId);
+  }
+
   // ── Edges ───────────────────────────────
 
   insertEdge(sessionId: string, edge: DiscoveryEdge): void {

@@ -4,9 +4,10 @@ import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
 import { runDiscovery, generateSOPs } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
-import { exportAll, generateTopologyMermaid } from './exporter.js';
-import { readFileSync } from 'fs';
+import { exportAll } from './exporter.js';
+import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { createInterface } from 'readline';
 import {
   forkDaemon, isDaemonRunning, stopDaemon, startDaemonProcess,
 } from './daemon.js';
@@ -27,7 +28,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.1.6';
+  const VERSION = '0.1.7';
 
   program
     .name(CMD)
@@ -184,39 +185,64 @@ function main(): void {
       w(`  ${green(bold('DONE'))}  ${bold(String(stats.nodes))} nodes, ${bold(String(stats.edges))} edges  ${dim('in ' + totalSec + 's')}\n`);
       w('\n');
 
-      exportAll(db, sessionId, config.outputDir);
+      // ── Interactive Node Review ─────────────────────────────────────────────
+      const allNodes = db.getNodes(sessionId);
 
-      const nodeList = db.getNodes(sessionId).slice(0, 8);
-      if (nodeList.length > 0) {
+      if (allNodes.length > 0 && process.stdin.isTTY) {
         w('\n');
-        w(`  ${bold('Discovered:')}\n`);
-        for (const n of nodeList) {
-          const tag = dim(`[${n.type}]`);
-          w(`    ${cyan('●')} ${n.id} ${tag}\n`);
+        w(dim('  ────────────────────────────────────────────────\n'));
+        w(`  ${bold('REVIEW')}  ${bold(String(allNodes.length))} entdeckte Nodes — zum Bereinigen\n`);
+        w(dim('  Gib Nummern ein um Nodes zu entfernen (z.B. "1 3 5"), Enter = alles behalten\n'));
+        w('\n');
+
+        const PAD_ID = 42;
+        const PAD_TYPE = 16;
+        allNodes.forEach((n, i) => {
+          const num = String(i + 1).padStart(3);
+          const id = n.id.padEnd(PAD_ID).substring(0, PAD_ID);
+          const type = dim(`[${n.type}]`.padEnd(PAD_TYPE));
+          const conf = dim(`${Math.round(n.confidence * 100)}%`);
+          const src = dim(n.discoveredVia === 'bookmark' ? ' 🔖' : '');
+          w(`  ${dim(num)}  ${cyan('●')} ${id}  ${type}  ${conf}${src}\n`);
+        });
+
+        w('\n');
+        const rl = createInterface({ input: process.stdin, output: process.stderr });
+        const answer = await new Promise<string>(resolve =>
+          rl.question(`  ${yellow('?')}  Entfernen (Nummern, leer = alle behalten): `, resolve)
+        );
+        rl.close();
+
+        const toRemove = answer.trim().split(/[\s,]+/).map(Number).filter(n => n >= 1 && n <= allNodes.length);
+        if (toRemove.length > 0) {
+          for (const idx of toRemove) {
+            const node = allNodes[idx - 1];
+            if (node) db.deleteNode(sessionId, node.id);
+          }
+          w(`\n  ${green('✓')}  ${bold(String(toRemove.length))} Node(s) entfernt\n`);
+        } else {
+          w(`\n  ${green('✓')}  Alle Nodes behalten\n`);
         }
-        if (stats.nodes > 8) w(dim(`    ... +${stats.nodes - 8} more\n`));
       }
 
-      // ── Mermaid Links ──────────────────────────────────────────────────────
-      const link = (url: string, label: string) =>
-        `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
+      // ── Export ─────────────────────────────────────────────────────────────
+      exportAll(db, sessionId, config.outputDir);
 
-      const topoPath = resolve(config.outputDir, 'topology.mermaid');
+      // ── Diagramm-Link ──────────────────────────────────────────────────────
+      const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
       const htmlPath = resolve(config.outputDir, 'topology.html');
-
-      let mermaidLiveUrl = '';
-      try {
-        const mermaidCode = readFileSync(topoPath, 'utf8');
-        const payload = JSON.stringify({ code: mermaidCode, mermaid: { theme: 'dark' } });
-        const b64 = Buffer.from(payload).toString('base64');
-        mermaidLiveUrl = `https://mermaid.live/view#base64:${b64}`;
-      } catch { /* file not present if 0 nodes */ }
+      const topoPath = resolve(config.outputDir, 'topology.mermaid');
 
       w('\n');
-      w(`  ${bold('Diagramm öffnen:')}\n`);
-      w(`    ${green('→')}  ${link(`file://${htmlPath}`, 'Lokal  topology.html')}  ${dim('(D3 interaktiv)')}\n`);
-      if (mermaidLiveUrl) {
-        w(`    ${cyan('→')}  ${link(mermaidLiveUrl, 'mermaid.live')}  ${dim('(im Browser rendert Mermaid)')}\n`);
+      if (existsSync(htmlPath)) {
+        w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('topology.html öffnen'))}\n`);
+      }
+      if (existsSync(topoPath)) {
+        try {
+          const code = readFileSync(topoPath, 'utf8');
+          const b64 = Buffer.from(JSON.stringify({ code, mermaid: { theme: 'dark' } })).toString('base64');
+          w(`  ${cyan('→')}  ${osc8(`https://mermaid.live/view#base64:${b64}`, bold('mermaid.live öffnen'))}\n`);
+        } catch { /* ignore */ }
       }
       w('\n');
 

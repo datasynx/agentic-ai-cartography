@@ -7,7 +7,7 @@ export const NODE_TYPES = [
   'web_service', 'api_endpoint', 'cache_server',
   'message_broker', 'queue', 'topic',
   'container', 'pod', 'k8s_cluster',
-  'config_file', 'unknown',
+  'config_file', 'saas_tool', 'unknown',
 ] as const;
 export type NodeType = typeof NODE_TYPES[number];
 

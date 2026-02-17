@@ -24,14 +24,18 @@ export async function runDiscovery(
   const tools = await createCartographyTools(db, sessionId);
 
   const systemPrompt = `Du bist ein Infrastruktur-Discovery-Agent.
-Kartographiere die gesamte Systemlandschaft.
+Kartographiere die gesamte Systemlandschaft — lokale Infrastruktur UND SaaS-Tools.
 
 STRATEGIE:
-1. ss -tlnp + ps aux → Überblick
+1. ss -tlnp + ps aux → Überblick lokaler Services
 2. Jeden Service tiefer (Datenbanken→Tabellen, APIs→Endpoints, Queues→Topics)
-3. save_node + save_edge für alles. get_catalog → keine Duplikate.
-4. Config-Files folgen: .env (nur Host:Port!), docker-compose.yml, application.yml
-5. Backtrack wenn Spur erschöpft. Stop wenn alles explored.
+3. scan_bookmarks → Browser-Lesezeichen analysieren: Welche Domains sind Business-Tools?
+   - Nur Tools mit Business-Daten als saas_tool speichern (GitHub, Notion, Jira, AWS, etc.)
+   - Persönliches (Social Media, News, Shopping) IGNORIEREN
+   - Interne Hosts (IP-Adressen, custom.domain.com) als web_service speichern
+4. save_node + save_edge für alles. get_catalog → keine Duplikate.
+5. Config-Files folgen: .env (nur Host:Port!), docker-compose.yml, application.yml
+6. Backtrack wenn Spur erschöpft. Stop wenn alles explored.
 
 PORT-MAPPING: 5432=postgres, 3306=mysql, 27017=mongodb, 6379=redis,
 9092=kafka, 5672=rabbitmq, 80/443/8080/3000=web_service,
@@ -41,8 +45,10 @@ REGELN:
 - NUR read-only Commands (ss, ps, cat, head, curl -s, docker inspect, kubectl get)
 - Targets NUR Host:Port — KEINE URLs, Pfade, Credentials
 - Node IDs: "{type}:{host}:{port}" oder "{type}:{name}"
-- Confidence: 0.9 direkt beobachtet, 0.7 aus Config, 0.5 Vermutung
-- KEINE Credentials speichern
+- saas_tool Node IDs: "saas_tool:{hostname}" (z.B. "saas_tool:github.com")
+- Confidence: 0.9 direkt beobachtet, 0.7 aus Config/Lesezeichen, 0.5 Vermutung
+- KEINE Credentials, KEINE persönlichen Daten speichern
+- metadata: { description, url_base, category } — NUR technische Daten
 
 Entrypoints: ${config.entryPoints.join(', ')}`;
 
@@ -60,6 +66,7 @@ Entrypoints: ${config.entryPoints.join(', ')}`;
         'mcp__cartograph__save_node',
         'mcp__cartograph__save_edge',
         'mcp__cartograph__get_catalog',
+        'mcp__cartograph__scan_bookmarks',
       ],
       hooks: {
         PreToolUse: [{ matcher: 'Bash', hooks: [safetyHook] }],

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { CartographyDB } from './db.js';
 import { NODE_TYPES, EDGE_RELATIONSHIPS, EVENT_TYPES, SOPStepSchema } from './types.js';
+import { scanAllBookmarks } from './bookmarks.js';
 
 // Lazy import to avoid hard-wiring SDK at module parse time
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,6 +117,27 @@ export async function createCartographyTools(db: CartographyDB, sessionId: strin
       }
       db.updateTaskDescription(sessionId, args['description'] as string);
       return { content: [{ type: 'text', text: '✓ Beschreibung aktualisiert' }] };
+    }),
+
+    tool('scan_bookmarks', 'Alle Browser-Lesezeichen scannen — nur Hostnamen, keine persönlichen Daten', {
+      minConfidence: z.number().min(0).max(1).default(0.5).optional(),
+    }, async () => {
+      const hosts = await scanAllBookmarks();
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            count: hosts.length,
+            hosts: hosts.map(h => ({
+              hostname: h.hostname,
+              port: h.port,
+              protocol: h.protocol,
+              source: h.source,
+            })),
+            note: 'Nur Hostnamen — keine Pfade, keine persönlichen Daten. Entscheide selbst welche davon Business-Tools sind.',
+          }),
+        }],
+      };
     }),
 
     tool('save_sop', 'Standard Operating Procedure speichern', {
