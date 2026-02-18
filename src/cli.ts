@@ -48,15 +48,15 @@ function main(): void {
 
   program
     .command('discover')
-    .description('Infrastruktur scannen und kartographieren')
-    .option('--entry <hosts...>', 'Startpunkte', ['localhost'])
-    .option('--depth <n>', 'Max Tiefe', '8')
-    .option('--max-turns <n>', 'Max Agent-Turns', '50')
-    .option('--model <m>', 'Agent-Model', 'claude-sonnet-4-5-20250929')
-    .option('--org <name>', 'Organisation (für Backstage)')
-    .option('-o, --output <dir>', 'Output-Dir', './datasynx-output')
-    .option('--db <path>', 'DB-Pfad')
-    .option('-v, --verbose', 'Agent-Reasoning anzeigen', false)
+    .description('Scan and map your infrastructure')
+    .option('--entry <hosts...>', 'Entry points', ['localhost'])
+    .option('--depth <n>', 'Max crawl depth', '8')
+    .option('--max-turns <n>', 'Max agent turns', '50')
+    .option('--model <m>', 'Agent model', 'claude-sonnet-4-5-20250929')
+    .option('--org <name>', 'Organization name (for Backstage)')
+    .option('-o, --output <dir>', 'Output directory', './datasynx-output')
+    .option('--db <path>', 'DB path')
+    .option('-v, --verbose', 'Show agent reasoning', false)
     .action(async (opts) => {
       checkPrerequisites();
 
@@ -148,21 +148,27 @@ function main(): void {
               const tgt = event.input['targetId'] as string ?? '?';
               const rel = event.input['relationship'] as string ?? '→';
               edgeCount++;
-              logLine(magenta('~'), `${bold('Edge')} ${src} ${dim(rel)} ${cyan(tgt)}`);
+              logLine(magenta('~'), `${bold('Edge')} ${cyan(src)} ${dim('─' + rel + '→')} ${cyan(tgt)}`);
               startSpinner(`Turn ${turnNum}/${config.maxTurns}  ${dim(`nodes:${nodeCount} edges:${edgeCount}`)}`);
             } else if (toolName === 'get_catalog') {
-              startSpinner(`Catalog-Check ${dim('(Duplikate vermeiden)')}`);
+              startSpinner(`Catalog check ${dim('(avoiding duplicates)')}`);
             } else if (toolName === 'scan_bookmarks') {
-              logLine(cyan('🔖'), `Browser-Lesezeichen werden gescannt…`);
+              logLine(cyan('🔖'), `Scanning browser bookmarks…`);
               startSpinner(`scan_bookmarks`);
+            } else if (toolName === 'scan_browser_history') {
+              logLine(cyan('📜'), `Scanning browser history (anonymized hostnames only)…`);
+              startSpinner(`scan_browser_history`);
             } else if (toolName === 'scan_installed_apps') {
               const sh = event.input['searchHint'] as string | undefined;
-              logLine(cyan('🖥'), sh ? `Installierte Apps gesucht: ${bold(sh)}` : `Alle installierten Apps werden gescannt…`);
+              logLine(cyan('🖥'), sh ? `Searching installed apps: ${bold(sh)}` : `Scanning all installed apps…`);
               startSpinner(`scan_installed_apps`);
+            } else if (toolName === 'scan_local_databases') {
+              logLine(cyan('🗄'), `Scanning local databases (PostgreSQL, MySQL, SQLite…)`);
+              startSpinner(`scan_local_databases`);
             } else if (toolName === 'ask_user') {
               // Just display; actual interaction is handled by onAskUser below
               const q = (event.input['question'] as string ?? '').substring(0, 100);
-              logLine(yellow('?'), `${bold('Agent fragt:')} ${q}`);
+              logLine(yellow('?'), `${bold('Agent asks:')} ${q}`);
             } else {
               startSpinner(`${toolName}...`);
             }
@@ -179,31 +185,31 @@ function main(): void {
         }
       };
 
-      // Human-in-the-loop: Agent kann Rückfragen stellen
+      // Human-in-the-loop: agent can ask clarifying questions
       const onAskUser = async (question: string, context?: string): Promise<string> => {
         stopSpinner();
         w('\n');
         w(dim('  ────────────────────────────────────────────────\n'));
-        w(`  ${yellow(bold('?'))}  ${bold('Agent fragt:')} ${question}\n`);
+        w(`  ${yellow(bold('?'))}  ${bold('Agent asks:')} ${question}\n`);
         if (context) w(`     ${dim(context)}\n`);
 
         if (!process.stdin.isTTY) {
-          w(`  ${dim('(Kein Terminal — Agent fährt ohne Antwort fort)')}\n\n`);
-          return '(Kein interaktiver Modus — bitte ohne diese Information fortfahren)';
+          w(`  ${dim('(No terminal — agent will continue without your answer)')}\n\n`);
+          return '(Non-interactive mode — please continue without this information)';
         }
 
         const rl = createInterface({ input: process.stdin, output: process.stderr });
         const answer = await new Promise<string>(resolve => rl.question(`  ${cyan('→')} `, resolve));
         rl.close();
         w('\n');
-        return answer || '(Keine Antwort — bitte fortfahren)';
+        return answer || '(No answer — please continue)';
       };
 
       try {
         await runDiscovery(config, db, sessionId, handleEvent, onAskUser, undefined);
       } catch (err) {
         stopSpinner();
-        w(`\n  ${bold('\x1b[31m✗\x1b[0m')}  Discovery fehlgeschlagen: ${err}\n`);
+        w(`\n  ${bold('\x1b[31m✗\x1b[0m')}  Discovery failed: ${err}\n`);
         db.close();
         process.exitCode = 1;
         return;
@@ -219,14 +225,15 @@ function main(): void {
       w(`  ${green(bold('DONE'))}  ${bold(String(stats.nodes))} nodes, ${bold(String(stats.edges))} edges  ${dim('in ' + totalSec + 's')}\n`);
       w('\n');
 
-      // ── Interactive Node Review ─────────────────────────────────────────────
+      // ── Interactive Node & Edge Review ──────────────────────────────────────
       const allNodes = db.getNodes(sessionId);
+      const allEdges = db.getEdges(sessionId);
 
       if (allNodes.length > 0 && process.stdin.isTTY) {
         w('\n');
         w(dim('  ────────────────────────────────────────────────\n'));
-        w(`  ${bold('REVIEW')}  ${bold(String(allNodes.length))} entdeckte Nodes — zum Bereinigen\n`);
-        w(dim('  Gib Nummern ein um Nodes zu entfernen (z.B. "1 3 5"), Enter = alles behalten\n'));
+        w(`  ${bold('REVIEW')}  ${bold(String(allNodes.length))} nodes discovered\n`);
+        w(dim('  Enter numbers to remove nodes (e.g. "1 3 5"), Enter = keep all\n'));
         w('\n');
 
         const PAD_ID = 42;
@@ -236,14 +243,24 @@ function main(): void {
           const id = n.id.padEnd(PAD_ID).substring(0, PAD_ID);
           const type = dim(`[${n.type}]`.padEnd(PAD_TYPE));
           const conf = dim(`${Math.round(n.confidence * 100)}%`);
-          const src = dim(n.discoveredVia === 'bookmark' ? ' 🔖' : '');
+          const src = dim(n.discoveredVia === 'bookmark' ? ' 🔖' : n.discoveredVia === 'browser_history' ? ' 📜' : '');
           w(`  ${dim(num)}  ${cyan('●')} ${id}  ${type}  ${conf}${src}\n`);
         });
+
+        // Show edges summary
+        if (allEdges.length > 0) {
+          w('\n');
+          w(`  ${bold(String(allEdges.length))} edges (relationships):\n`);
+          for (const e of allEdges.slice(0, 20)) {
+            w(`  ${dim('  ')}${cyan(e.sourceId)} ${dim('─' + e.relationship + '→')} ${cyan(e.targetId)}  ${dim(Math.round(e.confidence * 100) + '%')}\n`);
+          }
+          if (allEdges.length > 20) w(`  ${dim('  … and ' + (allEdges.length - 20) + ' more edges')}\n`);
+        }
 
         w('\n');
         const rl = createInterface({ input: process.stdin, output: process.stderr });
         const answer = await new Promise<string>(resolve =>
-          rl.question(`  ${yellow('?')}  Entfernen (Nummern, leer = alle behalten): `, resolve)
+          rl.question(`  ${yellow('?')}  Remove nodes (numbers, empty = keep all): `, resolve)
         );
         rl.close();
 
@@ -253,29 +270,29 @@ function main(): void {
             const node = allNodes[idx - 1];
             if (node) db.deleteNode(sessionId, node.id);
           }
-          w(`\n  ${green('✓')}  ${bold(String(toRemove.length))} Node(s) entfernt\n`);
+          w(`\n  ${green('✓')}  ${bold(String(toRemove.length))} node(s) removed\n`);
         } else {
-          w(`\n  ${green('✓')}  Alle Nodes behalten\n`);
+          w(`\n  ${green('✓')}  All nodes kept\n`);
         }
       }
 
       // ── Export ─────────────────────────────────────────────────────────────
       exportAll(db, sessionId, config.outputDir);
 
-      // ── Diagramm-Link ──────────────────────────────────────────────────────
+      // ── Diagram links ───────────────────────────────────────────────────────
       const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
       const htmlPath = resolve(config.outputDir, 'topology.html');
       const topoPath = resolve(config.outputDir, 'topology.mermaid');
 
       w('\n');
       if (existsSync(htmlPath)) {
-        w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('topology.html öffnen'))}\n`);
+        w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('Open topology.html'))}\n`);
       }
       if (existsSync(topoPath)) {
         try {
           const code = readFileSync(topoPath, 'utf8');
           const b64 = Buffer.from(JSON.stringify({ code, mermaid: { theme: 'dark' } })).toString('base64');
-          w(`  ${cyan('→')}  ${osc8(`https://mermaid.live/view#base64:${b64}`, bold('mermaid.live öffnen'))}\n`);
+          w(`  ${cyan('→')}  ${osc8(`https://mermaid.live/view#base64:${b64}`, bold('Open in mermaid.live'))}\n`);
         } catch { /* ignore */ }
       }
       w('\n');
@@ -283,8 +300,8 @@ function main(): void {
       // ── Human-in-the-Loop: Follow-up Discovery Chat ───────────────────────
       if (process.stdin.isTTY) {
         w(dim('  ────────────────────────────────────────────────\n'));
-        w(`  ${bold('WEITERSUCHEN')}  ${dim('Discovery interaktiv verfeinern')}\n`);
-        w(dim('  Gib Suchbegriffe ein (z.B. "hubspot windsurf cursor") oder Enter zum Beenden.\n'));
+        w(`  ${bold('SEARCH MORE')}  ${dim('Refine discovery interactively')}\n`);
+        w(dim('  Enter search terms (e.g. "hubspot windsurf cursor") or press Enter to finish.\n'));
         w('\n');
 
         // Reset event counters for follow-up rounds
@@ -295,7 +312,7 @@ function main(): void {
         while (continueDiscovery) {
           const rlFollowup = createInterface({ input: process.stdin, output: process.stderr });
           const followupHint = await new Promise<string>(resolve =>
-            rlFollowup.question(`  ${yellow('→')}  Suche nach (Enter = Beenden): `, resolve)
+            rlFollowup.question(`  ${yellow('→')}  Search for (Enter = finish): `, resolve)
           );
           rlFollowup.close();
 
@@ -306,27 +323,27 @@ function main(): void {
 
           const followupHintTrimmed = followupHint.trim();
           w('\n');
-          w(`  ${cyan(bold('⟳'))}  Suche nach: ${bold(followupHintTrimmed)}\n`);
+          w(`  ${cyan(bold('⟳'))}  Searching for: ${bold(followupHintTrimmed)}\n`);
           w('\n');
 
           try {
             await runDiscovery(config, db, sessionId, handleEvent, onAskUser, followupHintTrimmed);
           } catch (err) {
             stopSpinner();
-            w(`\n  ${red('✗')}  Fehler: ${err}\n`);
+            w(`\n  ${red('✗')}  Error: ${err}\n`);
           }
 
           stopSpinner();
           const followupStats = db.getStats(sessionId);
           w('\n');
           w(dim('  ────────────────────────────────────────────────\n'));
-          w(`  ${green(bold('✓'))}  Gesamt jetzt: ${bold(String(followupStats.nodes))} nodes, ${bold(String(followupStats.edges))} edges\n`);
+          w(`  ${green(bold('✓'))}  Total now: ${bold(String(followupStats.nodes))} nodes, ${bold(String(followupStats.edges))} edges\n`);
           w('\n');
 
           // Re-export with updated data
           exportAll(db, sessionId, config.outputDir);
           if (existsSync(htmlPath)) {
-            w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('topology.html aktualisiert'))}\n`);
+            w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('topology.html updated'))}\n`);
           }
           w('\n');
         }
@@ -337,19 +354,19 @@ function main(): void {
 
   // ── SHADOW ────────────────────────────────────────────────────────────────
 
-  const shadow = program.command('shadow').description('Shadow-Daemon verwalten');
+  const shadow = program.command('shadow').description('Manage the shadow daemon');
 
   shadow
     .command('start')
-    .description('Shadow-Daemon starten')
-    .option('--interval <ms>', 'Poll-Intervall in ms', '30000')
-    .option('--inactivity <ms>', 'Task-Grenze in ms', '300000')
-    .option('--track-windows', 'Fenster-Focus tracken', false)
-    .option('--auto-save', 'Nodes ohne Rückfrage speichern', false)
-    .option('--no-notifications', 'Desktop-Notifications deaktivieren')
-    .option('--model <m>', 'Analysis-Model', 'claude-haiku-4-5-20251001')
-    .option('--foreground', 'Kein Daemon, im Terminal bleiben', false)
-    .option('--db <path>', 'DB-Pfad')
+    .description('Start the shadow daemon')
+    .option('--interval <ms>', 'Poll interval in ms', '30000')
+    .option('--inactivity <ms>', 'Task boundary gap in ms', '300000')
+    .option('--track-windows', 'Track window focus (requires xdotool)', false)
+    .option('--auto-save', 'Save nodes without prompting', false)
+    .option('--no-notifications', 'Disable desktop notifications')
+    .option('--model <m>', 'Analysis model', 'claude-haiku-4-5-20251001')
+    .option('--foreground', 'Run in foreground (no daemon fork)', false)
+    .option('--db <path>', 'DB path')
     .option('--daemon-child', 'Internal: marks this as a daemon child process') // internal flag
     .action(async (opts) => {
       checkPrerequisites();
@@ -371,7 +388,7 @@ function main(): void {
       // Check if already running
       const { running } = isDaemonRunning(config.pidFile);
       if (running) {
-        process.stderr.write('❌ Shadow-Daemon läuft bereits. datasynx-cartography shadow status\n');
+        process.stderr.write('❌ Shadow daemon is already running. Use: datasynx-cartography shadow status\n');
         process.exitCode = 1;
         return;
       }
@@ -382,27 +399,27 @@ function main(): void {
       } else {
         const pid = forkDaemon(config);
         process.stderr.write(`👁 Shadow daemon started (PID ${pid})\n`);
-        process.stderr.write(`   Intervall: ${intervalMs / 1000}s | Modell: ${config.shadowModel}\n`);
-        process.stderr.write('   datasynx-cartography shadow attach  — ankoppeln\n');
-        process.stderr.write('   datasynx-cartography shadow stop    — stoppen\n\n');
+        process.stderr.write(`   Interval: ${intervalMs / 1000}s | Model: ${config.shadowModel}\n`);
+        process.stderr.write('   datasynx-cartography shadow attach  — attach to live events\n');
+        process.stderr.write('   datasynx-cartography shadow stop    — stop daemon\n\n');
       }
     });
 
   shadow
     .command('stop')
-    .description('Shadow-Daemon stoppen + SOP-Review')
-    .option('-o, --output <dir>', 'Output-Dir für SOPs + Dashboard', './datasynx-output')
-    .option('--no-review', 'SOP-Review überspringen')
+    .description('Stop shadow daemon + SOP review')
+    .option('-o, --output <dir>', 'Output directory for SOPs + dashboard', './datasynx-output')
+    .option('--no-review', 'Skip SOP review')
     .action(async (opts) => {
       const config = defaultConfig({ outputDir: opts.output });
       const stopped = stopDaemon(config.pidFile);
 
       if (!stopped) {
-        process.stderr.write('⚠ Kein laufender Shadow-Daemon gefunden\n');
+        process.stderr.write('⚠ No running shadow daemon found\n');
         return;
       }
 
-      process.stderr.write('✓ Shadow-Daemon gestoppt\n');
+      process.stderr.write('✓ Shadow daemon stopped\n');
 
       if (opts.review === false) return;
 
@@ -422,7 +439,7 @@ function main(): void {
 
       w('\n');
       w(dim('  ────────────────────────────────────────────────\n'));
-      w(bold('  Shadow-Session Review\n'));
+      w(bold('  Shadow Session Review\n'));
       w(dim(`  Session: ${session.id}\n`));
       w(dim(`  Nodes: ${stats.nodes} | Events: ${stats.events} | Tasks: ${stats.tasks}\n`));
       w(dim('  ────────────────────────────────────────────────\n'));
@@ -431,11 +448,11 @@ function main(): void {
       // Generate SOPs if tasks exist
       if (stats.tasks > 0) {
         try {
-          w('  SOPs generieren...\n');
+          w('  Generating SOPs...\n');
           const count = await generateSOPs(db, session.id);
-          w(`  ${green('✓')} ${count} SOPs generiert\n\n`);
+          w(`  ${green('✓')} ${count} SOPs generated\n\n`);
         } catch (err) {
-          w(`  ${red('✗')} SOP-Generierung fehlgeschlagen: ${err}\n\n`);
+          w(`  ${red('✗')} SOP generation failed: ${err}\n\n`);
         }
       }
 
@@ -444,7 +461,7 @@ function main(): void {
       const sops = db.getSOPs(session.id);
 
       if (sops.length > 0) {
-        w(bold('  SOPs zur Überprüfung:\n\n'));
+        w(bold('  SOPs for review:\n\n'));
         for (const sop of sops) {
           const md = exportSOPMarkdown(sop);
           // Indent each line for terminal display
@@ -475,13 +492,13 @@ function main(): void {
         writeFileSync(dashboardPath, dashboardHtml);
 
         const absPath = resolvePath(dashboardPath);
-        w(`  ${green('✓')} ${sops.length} SOP-Markdown-Dateien geschrieben\n`);
+        w(`  ${green('✓')} ${sops.length} SOP markdown files written\n`);
         w(`  ${green('✓')} SOP Dashboard: ${cyan(`file://${absPath}`)}\n`);
         w('\n');
-        w(dim(`  Öffne im Browser: ${bold(`file://${absPath}`)}\n`));
+        w(dim(`  Open in browser: ${bold(`file://${absPath}`)}\n`));
         w('\n');
       } else {
-        w(dim('  Keine SOPs in dieser Session.\n\n'));
+        w(dim('  No SOPs in this session.\n\n'));
       }
 
       db.close();
@@ -489,47 +506,47 @@ function main(): void {
 
   shadow
     .command('pause')
-    .description('Shadow-Daemon pausieren')
+    .description('Pause the shadow daemon')
     .action(() => {
       const config = defaultConfig();
       const paused = pauseDaemon(config.pidFile);
       if (paused) {
-        process.stderr.write('⏸ Shadow-Daemon pausiert\n');
+        process.stderr.write('⏸ Shadow daemon paused\n');
       } else {
-        process.stderr.write('⚠ Kein laufender Shadow-Daemon gefunden\n');
+        process.stderr.write('⚠ No running shadow daemon found\n');
       }
     });
 
   shadow
     .command('resume')
-    .description('Shadow-Daemon fortsetzen')
+    .description('Resume the shadow daemon')
     .action(() => {
       const config = defaultConfig();
       const resumed = resumeDaemon(config.pidFile);
       if (resumed) {
-        process.stderr.write('▶ Shadow-Daemon fortgesetzt\n');
+        process.stderr.write('▶ Shadow daemon resumed\n');
       } else {
-        process.stderr.write('⚠ Kein laufender Shadow-Daemon gefunden\n');
+        process.stderr.write('⚠ No running shadow daemon found\n');
       }
     });
 
   shadow
     .command('status')
-    .description('Shadow-Daemon Status anzeigen')
+    .description('Show shadow daemon status')
     .action(() => {
       const config = defaultConfig();
       const { running, pid } = isDaemonRunning(config.pidFile);
       if (running) {
-        process.stdout.write(`✓ Shadow-Daemon läuft (PID ${pid})\n`);
+        process.stdout.write(`✓ Shadow daemon running (PID ${pid})\n`);
         process.stdout.write(`   Socket: ${config.socketPath}\n`);
       } else {
-        process.stdout.write('✗ Shadow-Daemon gestoppt\n');
+        process.stdout.write('✗ Shadow daemon stopped\n');
       }
     });
 
   shadow
     .command('attach')
-    .description('An laufenden Shadow-Daemon ankoppeln')
+    .description('Attach to a running shadow daemon')
     .action(async () => {
       const config = defaultConfig();
       const client = new AttachClient();
@@ -540,7 +557,7 @@ function main(): void {
 
   program
     .command('sops [session-id]')
-    .description('SOPs aus beobachteten Workflows generieren')
+    .description('Generate SOPs from observed workflows')
     .action(async (sessionId?: string) => {
       checkPrerequisites();
 
@@ -552,24 +569,24 @@ function main(): void {
         : db.getLatestSession('shadow');
 
       if (!session) {
-        process.stderr.write('❌ Keine Shadow-Session gefunden. datasynx-cartography shadow start\n');
+        process.stderr.write('❌ No shadow session found. Run: datasynx-cartography shadow start\n');
         db.close();
         process.exitCode = 1;
         return;
       }
 
-      process.stderr.write(`🔄 Generiere SOPs aus Session ${session.id}...\n`);
+      process.stderr.write(`🔄 Generating SOPs from session ${session.id}...\n`);
       const count = await generateSOPs(db, session.id);
-      process.stderr.write(`✓ ${count} SOPs generiert\n`);
+      process.stderr.write(`✓ ${count} SOPs generated\n`);
 
       db.close();
     });
 
   program
     .command('export [session-id]')
-    .description('Alle Outputs generieren')
-    .option('-o, --output <dir>', 'Output-Dir', './datasynx-output')
-    .option('--format <fmt...>', 'Formate: mermaid,json,yaml,html,sops')
+    .description('Generate all output files')
+    .option('-o, --output <dir>', 'Output directory', './datasynx-output')
+    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,sops')
     .action((sessionId: string | undefined, opts) => {
       const config = defaultConfig({ outputDir: opts.output });
       const db = new CartographyDB(config.dbPath);
@@ -579,7 +596,7 @@ function main(): void {
         : db.getLatestSession();
 
       if (!session) {
-        process.stderr.write('❌ Keine Session gefunden\n');
+        process.stderr.write('❌ No session found\n');
         db.close();
         process.exitCode = 1;
         return;
@@ -594,7 +611,7 @@ function main(): void {
 
   program
     .command('show [session-id]')
-    .description('Session-Details anzeigen')
+    .description('Show session details')
     .action((sessionId?: string) => {
       const config = defaultConfig();
       const db = new CartographyDB(config.dbPath);
@@ -604,7 +621,7 @@ function main(): void {
         : db.getLatestSession();
 
       if (!session) {
-        process.stderr.write('❌ Keine Session gefunden\n');
+        process.stderr.write('❌ No session found\n');
         db.close();
         process.exitCode = 1;
         return;
@@ -638,14 +655,14 @@ function main(): void {
 
   program
     .command('sessions')
-    .description('Alle Sessions auflisten')
+    .description('List all sessions')
     .action(() => {
       const config = defaultConfig();
       const db = new CartographyDB(config.dbPath);
       const sessions = db.getSessions();
 
       if (sessions.length === 0) {
-        process.stdout.write('Keine Sessions gefunden\n');
+        process.stdout.write('No sessions found\n');
         db.close();
         return;
       }
@@ -667,7 +684,7 @@ function main(): void {
 
   program
     .command('overview')
-    .description('Übersicht aller Cartographies + SOPs')
+    .description('Overview of all cartography sessions + SOPs')
     .option('--db <path>', 'DB-Pfad')
     .action((opts) => {
       const config = defaultConfig();
@@ -682,7 +699,7 @@ function main(): void {
       w(d('  ─────────────────────────────────────────────────────\n'));
 
       if (sessions.length === 0) {
-        w(`  ${d('Noch keine Sessions. Starte mit:')} ${green('datasynx-cartography discover')}\n\n`);
+        w(`  ${d('No sessions yet. Start with:')} ${green('datasynx-cartography discover')}\n\n`);
         db.close();
         return;
       }
@@ -725,7 +742,7 @@ function main(): void {
         for (const sop of sops.slice(0, 3)) {
           w(`    ${green('►')} ${sop.title} ${d('(' + sop.estimatedDuration + ')')}\n`);
         }
-        if (sops.length > 3) w(`    ${d('… +' + (sops.length - 3) + ' weitere SOPs')}\n`);
+        if (sops.length > 3) w(`    ${d('… +' + (sops.length - 3) + ' more SOPs')}\n`);
 
         w('\n');
       }
@@ -737,7 +754,7 @@ function main(): void {
 
   program
     .command('chat [session-id]')
-    .description('Interaktiver Chat über die kartographierte Infrastruktur')
+    .description('Interactive chat about your mapped infrastructure')
     .option('--db <path>', 'DB-Pfad')
     .option('--model <m>', 'Model', 'claude-sonnet-4-5-20250929')
     .action(async (sessionIdArg: string | undefined, opts) => {
@@ -750,7 +767,7 @@ function main(): void {
         : sessions.filter(s => s.completedAt).at(-1) ?? sessions.at(-1);
 
       if (!session) {
-        process.stderr.write('Keine Session gefunden. Führe zuerst discover aus.\n');
+        process.stderr.write('No session found. Run discover first.\n');
         db.close();
         return;
       }
@@ -766,7 +783,7 @@ function main(): void {
       w(`  ${bold('CARTOGRAPHY CHAT')}  ${dim('Session ' + session.id.substring(0, 8))}\n`);
       w(`  ${dim(String(nodes.length) + ' Nodes · ' + edges.length + ' Edges · ' + sops.length + ' SOPs')}\n`);
       w(dim(`  ─────────────────────────────────────────────────────\n`));
-      w(`  ${dim('Frage alles über deine Infrastruktur. exit = beenden.\n\n')}`);
+      w(`  ${dim('Ask anything about your infrastructure. exit = quit.\n\n')}`);
 
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       const client = new Anthropic();
@@ -783,12 +800,12 @@ function main(): void {
         sops: sops.map(s => ({ title: s.title, description: s.description, steps: s.steps.length, duration: s.estimatedDuration })),
       });
 
-      const systemPrompt = `Du bist ein Infrastruktur-Analyst für Cartography.
-Du hast Zugriff auf die vollständig kartographierte Infrastruktur dieser Session.
-Beantworte Fragen präzise und hilfreich. Nutze die Daten konkret.
-Du kannst SOPs erklären, Abhängigkeiten analysieren, Risiken benennen, Optimierungen vorschlagen.
+      const systemPrompt = `You are an infrastructure analyst for Cartography.
+You have access to the fully mapped infrastructure of this session.
+Answer questions precisely and helpfully. Use the data concretely.
+You can explain SOPs, analyze dependencies, identify risks, suggest optimizations.
 
-INFRASTRUKTUR-SNAPSHOT (${nodes.length} Nodes, ${edges.length} Edges, ${sops.length} SOPs):
+INFRASTRUCTURE SNAPSHOT (${nodes.length} nodes, ${edges.length} edges, ${sops.length} SOPs):
 ${infraSummary.substring(0, 12000)}`;
 
       // Multi-turn conversation history
@@ -827,20 +844,20 @@ ${infraSummary.substring(0, 12000)}`;
           }
           w('\n');
         } catch (err) {
-          w(`  ${red('✗')}  Fehler: ${err}\n\n`);
+          w(`  ${red('✗')}  Error: ${err}\n\n`);
         }
       }
 
       rl.close();
       db.close();
-      w(`\n  ${dim('Chat beendet.')}\n\n`);
+      w(`\n  ${dim('Chat ended.')}\n\n`);
     });
 
   // ── DOCS ──────────────────────────────────────────────────────────────────
 
   program
     .command('docs')
-    .description('Alle Features und Befehle auf einen Blick')
+    .description('Full feature reference and all commands')
     .action(() => {
       const out = process.stdout.write.bind(process.stdout);
       const b = bold;
@@ -856,28 +873,28 @@ ${infraSummary.substring(0, 12000)}`;
       out(b(cyan('  CARTOGRAPHY\n')));
       out('\n');
       out(`  ${green('datasynx-cartography discover')}\n`);
-      out(`    Scannt die lokale Infrastruktur (Claude Sonnet).\n`);
-      out(`    Claude führt eigenständig ss, ps, curl, docker inspect, kubectl get\n`);
-      out(`    aus und speichert alles in SQLite.\n`);
+      out(`    Scans your local infrastructure (Claude Sonnet).\n`);
+      out(`    Claude autonomously runs ss, ps, curl, docker inspect, kubectl get\n`);
+      out(`    and stores everything in SQLite.\n`);
       out('\n');
-      out(dim('    Optionen:\n'));
-      out(dim('      --entry <hosts...>    Startpunkte          (default: localhost)\n'));
-      out(dim('      --depth <n>           Max Tiefe            (default: 8)\n'));
-      out(dim('      --max-turns <n>       Max Agent-Turns      (default: 50)\n'));
+      out(dim('    Options:\n'));
+      out(dim('      --entry <hosts...>    Entry points         (default: localhost)\n'));
+      out(dim('      --depth <n>           Max depth            (default: 8)\n'));
+      out(dim('      --max-turns <n>       Max agent turns      (default: 50)\n'));
       out(dim('      --model <m>           Model                (default: claude-sonnet-4-5-...)\n'));
-      out(dim('      --org <name>          Organisation für Backstage YAML\n'));
-      out(dim('      -o, --output <dir>    Output-Verzeichnis   (default: ./datasynx-output)\n'));
-      out(dim('      -v, --verbose         Agent-Reasoning anzeigen\n'));
+      out(dim('      --org <name>          Organization for Backstage YAML\n'));
+      out(dim('      -o, --output <dir>    Output directory     (default: ./datasynx-output)\n'));
+      out(dim('      -v, --verbose         Show agent reasoning\n'));
       out('\n');
       out(dim('    Output:\n'));
       out(dim('      datasynx-output/\n'));
-      out(dim('        catalog.json          Maschinenlesbarer Komplett-Dump\n'));
-      out(dim('        catalog-info.yaml     Backstage Service-Katalog\n'));
-      out(dim('        topology.mermaid      Infrastruktur-Topologie (graph TB)\n'));
-      out(dim('        dependencies.mermaid  Service-Dependencies (graph LR)\n'));
-      out(dim('        topology.html         Interaktiver D3.js Force-Graph\n'));
-      out(dim('        sops/                 Generierte SOPs als Markdown\n'));
-      out(dim('        workflows/            Workflow-Flowcharts als Mermaid\n'));
+      out(dim('        catalog.json          Machine-readable full dump\n'));
+      out(dim('        catalog-info.yaml     Backstage service catalog\n'));
+      out(dim('        topology.mermaid      Infrastructure topology (graph TB)\n'));
+      out(dim('        dependencies.mermaid  Service dependencies (graph LR)\n'));
+      out(dim('        topology.html         Interactive D3.js force graph\n'));
+      out(dim('        sops/                 Generated SOPs as Markdown\n'));
+      out(dim('        workflows/            Workflow flowcharts as Mermaid\n'));
       out('\n');
       line();
 
@@ -885,97 +902,98 @@ ${infraSummary.substring(0, 12000)}`;
       out(b(cyan('  SHADOW DAEMON\n')));
       out('\n');
       out(`  ${green('datasynx-cartography shadow start')}\n`);
-      out(`    Startet einen Background-Daemon, der alle 30s einen System-Snapshot\n`);
-      out(`    nimmt (ss + ps). Nur bei Änderung ruft er Claude Haiku auf.\n`);
+      out(`    Starts a background daemon that takes a system snapshot every 30s\n`);
+      out(`    (ss + ps). Claude Haiku is called only when something changes.\n`);
       out('\n');
-      out(dim('    Optionen:\n'));
-      out(dim('      --interval <ms>       Poll-Intervall       (default: 30000, min: 15000)\n'));
-      out(dim('      --inactivity <ms>     Task-Grenze          (default: 300000 = 5 min)\n'));
-      out(dim('      --model <m>           Analysis-Model       (default: claude-haiku-4-5-...)\n'));
-      out(dim('      --track-windows       Fenster-Focus tracken (benötigt xdotool)\n'));
-      out(dim('      --auto-save           Nodes ohne Rückfrage speichern\n'));
-      out(dim('      --no-notifications    Desktop-Notifications deaktivieren\n'));
-      out(dim('      --foreground          Kein Daemon, im Terminal bleiben\n'));
+      out(dim('    Options:\n'));
+      out(dim('      --interval <ms>       Poll interval        (default: 30000, min: 15000)\n'));
+      out(dim('      --inactivity <ms>     Task boundary gap    (default: 300000 = 5 min)\n'));
+      out(dim('      --model <m>           Analysis model       (default: claude-haiku-4-5-...)\n'));
+      out(dim('      --track-windows       Track window focus (requires xdotool)\n'));
+      out(dim('      --auto-save           Save nodes without prompting\n'));
+      out(dim('      --no-notifications    Disable desktop notifications\n'));
+      out(dim('      --foreground          Run in terminal (no daemon fork)\n'));
       out('\n');
-      out(`  ${green('datasynx-cartography shadow stop')}     ${dim('Daemon per SIGTERM beenden')}\n`);
-      out(`  ${green('datasynx-cartography shadow status')}   ${dim('PID + Socket-Pfad anzeigen')}\n`);
-      out(`  ${green('datasynx-cartography shadow attach')}   ${dim('Live-Events im Terminal, Hotkeys: [T] [S] [D] [Q]')}\n`);
+      out(`  ${green('datasynx-cartography shadow stop')}     ${dim('Stop via SIGTERM')}\n`);
+      out(`  ${green('datasynx-cartography shadow status')}   ${dim('Show PID + socket path')}\n`);
+      out(`  ${green('datasynx-cartography shadow attach')}   ${dim('Live events in terminal, hotkeys: [T] [S] [D] [Q]')}\n`);
       out('\n');
-      out(dim('    Hotkeys im Attach-Modus:\n'));
-      out(dim('      [T]  Neuen Task starten (mit Beschreibung)\n'));
-      out(dim('      [S]  Status-Dump anzeigen (Nodes, Events, Tasks, Cycles)\n'));
-      out(dim('      [D]  Trennen — Daemon läuft weiter\n'));
-      out(dim('      [Q]  Daemon stoppen und beenden\n'));
+      out(dim('    Hotkeys in attach mode:\n'));
+      out(dim('      [T]  Start new task (with description)\n'));
+      out(dim('      [S]  Show status dump (nodes, events, tasks, cycles)\n'));
+      out(dim('      [D]  Detach — daemon keeps running\n'));
+      out(dim('      [Q]  Stop daemon and quit\n'));
       out('\n');
       line();
 
-      // ── ANALYSE & EXPORT
-      out(b(cyan('  ANALYSE & EXPORT\n')));
+      // ── ANALYSIS & EXPORT
+      out(b(cyan('  ANALYSIS & EXPORT\n')));
       out('\n');
       out(`  ${green('datasynx-cartography sops [session-id]')}\n`);
-      out(`    Clustert abgeschlossene Tasks und generiert SOPs via Claude Sonnet.\n`);
-      out(`    Nutzt die Anthropic Messages API (kein Agent-Loop, ein Request pro Cluster).\n`);
+      out(`    Clusters completed tasks and generates SOPs via Claude Sonnet.\n`);
+      out(`    Uses the Anthropic Messages API (no agent loop, one request per cluster).\n`);
       out('\n');
       out(`  ${green('datasynx-cartography export [session-id]')}\n`);
-      out(dim('    --format <fmt...>   mermaid, json, yaml, html, sops  (default: alle)\n'));
-      out(dim('    -o, --output <dir>  Output-Verzeichnis\n'));
+      out(dim('    --format <fmt...>   mermaid, json, yaml, html, sops  (default: all)\n'));
+      out(dim('    -o, --output <dir>  Output directory\n'));
       out('\n');
-      out(`  ${green('datasynx-cartography show [session-id]')}    ${dim('Session-Details + Node-Liste')}\n`);
-      out(`  ${green('datasynx-cartography sessions')}             ${dim('Alle Sessions tabellarisch auflisten')}\n`);
+      out(`  ${green('datasynx-cartography show [session-id]')}    ${dim('Session details + node list')}\n`);
+      out(`  ${green('datasynx-cartography sessions')}             ${dim('List all sessions')}\n`);
       out('\n');
       line();
 
-      // ── KOSTEN
-      out(b(cyan('  KOSTEN (Richtwerte)\n')));
+      // ── COST
+      out(b(cyan('  COST ESTIMATES\n')));
       out('\n');
-      out(yellow('  Modus          Model    Intervall    pro Stunde   pro 8h-Tag\n'));
+      out(yellow('  Mode           Model    Interval     per Hour     per 8h Day\n'));
       out(dim('  ─────────────────────────────────────────────────────────────\n'));
-      out(`  Discovery      Sonnet   einmalig     $0.15–0.50   einmalig\n`);
+      out(`  Discovery      Sonnet   one-shot     $0.15–0.50   one-shot\n`);
       out(`  Shadow         Haiku    30s          $0.12–0.36   $0.96–2.88\n`);
       out(`  Shadow         Haiku    60s          $0.06–0.18   $0.48–1.44\n`);
-      out(`  Shadow (ruhig) Haiku    30s          ~$0.02       ~$0.16\n`);
-      out(`  SOP-Gen        Sonnet   einmalig     $0.01–0.03   einmalig\n`);
+      out(`  Shadow (quiet) Haiku    30s          ~$0.02       ~$0.16\n`);
+      out(`  SOP gen        Sonnet   one-shot     $0.01–0.03   one-shot\n`);
       out('\n');
-      out(dim('  * "ruhig" = Diff-Check überspringt 90%+ Cycles, wenn System unverändert\n'));
+      out(dim('  * "quiet" = diff-check skips 90%+ cycles when system is unchanged\n'));
       out('\n');
       line();
 
-      // ── ARCHITEKTUR
-      out(b(cyan('  ARCHITEKTUR\n')));
+      // ── ARCHITECTURE
+      out(b(cyan('  ARCHITECTURE\n')));
       out('\n');
       out(dim('  CLI (Commander)\n'));
-      out(dim('    └── Preflight: Claude CLI check + API key + Intervall-Validierung\n'));
+      out(dim('    └── Preflight: Claude CLI check + API key + interval validation\n'));
       out(dim('        └── Agent Orchestrator (agent.ts)\n'));
       out(dim('            ├── runDiscovery()    → Claude Sonnet + Bash + MCP Tools\n'));
-      out(dim('            ├── runShadowCycle()  → Claude Haiku + nur MCP Tools (kein Bash!)\n'));
-      out(dim('            └── generateSOPs()    → Anthropic Messages API (kein Agent-Loop)\n'));
+      out(dim('            ├── runShadowCycle()  → Claude Haiku + MCP Tools only (no Bash)\n'));
+      out(dim('            └── generateSOPs()    → Anthropic Messages API (no agent loop)\n'));
       out(dim('                └── Custom MCP Tools (tools.ts)\n'));
       out(dim('                    save_node, save_edge, save_event,\n'));
-      out(dim('                    get_catalog, manage_task, save_sop\n'));
+      out(dim('                    scan_bookmarks, scan_browser_history,\n'));
+      out(dim('                    scan_installed_apps, scan_local_databases\n'));
       out(dim('                    └── CartographyDB (SQLite WAL)\n'));
       out(dim('  Shadow Daemon (daemon.ts)\n'));
-      out(dim('    ├── takeSnapshot() → ss + ps  [kein Claude!]\n'));
-      out(dim('    ├── Diff-Check → nur bei Änderung: runShadowCycle()\n'));
-      out(dim('    ├── IPC Server (Unix Socket ~/.cartography/daemon.sock)\n'));
-      out(dim('    └── NotificationService (Desktop wenn kein Client attached)\n'));
+      out(dim('    ├── takeSnapshot() → ss + ps  [no Claude!]\n'));
+      out(dim('    ├── Diff-Check → calls Claude only on changes\n'));
+      out(dim('    ├── IPC Server (Unix socket ~/.cartography/daemon.sock)\n'));
+      out(dim('    └── NotificationService (desktop alerts when no client attached)\n'));
       out('\n');
       line();
 
       // ── SETUP
       out(b(cyan('  SETUP\n')));
       out('\n');
-      out(dim('  # 1. Claude CLI (Runtime-Dependency)\n'));
+      out(dim('  # 1. Claude CLI (runtime dependency)\n'));
       out('  npm install -g @anthropic-ai/claude-code\n');
       out('  claude login\n');
       out('\n');
-      out(dim('  # 2. API Key (falls nicht via claude login)\n'));
+      out(dim('  # 2. API Key (if not using claude login)\n'));
       out('  export ANTHROPIC_API_KEY=sk-ant-...\n');
       out('\n');
-      out(dim('  # 3. Los\n'));
+      out(dim('  # 3. Go\n'));
       out('  datasynx-cartography discover\n');
       out('  datasynx-cartography shadow start\n');
       out('\n');
-      out(dim('  Daten: ~/.cartography/cartography.db\n'));
+      out(dim('  Data:   ~/.cartography/cartography.db\n'));
       out(dim('  Socket: ~/.cartography/daemon.sock\n'));
       out(dim('  PID:    ~/.cartography/daemon.pid\n'));
       out('\n');
@@ -985,7 +1003,7 @@ ${infraSummary.substring(0, 12000)}`;
 
   program
     .command('bookmarks')
-    .description('Alle Browser-Lesezeichen anzeigen (Chrome, Edge, Brave, Firefox)')
+    .description('View all browser bookmarks (Chrome, Chromium, Edge, Brave, Vivaldi, Opera, Firefox)')
     .action(async () => {
       const { scanAllBookmarks } = await import('./bookmarks.js');
       const out = (s: string) => process.stdout.write(s);
@@ -994,7 +1012,7 @@ ${infraSummary.substring(0, 12000)}`;
       const hosts = await scanAllBookmarks();
 
       if (hosts.length === 0) {
-        out('  (Keine Lesezeichen gefunden — Chrome, Edge, Brave und Firefox werden unterstützt)\n\n');
+        out('  (No bookmarks found — Chrome, Edge, Brave, Vivaldi, Opera and Firefox are supported)\n\n');
         return;
       }
 
@@ -1017,17 +1035,17 @@ ${infraSummary.substring(0, 12000)}`;
       }
 
       out(dim(`  Total: ${hosts.length} unique hosts\n\n`));
-      out(dim('  Tipp: ') + 'datasynx-cartography discover' + dim(' — scannt + klassifiziert alle Lesezeichen automatisch\n\n'));
+      out(dim('  Tip: ') + 'datasynx-cartography discover' + dim(' — scans + classifies all bookmarks automatically\n\n'));
     });
 
   // ── Seed ───────────────────────────────────────────────────────────────────
 
   program
     .command('seed')
-    .description('Bekannte Infrastruktur manuell eintragen (Tools, DBs, APIs, etc.)')
-    .option('--file <path>', 'JSON-Datei mit Node-Definitionen einlesen')
-    .option('--session <id>', 'In existierende Session eintragen (default: neue Session)')
-    .option('--db <path>', 'DB-Pfad')
+    .description('Manually add known infrastructure (tools, DBs, APIs, etc.)')
+    .option('--file <path>', 'JSON file with node definitions')
+    .option('--session <id>', 'Add to existing session (default: new session)')
+    .option('--db <path>', 'DB path')
     .action(async (opts) => {
       const config = defaultConfig({ ...(opts.db ? { dbPath: opts.db } : {}) });
       const db = new CartographyDB(config.dbPath);
@@ -1042,13 +1060,13 @@ ${infraSummary.substring(0, 12000)}`;
         try {
           raw = JSON.parse(readFileSync(resolve(opts.file), 'utf8'));
         } catch (e) {
-          w(red(`\n  ✗  Datei konnte nicht gelesen werden: ${e}\n\n`));
+          w(red(`\n  ✗  Could not read file: ${e}\n\n`));
           process.exitCode = 1;
           return;
         }
 
         if (!Array.isArray(raw)) {
-          w(red('\n  ✗  JSON muss ein Array sein: [{ "type": "...", "name": "...", "host": "..." }]\n\n'));
+          w(red('\n  ✗  JSON must be an array: [{ "type": "...", "name": "...", "host": "..." }]\n\n'));
           process.exitCode = 1;
           return;
         }
@@ -1063,7 +1081,7 @@ ${infraSummary.substring(0, 12000)}`;
           const metadata = (entry['metadata'] as Record<string, unknown> | undefined) ?? {};
 
           if (!type || !name) {
-            w(yellow(`  ⚠  Übersprungen (kein type/name): ${JSON.stringify(entry)}\n`));
+            w(yellow(`  ⚠  Skipped (no type/name): ${JSON.stringify(entry)}\n`));
             continue;
           }
 
@@ -1085,7 +1103,7 @@ ${infraSummary.substring(0, 12000)}`;
         }
 
         db.endSession(sessionId);
-        w(`\n  ${green(bold('DONE'))}  ${saved} Nodes gespeichert  ${dim('Session: ' + sessionId)}\n\n`);
+        w(`\n  ${green(bold('DONE'))}  ${saved} nodes saved  ${dim('Session: ' + sessionId)}\n\n`);
         return;
       }
 
@@ -1093,15 +1111,15 @@ ${infraSummary.substring(0, 12000)}`;
       const { NODE_TYPES } = await import('./types.js');
 
       if (!process.stdin.isTTY) {
-        w(red('\n  ✗  Interaktiver Modus benötigt ein Terminal (--file für nicht-interaktiven Betrieb)\n\n'));
+        w(red('\n  ✗  Interactive mode requires a terminal (use --file for non-interactive)\n\n'));
         process.exitCode = 1;
         return;
       }
 
       w('\n');
       w(dim('  ────────────────────────────────────────────────\n'));
-      w(bold('  Bekannte Infrastruktur eintragen\n'));
-      w(dim('  Beispiele: Datenbanken, APIs, SaaS-Tools, Cloud-Services\n'));
+      w(bold('  Add known infrastructure\n'));
+      w(dim('  Examples: databases, APIs, SaaS tools, cloud services\n'));
       w(dim('  ────────────────────────────────────────────────\n'));
       w('\n');
 
@@ -1115,10 +1133,10 @@ ${infraSummary.substring(0, 12000)}`;
       // eslint-disable-next-line no-constant-condition
       while (true) {
         w('\n');
-        w(dim('  Node-Typen:\n'));
+        w(dim('  Node types:\n'));
         w(`  ${typeList}\n\n`);
 
-        const typeInput = (await ask(`  ${cyan('Typ')} ${dim('[Nr. oder Name, Enter=abbrechen]')}: `)).trim();
+        const typeInput = (await ask(`  ${cyan('Type')} ${dim('[number or name, Enter=cancel]')}: `)).trim();
         if (!typeInput) break;
 
         let nodeType: string;
@@ -1128,16 +1146,16 @@ ${infraSummary.substring(0, 12000)}`;
         } else if (NODE_TYPES.includes(typeInput as typeof NODE_TYPES[number])) {
           nodeType = typeInput;
         } else {
-          w(yellow(`  ⚠  Unbekannter Typ: "${typeInput}"\n`));
+          w(yellow(`  ⚠  Unknown type: "${typeInput}"\n`));
           continue;
         }
 
-        const name = (await ask(`  ${cyan('Name')} ${dim('[z.B. "Prod PostgreSQL"]')}: `)).trim();
-        if (!name) { w(dim('  (Abgebrochen)\n')); continue; }
+        const name = (await ask(`  ${cyan('Name')} ${dim('[e.g. "Prod PostgreSQL"]')}: `)).trim();
+        if (!name) { w(dim('  (Cancelled)\n')); continue; }
 
-        const hostRaw = (await ask(`  ${cyan('Host / IP')} ${dim('[optional, Enter=überspringen]')}: `)).trim();
+        const hostRaw = (await ask(`  ${cyan('Host / IP')} ${dim('[optional, Enter=skip]')}: `)).trim();
         const portRaw = (await ask(`  ${cyan('Port')} ${dim('[optional]')}: `)).trim();
-        const tagsRaw = (await ask(`  ${cyan('Tags')} ${dim('[komma-getrennt, optional]')}: `)).trim();
+        const tagsRaw = (await ask(`  ${cyan('Tags')} ${dim('[comma-separated, optional]')}: `)).trim();
 
         const host = hostRaw || undefined;
         const port = portRaw ? parseInt(portRaw, 10) : undefined;
@@ -1159,24 +1177,24 @@ ${infraSummary.substring(0, 12000)}`;
         out(`  ${green('+')}  ${cyan(id)}\n`);
         saved++;
 
-        const again = (await ask(`  ${dim('Weiteren Node hinzufügen? [Y/n]')}: `)).trim().toLowerCase();
-        if (again === 'n' || again === 'nein') break;
+        const again = (await ask(`  ${dim('Add another node? [Y/n]')}: `)).trim().toLowerCase();
+        if (again === 'n' || again === 'no') break;
       }
 
       rl.close();
       db.endSession(sessionId);
       w('\n');
       w(dim('  ────────────────────────────────────────────────\n'));
-      w(`  ${green(bold('DONE'))}  ${saved} Node${saved !== 1 ? 's' : ''} gespeichert\n`);
+      w(`  ${green(bold('DONE'))}  ${saved} node${saved !== 1 ? 's' : ''} saved\n`);
       w(`  ${dim('Session: ' + sessionId)}\n`);
-      w(`  ${dim('Tipp: datasynx-cartography show ' + sessionId)}\n\n`);
+      w(`  ${dim('Tip: datasynx-cartography show ' + sessionId)}\n\n`);
     });
 
   // ── Doctor ─────────────────────────────────────────────────────────────────
 
   program
     .command('doctor')
-    .description('Prüft ob alle Voraussetzungen erfüllt sind')
+    .description('Check all requirements and cloud CLIs')
     .action(async () => {
       const { execSync } = await import('node:child_process');
       const { existsSync, readFileSync } = await import('node:fs');
@@ -1206,7 +1224,7 @@ ${infraSummary.substring(0, 12000)}`;
         const v = execSync('claude --version', { stdio: 'pipe' }).toString().trim();
         ok(`Claude CLI  ${dim(v)}`);
       } catch {
-        err('Claude CLI nicht gefunden — npm i -g @anthropic-ai/claude-code');
+        err('Claude CLI not found — npm i -g @anthropic-ai/claude-code');
         allGood = false;
       }
 
@@ -1221,20 +1239,20 @@ ${infraSummary.substring(0, 12000)}`;
       } catch { /* no creds file */ }
 
       if (hasApiKey) {
-        ok('ANTHROPIC_API_KEY gesetzt');
+        ok('ANTHROPIC_API_KEY set');
       } else if (hasOAuth) {
-        ok('claude login (Subscription)');
+        ok('claude login (subscription)');
       } else {
-        err('Keine Authentifizierung — claude login  oder  export ANTHROPIC_API_KEY=sk-ant-...');
+        err('No authentication — run: claude login  or  export ANTHROPIC_API_KEY=sk-ant-...');
         allGood = false;
       }
 
-      // 4. kubectl — wichtig für K8s Discovery
+      // 4. kubectl — important for K8s discovery
       try {
         const v = execSync('kubectl version --client --short 2>/dev/null || kubectl version --client', { stdio: 'pipe' }).toString().split('\n')[0]?.trim() ?? '';
-        ok(`kubectl  ${dim(v || '(Client OK)')}`);
+        ok(`kubectl  ${dim(v || '(client OK)')}`);
       } catch {
-        warn(`kubectl nicht gefunden  ${dim('— Installation: https://kubernetes.io/docs/tasks/tools/')}`);
+        warn(`kubectl not found  ${dim('— install: https://kubernetes.io/docs/tasks/tools/')}`);
       }
 
       // 5. Cloud CLIs (optional)
@@ -1246,13 +1264,13 @@ ${infraSummary.substring(0, 12000)}`;
       for (const [name, cmd, hint] of cloudClis) {
         try {
           execSync(cmd, { stdio: 'pipe' });
-          ok(`${name}  ${dim('(Cloud-Scanning verfügbar)')}`);
+          ok(`${name}  ${dim('(cloud scanning available)')}`);
         } catch {
-          warn(`${name} nicht gefunden  ${dim('— Cloud-Scan übersprungen | ' + hint)}`);
+          warn(`${name} not found  ${dim('— cloud scan skipped | ' + hint)}`);
         }
       }
 
-      // 6. Lokale Discovery-Tools
+      // 6. Local discovery tools
       const localTools: Array<[string, string]> = [
         ['docker', 'docker --version'],
         ['ss',     'ss --version'],
@@ -1260,30 +1278,30 @@ ${infraSummary.substring(0, 12000)}`;
       for (const [name, cmd] of localTools) {
         try {
           execSync(cmd, { stdio: 'pipe' });
-          ok(`${name}  ${dim('(Discovery-Tool)')}`);
+          ok(`${name}  ${dim('(discovery tool)')}`);
         } catch {
-          warn(`${name} nicht gefunden  ${dim('— Discovery ohne ' + name + ' eingeschränkt')}`);
+          warn(`${name} not found  ${dim('— discovery without ' + name + ' will be limited')}`);
         }
       }
 
       // 7. SQLite data dir
       const dbDir = join(home, '.cartography');
       if (existsSync(dbDir)) {
-        ok(`~/.cartography  ${dim('(Daten-Verzeichnis vorhanden)')}`);
+        ok(`~/.cartography  ${dim('(data directory exists)')}`);
       } else {
-        warn('~/.cartography existiert noch nicht  ' + dim('— wird beim ersten Start angelegt'));
+        warn('~/.cartography does not exist yet  ' + dim('— will be created on first run'));
       }
 
       out(dim('  ─────────────────────────────────\n'));
       if (allGood) {
-        out('  \x1b[32m\x1b[1mAlle Checks bestanden — datasynx-cartography discover\x1b[0m\n\n');
+        out('  \x1b[32m\x1b[1mAll checks passed — datasynx-cartography discover\x1b[0m\n\n');
       } else {
-        out('  \x1b[31m\x1b[1mEinige Checks fehlgeschlagen. Bitte oben beheben.\x1b[0m\n\n');
+        out('  \x1b[31m\x1b[1mSome checks failed. Please fix the issues above.\x1b[0m\n\n');
         process.exitCode = 1;
       }
     });
 
-  // ── Banner (immer anzeigen) ───────────────────────────────────────────────
+  // ── Banner (always show) ──────────────────────────────────────────────────
 
   const o = (s: string) => process.stderr.write(s);
   const _b = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -1312,33 +1330,33 @@ ${infraSummary.substring(0, 12000)}`;
     o('\n');
     o(_b('  Commands:\n'));
     o('\n');
-    o(`  ${_g('discover')}             ${_d('Infrastruktur scannen (Claude Sonnet)')}\n`);
-    o(`  ${_g('seed')}                 ${_d('Bekannte Tools/DBs/APIs manuell eintragen')}\n`);
-    o(`  ${_g('bookmarks')}            ${_d('Browser-Lesezeichen anzeigen')}\n`);
-    o(`  ${_g('shadow start')}         ${_d('Background-Daemon starten (Claude Haiku)')}\n`);
-    o(`  ${_g('shadow pause')}         ${_d('Daemon pausieren')}\n`);
-    o(`  ${_g('shadow resume')}        ${_d('Daemon fortsetzen')}\n`);
-    o(`  ${_g('shadow stop')}          ${_d('Stoppen + SOP-Review + Dashboard')}\n`);
-    o(`  ${_g('shadow status')}        ${_d('Daemon-Status anzeigen')}\n`);
-    o(`  ${_g('shadow attach')}        ${_d('Live-Steuerung: [T] [S] [P] [D] [Q]')}\n`);
-    o(`  ${_g('sops')} ${_d('[session]')}      ${_d('SOPs aus Workflows generieren')}\n`);
-    o(`  ${_g('export')} ${_d('[session]')}    ${_d('Mermaid, JSON, YAML, HTML exportieren')}\n`);
-    o(`  ${_g('show')} ${_d('[session]')}      ${_d('Session-Details anzeigen')}\n`);
-    o(`  ${_g('sessions')}             ${_d('Alle Sessions auflisten')}\n`);
-    o(`  ${_g('doctor')}               ${_d('Installations-Check (kubectl, aws, gcloud, az)')}\n`);
-    o(`  ${_g('docs')}                 ${_d('Vollständige Dokumentation')}\n`);
+    o(`  ${_g('discover')}             ${_d('Scan infrastructure (Claude Sonnet)')}\n`);
+    o(`  ${_g('seed')}                 ${_d('Manually add known tools/DBs/APIs')}\n`);
+    o(`  ${_g('bookmarks')}            ${_d('View browser bookmarks')}\n`);
+    o(`  ${_g('shadow start')}         ${_d('Start background daemon (Claude Haiku)')}\n`);
+    o(`  ${_g('shadow pause')}         ${_d('Pause daemon')}\n`);
+    o(`  ${_g('shadow resume')}        ${_d('Resume daemon')}\n`);
+    o(`  ${_g('shadow stop')}          ${_d('Stop + SOP review + dashboard')}\n`);
+    o(`  ${_g('shadow status')}        ${_d('Show daemon status')}\n`);
+    o(`  ${_g('shadow attach')}        ${_d('Live control: [T] [S] [P] [D] [Q]')}\n`);
+    o(`  ${_g('sops')} ${_d('[session]')}      ${_d('Generate SOPs from workflows')}\n`);
+    o(`  ${_g('export')} ${_d('[session]')}    ${_d('Export Mermaid, JSON, YAML, HTML')}\n`);
+    o(`  ${_g('show')} ${_d('[session]')}      ${_d('Show session details')}\n`);
+    o(`  ${_g('sessions')}             ${_d('List all sessions')}\n`);
+    o(`  ${_g('doctor')}               ${_d('Check requirements (kubectl, aws, gcloud, az)')}\n`);
+    o(`  ${_g('docs')}                 ${_d('Full feature reference')}\n`);
     o('\n');
     o(_d('  ────────────────────────────────────────────────\n'));
     o('\n');
     o(_b('  Quick Start:\n'));
     o('\n');
-    o(`  ${_m('$')} ${_b('datasynx-cartography doctor')}         ${_d('Alles bereit?')}\n`);
-    o(`  ${_m('$')} ${_b('datasynx-cartography seed')}           ${_d('Bekannte Infra eintragen')}\n`);
-    o(`  ${_m('$')} ${_b('datasynx-cartography discover')}       ${_d('Einmal-Scan')}\n`);
-    o(`  ${_m('$')} ${_b('datasynx-cartography shadow start')}   ${_d('Dauerhaft beobachten')}\n`);
+    o(`  ${_m('$')} ${_b('datasynx-cartography doctor')}         ${_d('Check requirements')}\n`);
+    o(`  ${_m('$')} ${_b('datasynx-cartography seed')}           ${_d('Add known infrastructure')}\n`);
+    o(`  ${_m('$')} ${_b('datasynx-cartography discover')}       ${_d('One-time scan')}\n`);
+    o(`  ${_m('$')} ${_b('datasynx-cartography shadow start')}   ${_d('Continuous monitoring')}\n`);
     o('\n');
-    o(_d('  Doku:   datasynx-cartography docs\n'));
-    o(_d('  Hilfe:  datasynx-cartography --help\n'));
+    o(_d('  Docs:   datasynx-cartography docs\n'));
+    o(_d('  Help:   datasynx-cartography --help\n'));
     o(_d('  npm:    @datasynx/agentic-ai-cartography\n'));
     o('\n');
     return;

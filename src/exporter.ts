@@ -22,7 +22,7 @@ const LAYER_LABELS: Record<string, string> = {
   messaging: '📨 Messaging',
   infra:     '🖥 Infrastructure',
   config:    '📄 Config',
-  other:     '❓ Sonstige',
+  other:     '❓ Other',
 };
 
 const LAYER_ORDER = ['saas', 'web', 'data', 'messaging', 'infra', 'config', 'other'];
@@ -260,7 +260,7 @@ export function exportJSON(db: CartographyDB, sessionId: string): string {
   }, null, 2);
 }
 
-// ── HTML (D3.js Force-Graph) ──────────────────────────────────────────────────
+// ── HTML (D3.js Hexagonal Cartography Map) ────────────────────────────────────
 
 export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
   const graphData = JSON.stringify({
@@ -268,6 +268,7 @@ export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
       id: n.id,
       name: n.name,
       type: n.type,
+      layer: nodeLayer(n.type),
       confidence: n.confidence,
       discoveredVia: n.discoveredVia,
       discoveredAt: n.discoveredAt,
@@ -284,70 +285,107 @@ export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
   });
 
   return `<!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Cartography — Topology</title>
+  <title>Cartography — Infrastructure Map</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #0d1117; color: #e6edf3; font-family: 'SF Mono', 'Fira Code', monospace; display: flex; }
-    #graph { flex: 1; height: 100vh; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0e14; color: #e6edf3; font-family: 'SF Mono','Fira Code','Cascadia Code',monospace; display: flex; overflow: hidden; }
+    #graph { flex: 1; height: 100vh; position: relative; }
     svg { width: 100%; height: 100%; }
-    .link { stroke-opacity: 0.5; }
-    .link-label { font-size: 9px; fill: #8b949e; }
-    .node circle { stroke-width: 2px; cursor: pointer; transition: r 0.15s; }
-    .node circle:hover { r: 14; }
-    .node text { font-size: 11px; fill: #c9d1d9; pointer-events: none; }
-    /* ── Sidebar ── */
+    .hull { opacity: 0.12; stroke-width: 1.5; stroke-opacity: 0.25; }
+    .hull-label { font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; fill-opacity: 0.5; pointer-events: none; }
+    .link { stroke-opacity: 0.4; }
+    .link-label { font-size: 8px; fill: #6e7681; pointer-events: none; opacity: 0; }
+    .node-hex { stroke-width: 1.8; cursor: pointer; transition: opacity 0.15s; }
+    .node-hex:hover { filter: brightness(1.3); stroke-width: 3; }
+    .node-label { font-size: 10px; fill: #c9d1d9; pointer-events: none; opacity: 0; }
+    /* Sidebar */
     #sidebar {
-      width: 300px; min-width: 300px; height: 100vh; overflow-y: auto;
-      background: #161b22; border-left: 1px solid #30363d;
+      width: 320px; min-width: 320px; height: 100vh; overflow-y: auto;
+      background: #0d1117; border-left: 1px solid #1b2028;
       padding: 16px; font-size: 12px; line-height: 1.6;
     }
     #sidebar h2 { margin: 0 0 8px; font-size: 14px; color: #58a6ff; }
     #sidebar .meta-table { width: 100%; border-collapse: collapse; }
-    #sidebar .meta-table td { padding: 3px 6px; border-bottom: 1px solid #21262d; vertical-align: top; }
-    #sidebar .meta-table td:first-child { color: #8b949e; white-space: nowrap; width: 90px; }
-    #sidebar .tag { display: inline-block; background: #21262d; border-radius: 3px; padding: 1px 5px; margin: 1px; }
-    #sidebar .conf-bar { height: 6px; border-radius: 3px; background: #21262d; margin-top: 3px; }
+    #sidebar .meta-table td { padding: 3px 6px; border-bottom: 1px solid #161b22; vertical-align: top; }
+    #sidebar .meta-table td:first-child { color: #6e7681; white-space: nowrap; width: 90px; }
+    #sidebar .tag { display: inline-block; background: #161b22; border-radius: 3px; padding: 1px 5px; margin: 1px; font-size: 10px; }
+    #sidebar .conf-bar { height: 5px; border-radius: 3px; background: #161b22; margin-top: 3px; }
     #sidebar .conf-fill { height: 100%; border-radius: 3px; }
     #sidebar .edges-list { margin-top: 12px; }
-    #sidebar .edge-item { padding: 4px 0; border-bottom: 1px solid #21262d; color: #8b949e; }
+    #sidebar .edge-item { padding: 4px 0; border-bottom: 1px solid #161b22; color: #6e7681; font-size: 11px; }
     #sidebar .edge-item span { color: #c9d1d9; }
-    .hint { color: #484f58; font-size: 11px; margin-top: 8px; }
-    #header { position: fixed; top: 10px; left: 10px; background: rgba(13,17,23,0.85);
-              padding: 8px 12px; border-radius: 6px; font-size: 12px; border: 1px solid #30363d; }
-    #header strong { color: #58a6ff; }
+    .hint { color: #3d434b; font-size: 11px; margin-top: 8px; }
+    /* HUD */
+    #hud { position: absolute; top: 10px; left: 10px; background: rgba(10,14,20,0.88);
+           padding: 10px 14px; border-radius: 8px; font-size: 12px; border: 1px solid #1b2028; pointer-events: none; }
+    #hud strong { color: #58a6ff; }
+    #hud .stats { color: #6e7681; }
+    #hud .zoom-level { color: #3d434b; font-size: 10px; margin-top: 2px; }
+    /* Layer filter */
+    #filters { position: absolute; top: 10px; right: 330px; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: auto; }
+    .filter-btn {
+      background: rgba(10,14,20,0.85); border: 1px solid #1b2028; border-radius: 6px;
+      color: #c9d1d9; padding: 4px 10px; font-size: 11px; cursor: pointer;
+      font-family: inherit; display: flex; align-items: center; gap: 5px;
+    }
+    .filter-btn:hover { border-color: #30363d; }
+    .filter-btn.off { opacity: 0.35; }
+    .filter-dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
   </style>
 </head>
 <body>
 <div id="graph">
-  <div id="header">
+  <div id="hud">
     <strong>Cartography</strong> &nbsp;
-    <span style="color:#8b949e">${nodes.length} Nodes · ${edges.length} Edges</span><br>
-    <span style="color:#484f58;font-size:10px">Scroll=zoom · Drag=pan · Click=details</span>
+    <span class="stats">${nodes.length} nodes · ${edges.length} edges</span><br>
+    <span class="zoom-level">Scroll = zoom · Drag = pan · Click = details</span>
   </div>
+  <div id="filters"></div>
   <svg></svg>
 </div>
 <div id="sidebar">
   <h2>Infrastructure Map</h2>
-  <p class="hint">Klicke einen Node um Details anzuzeigen.</p>
+  <p class="hint">Click a node to view details.</p>
 </div>
 <script>
 const data = ${graphData};
 
+// ── Color palette per node type ───────────────────────────────────────────
 const TYPE_COLORS = {
   host: '#4a9eff', database_server: '#ff6b6b', database: '#ff8c42',
   web_service: '#6bcb77', api_endpoint: '#4d96ff', cache_server: '#ffd93d',
   message_broker: '#c77dff', queue: '#e0aaff', topic: '#9d4edd',
   container: '#48cae4', pod: '#00b4d8', k8s_cluster: '#0077b6',
-  config_file: '#adb5bd', saas_tool: '#da8bff', unknown: '#6c757d',
+  config_file: '#adb5bd', saas_tool: '#c084fc', table: '#f97316', unknown: '#6c757d',
 };
 
-const NODE_RADIUS = { saas_tool: 10, host: 11, database_server: 11, k8s_cluster: 13, default: 8 };
-const radius = d => NODE_RADIUS[d.type] || NODE_RADIUS.default;
+// ── Color per layer (for hull backgrounds) ────────────────────────────────
+const LAYER_COLORS = {
+  saas: '#c084fc', web: '#6bcb77', data: '#ff6b6b',
+  messaging: '#c77dff', infra: '#4a9eff', config: '#adb5bd', other: '#6c757d',
+};
+const LAYER_NAMES = {
+  saas: 'SaaS Tools', web: 'Web / API', data: 'Data Layer',
+  messaging: 'Messaging', infra: 'Infrastructure', config: 'Config', other: 'Other',
+};
 
+// ── Hexagon path generator ────────────────────────────────────────────────
+const HEX_SIZE = { saas_tool: 16, host: 18, database_server: 18, k8s_cluster: 20, default: 14 };
+function hexSize(d) { return HEX_SIZE[d.type] || HEX_SIZE.default; }
+function hexPath(size) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 3) * i - Math.PI / 6;
+    pts.push([size * Math.cos(angle), size * Math.sin(angle)]);
+  }
+  return 'M' + pts.map(p => p.join(',')).join('L') + 'Z';
+}
+
+// ── Sidebar detail view ──────────────────────────────────────────────────
 const sidebar = document.getElementById('sidebar');
 
 function showNode(d) {
@@ -371,45 +409,155 @@ function showNode(d) {
     <h2>\${d.name}</h2>
     <table class="meta-table">
       <tr><td>ID</td><td style="font-size:10px;word-break:break-all">\${d.id}</td></tr>
-      <tr><td>Typ</td><td><span style="color:\${c}">\${d.type}</span></td></tr>
+      <tr><td>Type</td><td><span style="color:\${c}">\${d.type}</span></td></tr>
+      <tr><td>Layer</td><td>\${d.layer}</td></tr>
       <tr><td>Confidence</td><td>
         \${confPct}%
         <div class="conf-bar"><div class="conf-fill" style="width:\${confPct}%;background:\${c}"></div></div>
       </td></tr>
-      <tr><td>Entdeckt via</td><td>\${d.discoveredVia || '—'}</td></tr>
-      <tr><td>Zeitpunkt</td><td>\${d.discoveredAt ? d.discoveredAt.substring(0,19).replace('T',' ') : '—'}</td></tr>
+      <tr><td>Discovered via</td><td>\${d.discoveredVia || '—'}</td></tr>
+      <tr><td>Timestamp</td><td>\${d.discoveredAt ? d.discoveredAt.substring(0,19).replace('T',' ') : '—'}</td></tr>
       \${tags ? '<tr><td>Tags</td><td>'+tags+'</td></tr>' : ''}
       \${metaRows}
     </table>
-    \${related.length > 0 ? '<div class="edges-list"><strong>Verbindungen:</strong>'+edgeItems+'</div>' : ''}
+    \${related.length > 0 ? '<div class="edges-list"><strong>Connections (' + related.length + '):</strong>'+edgeItems+'</div>' : ''}
   \`;
 }
 
+// ── SVG setup ─────────────────────────────────────────────────────────────
 const svgEl = d3.select('svg');
 const graphDiv = document.getElementById('graph');
-const width = () => graphDiv.clientWidth;
-const height = () => graphDiv.clientHeight;
+const W = () => graphDiv.clientWidth;
+const H = () => graphDiv.clientHeight;
 const g = svgEl.append('g');
 
-svgEl.call(d3.zoom().scaleExtent([0.1, 4]).on('zoom', e => g.attr('transform', e.transform)));
+// Arrow marker for directed edges
+svgEl.append('defs').append('marker')
+  .attr('id', 'arrow').attr('viewBox', '0 0 10 6')
+  .attr('refX', 10).attr('refY', 3)
+  .attr('markerWidth', 8).attr('markerHeight', 6)
+  .attr('orient', 'auto')
+  .append('path').attr('d', 'M0,0 L10,3 L0,6 Z').attr('fill', '#555');
 
+let currentZoom = 1;
+
+const zoomBehavior = d3.zoom().scaleExtent([0.08, 6]).on('zoom', e => {
+  g.attr('transform', e.transform);
+  currentZoom = e.transform.k;
+  updateLOD(currentZoom);
+});
+svgEl.call(zoomBehavior);
+
+// ── Layer filter state ────────────────────────────────────────────────────
+const layers = [...new Set(data.nodes.map(d => d.layer))];
+const layerVisible = {};
+layers.forEach(l => layerVisible[l] = true);
+
+const filtersDiv = document.getElementById('filters');
+layers.forEach(layer => {
+  const btn = document.createElement('button');
+  btn.className = 'filter-btn';
+  btn.innerHTML = \`<span class="filter-dot" style="background:\${LAYER_COLORS[layer]||'#666'}"></span>\${LAYER_NAMES[layer]||layer}\`;
+  btn.onclick = () => {
+    layerVisible[layer] = !layerVisible[layer];
+    btn.classList.toggle('off', !layerVisible[layer]);
+    updateVisibility();
+  };
+  filtersDiv.appendChild(btn);
+});
+
+// ── Cluster force: attract same-layer nodes toward group centroid ─────────
+function clusterForce(alpha) {
+  const centroids = {};
+  const counts = {};
+  data.nodes.forEach(d => {
+    if (!centroids[d.layer]) { centroids[d.layer] = { x: 0, y: 0 }; counts[d.layer] = 0; }
+    centroids[d.layer].x += d.x || 0;
+    centroids[d.layer].y += d.y || 0;
+    counts[d.layer]++;
+  });
+  for (const l in centroids) {
+    centroids[l].x /= counts[l];
+    centroids[l].y /= counts[l];
+  }
+  const strength = alpha * 0.15;
+  data.nodes.forEach(d => {
+    const c = centroids[d.layer];
+    if (c) {
+      d.vx += (c.x - d.x) * strength;
+      d.vy += (c.y - d.y) * strength;
+    }
+  });
+}
+
+// ── Force simulation ──────────────────────────────────────────────────────
 const sim = d3.forceSimulation(data.nodes)
-  .force('link', d3.forceLink(data.links).id(d => d.id).distance(d => d.relationship === 'contains' ? 60 : 120))
-  .force('charge', d3.forceManyBody().strength(-320))
-  .force('center', d3.forceCenter(width() / 2, height() / 2))
-  .force('collision', d3.forceCollide().radius(d => radius(d) + 20));
+  .force('link', d3.forceLink(data.links).id(d => d.id).distance(d => d.relationship === 'contains' ? 50 : 100).strength(0.4))
+  .force('charge', d3.forceManyBody().strength(-280))
+  .force('center', d3.forceCenter(W() / 2, H() / 2))
+  .force('collision', d3.forceCollide().radius(d => hexSize(d) + 10))
+  .force('cluster', clusterForce);
 
-const link = g.append('g')
-  .selectAll('line').data(data.links).join('line')
+// ── Draw: hull backgrounds per layer ──────────────────────────────────────
+const hullGroup = g.append('g').attr('class', 'hulls');
+const hullPaths = {};
+const hullLabels = {};
+
+layers.forEach(layer => {
+  hullPaths[layer] = hullGroup.append('path')
+    .attr('class', 'hull')
+    .attr('fill', LAYER_COLORS[layer] || '#666')
+    .attr('stroke', LAYER_COLORS[layer] || '#666');
+  hullLabels[layer] = hullGroup.append('text')
+    .attr('class', 'hull-label')
+    .attr('fill', LAYER_COLORS[layer] || '#666')
+    .text(LAYER_NAMES[layer] || layer);
+});
+
+function updateHulls() {
+  layers.forEach(layer => {
+    if (!layerVisible[layer]) { hullPaths[layer].attr('d', null); hullLabels[layer].attr('x', -9999); return; }
+    const pts = data.nodes.filter(d => d.layer === layer && layerVisible[d.layer]).map(d => [d.x, d.y]);
+    if (pts.length < 3) {
+      hullPaths[layer].attr('d', null);
+      if (pts.length > 0) hullLabels[layer].attr('x', pts[0][0]).attr('y', pts[0][1] - 30);
+      else hullLabels[layer].attr('x', -9999);
+      return;
+    }
+    const hull = d3.polygonHull(pts);
+    if (!hull) { hullPaths[layer].attr('d', null); return; }
+    // Pad the hull outward for organic island feel
+    const cx = d3.mean(hull, p => p[0]);
+    const cy = d3.mean(hull, p => p[1]);
+    const padded = hull.map(p => {
+      const dx = p[0] - cx, dy = p[1] - cy;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      return [p[0] + dx/len * 40, p[1] + dy/len * 40];
+    });
+    hullPaths[layer].attr('d', 'M' + padded.join('L') + 'Z');
+    hullLabels[layer].attr('x', cx).attr('y', cy - d3.max(hull, p => Math.abs(p[1] - cy)) - 30);
+  });
+}
+
+// ── Draw: edges ───────────────────────────────────────────────────────────
+const linkGroup = g.append('g');
+const link = linkGroup.selectAll('line').data(data.links).join('line')
   .attr('class', 'link')
-  .attr('stroke', d => d.confidence < 0.6 ? '#444' : '#555')
+  .attr('stroke', d => d.confidence < 0.6 ? '#2a2e35' : '#3d434b')
   .attr('stroke-dasharray', d => d.confidence < 0.6 ? '4 3' : null)
-  .attr('stroke-width', d => d.confidence < 0.6 ? 1 : 1.5);
+  .attr('stroke-width', d => d.confidence < 0.6 ? 0.8 : 1.2)
+  .attr('marker-end', 'url(#arrow)');
 
-link.append('title').text(d => \`\${d.relationship} (conf:\${d.confidence})\n\${d.evidence||''}\`);
+link.append('title').text(d => \`\${d.relationship} (\${Math.round(d.confidence*100)}%)\n\${d.evidence||''}\`);
 
-const node = g.append('g')
-  .selectAll('g').data(data.nodes).join('g').attr('class', 'node')
+// Edge labels
+const linkLabel = linkGroup.selectAll('text').data(data.links).join('text')
+  .attr('class', 'link-label')
+  .text(d => d.relationship);
+
+// ── Draw: nodes (hexagons) ────────────────────────────────────────────────
+const nodeGroup = g.append('g');
+const node = nodeGroup.selectAll('g').data(data.nodes).join('g')
   .call(d3.drag()
     .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
     .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
@@ -417,23 +565,66 @@ const node = g.append('g')
   )
   .on('click', (e, d) => { e.stopPropagation(); showNode(d); });
 
-node.append('circle')
-  .attr('r', radius)
+node.append('path')
+  .attr('class', 'node-hex')
+  .attr('d', d => hexPath(hexSize(d)))
   .attr('fill', d => TYPE_COLORS[d.type] || '#aaa')
-  .attr('stroke', d => d3.color(TYPE_COLORS[d.type] || '#aaa').brighter(1).formatHex())
-  .append('title').text(d => \`\${d.id}\nconf:\${d.confidence}\`);
+  .attr('stroke', d => {
+    const c = d3.color(TYPE_COLORS[d.type] || '#aaa');
+    return c ? c.brighter(0.8).formatHex() : '#ccc';
+  })
+  .attr('fill-opacity', d => 0.6 + d.confidence * 0.4);
 
-node.append('text').attr('dx', d => radius(d) + 4).attr('dy', '.35em').text(d => d.name);
+node.append('title').text(d => \`\${d.name} (\${d.type})\nconf: \${Math.round(d.confidence*100)}%\`);
 
+// Node labels
+const nodeLabel = node.append('text')
+  .attr('class', 'node-label')
+  .attr('dy', d => hexSize(d) + 13)
+  .attr('text-anchor', 'middle')
+  .text(d => d.name.length > 20 ? d.name.substring(0, 18) + '…' : d.name);
+
+// ── Level-of-detail: show/hide based on zoom ──────────────────────────────
+function updateLOD(k) {
+  nodeLabel.style('opacity', k > 0.5 ? Math.min(1, (k - 0.5) * 2) : 0);
+  linkLabel.style('opacity', k > 1.2 ? Math.min(1, (k - 1.2) * 3) : 0);
+  d3.selectAll('.hull-label').style('font-size', k < 0.4 ? '18px' : '13px');
+}
+
+// ── Visibility filter ─────────────────────────────────────────────────────
+function updateVisibility() {
+  node.style('display', d => layerVisible[d.layer] ? null : 'none');
+  link.style('display', d => {
+    const sNode = data.nodes.find(n => n.id === (d.source.id || d.source));
+    const tNode = data.nodes.find(n => n.id === (d.target.id || d.target));
+    return (sNode && layerVisible[sNode.layer]) && (tNode && layerVisible[tNode.layer]) ? null : 'none';
+  });
+  linkLabel.style('display', d => {
+    const sNode = data.nodes.find(n => n.id === (d.source.id || d.source));
+    const tNode = data.nodes.find(n => n.id === (d.target.id || d.target));
+    return (sNode && layerVisible[sNode.layer]) && (tNode && layerVisible[tNode.layer]) ? null : 'none';
+  });
+}
+
+// ── Tick ──────────────────────────────────────────────────────────────────
 sim.on('tick', () => {
-  link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+  updateHulls();
+  link
+    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+  linkLabel
+    .attr('x', d => (d.source.x + d.target.x) / 2)
+    .attr('y', d => (d.source.y + d.target.y) / 2 - 4);
   node.attr('transform', d => \`translate(\${d.x},\${d.y})\`);
 });
 
+// Click empty space to deselect
 svgEl.on('click', () => {
-  sidebar.innerHTML = '<h2>Infrastructure Map</h2><p class="hint">Klicke einen Node um Details anzuzeigen.</p>';
+  sidebar.innerHTML = '<h2>Infrastructure Map</h2><p class="hint">Click a node to view details.</p>';
 });
+
+// Initial LOD
+updateLOD(1);
 </script>
 </body>
 </html>`;
@@ -445,13 +636,13 @@ export function exportSOPMarkdown(sop: SOP): string {
   const lines: string[] = [
     `# ${sop.title}`,
     '',
-    `**Beschreibung:** ${sop.description}`,
-    `**Systeme:** ${sop.involvedSystems.join(', ')}`,
-    `**Dauer:** ${sop.estimatedDuration}`,
-    `**Häufigkeit:** ${sop.frequency}`,
+    `**Description:** ${sop.description}`,
+    `**Systems:** ${sop.involvedSystems.join(', ')}`,
+    `**Duration:** ${sop.estimatedDuration}`,
+    `**Frequency:** ${sop.frequency}`,
     `**Confidence:** ${sop.confidence.toFixed(2)}`,
     '',
-    '## Schritte',
+    '## Steps',
     '',
   ];
 
@@ -492,7 +683,7 @@ export function exportSOPDashboard(sops: Array<SOP & { id: string; workflowId: s
   );
 
   return `<!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Cartography — SOP Dashboard</title>
@@ -587,7 +778,7 @@ export function exportSOPDashboard(sops: Array<SOP & { id: string; workflowId: s
   </div>
 </div>
 <div class="container">
-  <h2 class="section-title">Beteiligte Systeme</h2>
+  <h2 class="section-title">Involved Systems</h2>
   <div class="systems-grid" id="systems"></div>
 
   <h2 class="section-title">SOPs</h2>
@@ -615,7 +806,7 @@ systems.forEach(([name, count]) => {
 
 const listDiv = document.getElementById('sop-list');
 if (sops.length === 0) {
-  listDiv.innerHTML = '<div class="empty">Keine SOPs vorhanden. Shadow-Daemon starten und Workflows beobachten.</div>';
+  listDiv.innerHTML = '<div class="empty">No SOPs found. Start the shadow daemon and observe workflows.</div>';
 }
 
 sops.forEach((sop, i) => {
@@ -645,7 +836,7 @@ sops.forEach((sop, i) => {
           </li>
         \`).join('')}
       </ol>
-      <div class="gen-time">Generiert: \${sop.generatedAt ? sop.generatedAt.substring(0,19).replace('T',' ') : '—'}</div>
+      <div class="gen-time">Generated: \${sop.generatedAt ? sop.generatedAt.substring(0,19).replace('T',' ') : '—'}</div>
     </div>
   \`;
   listDiv.appendChild(card);

@@ -28,76 +28,102 @@ export async function runDiscovery(
   const tools = await createCartographyTools(db, sessionId, { onAskUser });
 
   const hintSection = hint
-    ? `\n⚡ USER-HINT (PRIORITÄT): Der User möchte gezielt nach folgenden Tools suchen: "${hint}"\n  → scan_installed_apps(searchHint: "${hint}") SOFORT ausführen und diese Tools als saas_tool oder config_file speichern!\n`
+    ? `\n⚡ USER HINT (HIGH PRIORITY): The user wants to find these specific tools: "${hint}"\n  → Run scan_installed_apps(searchHint: "${hint}") IMMEDIATELY and save found tools as saas_tool nodes!\n`
     : '';
 
-  const systemPrompt = `Du bist ein Infrastruktur-Discovery-Agent. Kartographiere die gesamte Systemlandschaft — lokale Services, SaaS-Tools UND alle installierten Apps/Tools des Users.
+  const systemPrompt = `You are an infrastructure discovery agent. Map the complete system landscape — local services, SaaS tools, AND all installed apps/tools of the user.
 ${hintSection}
-━━ PFLICHT-REIHENFOLGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SCHRITT 1 — Browser-Lesezeichen (IMMER ZUERST):
-  scan_bookmarks() aufrufen → jede zurückgegebene Domain klassifizieren:
-  • Business-Tools (GitHub, Notion, Jira, Linear, Vercel, AWS, Datadog, etc.) → save_node als saas_tool
-  • Interne Hosts (IPs, custom.company.com:PORT) → save_node als web_service
-  • Persönliches (Social Media, News, Streaming, Shopping) → IGNORIEREN, NICHT speichern
+━━ MANDATORY SEQUENCE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — Browser Bookmarks (ALWAYS FIRST):
+  Call scan_bookmarks() → classify every returned domain:
+  • Business tools (GitHub, Notion, Jira, Linear, Vercel, AWS, Datadog, etc.) → save_node as saas_tool
+  • Internal hosts (IPs, custom.company.com:PORT) → save_node as web_service
+  • Personal (social media, news, streaming, shopping) → IGNORE, do NOT save
 
-SCHRITT 2 — Installierte Apps & Tools (SEHR WICHTIG):
-  scan_installed_apps() aufrufen → ALLE gefundenen Apps/Tools klassifizieren:
-  • IDEs (VS Code, Cursor, Windsurf, JetBrains, etc.) → save_node als saas_tool mit category="ide"
-  • Office & Produktivität (Word, Excel, Notion, Obsidian, etc.) → save_node als saas_tool mit category="productivity"
-  • Dev-Tools (Docker, kubectl, git, Node, Python, etc.) → save_node als saas_tool mit category="dev-tool"
-  • Business-Apps (Slack, Zoom, HubSpot, Salesforce, etc.) → save_node als saas_tool mit category="business"
-  • Browser (Chrome, Firefox, Safari, etc.) → save_node als saas_tool mit category="browser"
-  • Design-Tools (Figma, Sketch, Adobe, etc.) → save_node als saas_tool mit category="design"
-  ALLE relevanten Tools speichern — auch wenn offline/lokal!
+STEP 2 — Browser History (ASK FOR CONSENT FIRST):
+  Call ask_user with question: "May I scan your browser history anonymously? I only extract hostnames (no URLs, no personal data) to discover additional tools you use regularly. Answer yes or no."
+  If user says yes → call scan_browser_history(minVisits: 5) → classify business tools as saas_tool nodes
+  If user says no → skip and proceed to Step 3
 
-SCHRITT 3 — Lokale Infrastruktur:
-  ss -tlnp && ps aux → alle lauschenden Ports/Prozesse identifizieren
-  Jeden Service vertiefen: DB→Schemas, API→Endpoints, Queue→Topics
+STEP 3 — Installed Apps & Tools (VERY IMPORTANT):
+  Call scan_installed_apps() → classify ALL found apps/tools:
+  • IDEs (VS Code, Cursor, Windsurf, JetBrains, etc.) → save_node as saas_tool with category="ide"
+  • Office & productivity (Word, Excel, Notion, Obsidian, etc.) → save_node as saas_tool with category="productivity"
+  • Dev tools (Docker, kubectl, git, Node, Python, etc.) → save_node as saas_tool with category="dev-tool"
+  • Business apps (Slack, Zoom, HubSpot, Salesforce, etc.) → save_node as saas_tool with category="business"
+  • Browsers (Chrome, Firefox, Safari, etc.) → save_node as saas_tool with category="browser"
+  • Design tools (Figma, Sketch, Adobe, etc.) → save_node as saas_tool with category="design"
+  Save ALL relevant tools — even offline/local ones!
 
-SCHRITT 4 — Cloud & Kubernetes (falls CLI vorhanden):
+STEP 4 — Local Databases & Infrastructure:
+  Call scan_local_databases() → discover running DB servers and SQLite files from installed apps
+  • PostgreSQL running → save_node as database_server (id: "database_server:localhost:5432")
+  • MySQL running → save_node as database_server (id: "database_server:localhost:3306")
+  • MongoDB running → save_node as database_server
+  • Redis running → save_node as cache_server
+  • SQLite files in app directories → save_node as database if clearly a business app DB
+  Then run: ss -tlnp && ps aux → identify all listening ports/processes
+  Deepen each service: DB→schemas, API→endpoints, Queue→topics
+
+STEP 5 — Cloud & Kubernetes (if CLI available):
   scan_k8s_resources() → Nodes, Services, Pods, Deployments, Ingresses
-  scan_aws_resources()  → EC2, RDS, ELB, EKS, ElastiCache, S3 (falls AWS CLI + Credentials)
-  scan_gcp_resources()  → Compute, SQL, GKE, Cloud Run, Functions (falls gcloud + Auth)
-  scan_azure_resources() → VMs, AKS, SQL, Redis, WebApps (falls az CLI + Login)
-  Fehler / "nicht verfügbar" → ignorieren, weiter mit nächstem Tool
+  scan_aws_resources()  → EC2, RDS, ELB, EKS, ElastiCache, S3 (if AWS CLI + credentials)
+  scan_gcp_resources()  → Compute, SQL, GKE, Cloud Run, Functions (if gcloud + auth)
+  scan_azure_resources() → VMs, AKS, SQL, Redis, WebApps (if az CLI + login)
+  Errors / "not available" → ignore, continue with next tool
 
-SCHRITT 5 — Config-Files:
+STEP 6 — Config Files:
   .env, docker-compose.yml, application.yml, kubernetes/*.yml
-  Nur Host:Port extrahieren — KEINE Credentials
+  Extract host:port only — NO credentials
 
-SCHRITT 6 — Rückfragen bei Unklarheit:
-  ask_user() nutzen wenn: Dienst unklar ist, Kontext fehlt, oder User Input sinnvoll wäre
-  Beispiele: "Welche Umgebung ist das (dev/staging/prod)?", "Ist <host> ein internes Tool?"
+STEP 7 — Clarifying Questions:
+  Use ask_user() when: a service is unclear, context is missing, or user input would be helpful
+  Examples: "What environment is this (dev/staging/prod)?", "Is <host> an internal tool?"
 
-SCHRITT 7 — Fertig wenn alle Spuren erschöpft.
+STEP 8 — EDGES (CRITICAL — do NOT skip!):
+  After discovering nodes, ALWAYS map relationships with save_edge:
+  • Developer uses IDE → save_edge("saas_tool:vscode", "saas_tool:github.com", "uses")
+  • App connects to Database → save_edge(app_id, db_id, "connects_to")
+  • Service calls API → save_edge(service_id, api_id, "calls")
+  • Container contains Service → save_edge(container_id, service_id, "contains")
+  • Service reads from Queue → save_edge(service_id, queue_id, "reads_from")
+  • Service writes to Database → save_edge(service_id, db_id, "writes_to")
+  • App depends on Cache → save_edge(app_id, cache_id, "depends_on")
+  Think: which tools does the developer use together? What connects to what?
+  Use get_catalog to see all node IDs before saving edges.
+
+STEP 9 — Done when all leads are exhausted.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-PORT-MAPPING: 5432=postgres, 3306=mysql, 27017=mongodb, 6379=redis,
+PORT MAPPING: 5432=postgres, 3306=mysql, 27017=mongodb, 6379=redis,
 9092=kafka, 5672=rabbitmq, 80/443/8080/3000=web_service,
 9090=prometheus, 8500=consul, 8200=vault, 2379=etcd
 
-REGELN:
-• Nur read-only (ss, ps, cat, head, curl -s, docker inspect, kubectl get)
-• Node IDs: "type:host:port" oder "type:name" — keine Pfade, keine Credentials
+RULES:
+• Read-only only (ss, ps, cat, head, curl -s, docker inspect, kubectl get)
+• Node IDs: "type:host:port" or "type:name" — no paths, no credentials
 • saas_tool IDs: "saas_tool:github.com", "saas_tool:vscode", "saas_tool:cursor"
-• Installed-App IDs: "saas_tool:<appname>" z.B. "saas_tool:slack", "saas_tool:docker-desktop"
-• Confidence: 0.9 direkt gesehen, 0.7 aus Config/Bookmarks/Apps, 0.5 Vermutung
-• metadata erlaubt: { description, category, port, version, path } — keine Passwörter
-• get_catalog vor save_node → Duplikate vermeiden
-• Edges speichern wenn Verbindungen klar erkennbar sind
+• Installed-app IDs: "saas_tool:<appname>" e.g. "saas_tool:slack", "saas_tool:docker-desktop"
+• Confidence: 0.9 directly observed, 0.7 from config/bookmarks/apps, 0.5 inferred
+• metadata allowed: { description, category, port, version, path } — no passwords
+• Call get_catalog before save_node → avoid duplicates
+• Save edges whenever connections are clearly identifiable
 
-Entrypoints: ${config.entryPoints.join(', ')}`;
+Entry points: ${config.entryPoints.join(', ')}`;
 
   const initialPrompt = hint
-    ? `Starte Discovery mit USER-HINT: "${hint}".
-Führe SOFORT scan_installed_apps(searchHint: "${hint}") aus um nach diesen Tools zu suchen.
-Dann scan_bookmarks, dann lokale Services.
-Nutze ask_user wenn du Kontext vom User brauchst.`
-    : `Starte Discovery jetzt.
-Führe SOFORT als erstes scan_bookmarks aus — noch bevor du ss oder ps verwendest.
-Danach scan_installed_apps() für alle installierten Apps und Tools.
-Dann systematisch lokale Services, dann Config-Files.
-Nutze ask_user wenn du Kontext vom User brauchst.`;
+    ? `Start discovery with USER HINT: "${hint}".
+Immediately run scan_installed_apps(searchHint: "${hint}") to search for these tools.
+Then scan_bookmarks, then local services.
+Use ask_user when you need context from the user.`
+    : `Start discovery now.
+First, IMMEDIATELY run scan_bookmarks — before using ss or ps.
+Then ask for browser history consent (Step 2).
+Then scan_installed_apps() for all installed apps and tools.
+Then scan_local_databases() for database servers and SQLite files.
+Then systematically scan local services, then config files.
+Finally, map all edges (Step 8 — critical!) before finishing.
+Use ask_user when you need context from the user.`;
 
   let turnCount = 0;
 
@@ -114,7 +140,9 @@ Nutze ask_user wenn du Kontext vom User brauchst.`;
         'mcp__cartograph__save_edge',
         'mcp__cartograph__get_catalog',
         'mcp__cartograph__scan_bookmarks',
+        'mcp__cartograph__scan_browser_history',
         'mcp__cartograph__scan_installed_apps',
+        'mcp__cartograph__scan_local_databases',
         'mcp__cartograph__scan_k8s_resources',
         'mcp__cartograph__scan_aws_resources',
         'mcp__cartograph__scan_gcp_resources',
@@ -180,18 +208,18 @@ export async function runShadowCycle(
   const { query } = await import('@anthropic-ai/claude-code');
   const tools = await createCartographyTools(db, sessionId);
 
-  const prompt = `Analysiere den Diff zwischen diesen beiden System-Snapshots.
-Finde:
-- Neue/geschlossene TCP-Verbindungen → save_event
-- Neue/beendete Prozesse → save_event
-- Bisher unbekannte Services → get_catalog prüfen, dann save_node
-- Task-Grenzen (Inaktivität, Tool-Wechsel) → manage_task
-target = NUR Host:Port. Kurz und effizient.
+  const prompt = `Analyze the diff between these two system snapshots.
+Find:
+- New/closed TCP connections → save_event
+- New/terminated processes → save_event
+- Previously unknown services → check get_catalog, then save_node
+- Task boundaries (inactivity, tool switches) → manage_task
+target = host:port ONLY. Be concise and efficient.
 
-=== VORHER ===
+=== BEFORE ===
 ${prevSnapshot}
 
-=== JETZT ===
+=== NOW ===
 ${currSnapshot}`;
 
   for await (const msg of query({
@@ -240,22 +268,22 @@ export async function generateSOPs(db: CartographyDB, sessionId: string): Promis
       max_tokens: 2048,
       messages: [{
         role: 'user',
-        content: `Generiere eine SOP (Standard Operating Procedure) für diesen wiederkehrenden Workflow.
-Antworte NUR mit validen JSON im Format:
+        content: `Generate a Standard Operating Procedure (SOP) for this recurring workflow.
+Reply ONLY with valid JSON in this format:
 {
   "title": "...",
   "description": "...",
   "steps": [{"order": 1, "instruction": "...", "tool": "...", "target": "...", "notes": "..."}],
   "involvedSystems": ["..."],
-  "estimatedDuration": "~N Minuten",
-  "frequency": "Xmal täglich",
+  "estimatedDuration": "~N minutes",
+  "frequency": "X times daily",
   "confidence": 0.8
 }
 
 Tasks:
 ${taskDescriptions}
 
-Beteiligte Services: ${involved.join(', ')}`,
+Involved services: ${involved.join(', ')}`,
       }],
     });
 
