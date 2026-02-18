@@ -292,7 +292,36 @@ export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0e14; color: #e6edf3; font-family: 'SF Mono','Fira Code','Cascadia Code',monospace; display: flex; overflow: hidden; }
+    body { background: #0a0e14; color: #e6edf3; font-family: 'SF Mono','Fira Code','Cascadia Code',monospace; display: flex; overflow: hidden; height: 100vh; }
+
+    /* ── Left node panel ─────────────────────────────── */
+    #node-panel {
+      width: 220px; min-width: 220px; height: 100vh; overflow: hidden;
+      background: #0d1117; border-right: 1px solid #1b2028;
+      display: flex; flex-direction: column;
+    }
+    #node-panel-header {
+      padding: 10px 12px 8px; border-bottom: 1px solid #1b2028;
+      font-size: 11px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.6px;
+    }
+    #node-search {
+      width: calc(100% - 16px); margin: 8px; padding: 5px 8px;
+      background: #161b22; border: 1px solid #30363d; border-radius: 5px;
+      color: #e6edf3; font-size: 11px; font-family: inherit; outline: none;
+    }
+    #node-search:focus { border-color: #58a6ff; }
+    #node-list { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+    .node-list-item {
+      padding: 5px 12px; cursor: pointer; font-size: 11px;
+      display: flex; align-items: center; gap: 6px; border-left: 2px solid transparent;
+    }
+    .node-list-item:hover { background: #161b22; }
+    .node-list-item.active { background: #1a2436; border-left-color: #58a6ff; }
+    .node-list-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+    .node-list-name { color: #c9d1d9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .node-list-type { color: #484f58; font-size: 9px; flex-shrink: 0; }
+
+    /* ── Center graph ────────────────────────────────── */
     #graph { flex: 1; height: 100vh; position: relative; }
     svg { width: 100%; height: 100%; }
     .hull { opacity: 0.12; stroke-width: 1.5; stroke-opacity: 0.25; }
@@ -301,10 +330,12 @@ export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
     .link-label { font-size: 8px; fill: #6e7681; pointer-events: none; opacity: 0; }
     .node-hex { stroke-width: 1.8; cursor: pointer; transition: opacity 0.15s; }
     .node-hex:hover { filter: brightness(1.3); stroke-width: 3; }
+    .node-hex.selected { stroke-width: 3.5; filter: brightness(1.5); }
     .node-label { font-size: 10px; fill: #c9d1d9; pointer-events: none; opacity: 0; }
-    /* Sidebar */
+
+    /* ── Right sidebar ───────────────────────────────── */
     #sidebar {
-      width: 320px; min-width: 320px; height: 100vh; overflow-y: auto;
+      width: 300px; min-width: 300px; height: 100vh; overflow-y: auto;
       background: #0d1117; border-left: 1px solid #1b2028;
       padding: 16px; font-size: 12px; line-height: 1.6;
     }
@@ -318,15 +349,24 @@ export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
     #sidebar .edges-list { margin-top: 12px; }
     #sidebar .edge-item { padding: 4px 0; border-bottom: 1px solid #161b22; color: #6e7681; font-size: 11px; }
     #sidebar .edge-item span { color: #c9d1d9; }
+    #sidebar .action-row { display: flex; gap: 6px; margin-top: 14px; }
+    .btn-delete {
+      flex: 1; padding: 6px 10px; background: transparent; border: 1px solid #6e191d;
+      color: #f85149; border-radius: 5px; font-size: 11px; font-family: inherit;
+      cursor: pointer; text-align: center;
+    }
+    .btn-delete:hover { background: #3d0c0c; }
     .hint { color: #3d434b; font-size: 11px; margin-top: 8px; }
-    /* HUD */
+
+    /* ── HUD ─────────────────────────────────────────── */
     #hud { position: absolute; top: 10px; left: 10px; background: rgba(10,14,20,0.88);
            padding: 10px 14px; border-radius: 8px; font-size: 12px; border: 1px solid #1b2028; pointer-events: none; }
     #hud strong { color: #58a6ff; }
     #hud .stats { color: #6e7681; }
     #hud .zoom-level { color: #3d434b; font-size: 10px; margin-top: 2px; }
-    /* Layer filter */
-    #filters { position: absolute; top: 10px; right: 330px; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: auto; }
+
+    /* ── Toolbar (filters + JGF export) ─────────────── */
+    #toolbar { position: absolute; top: 10px; right: 10px; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: auto; align-items: center; }
     .filter-btn {
       background: rgba(10,14,20,0.85); border: 1px solid #1b2028; border-radius: 6px;
       color: #c9d1d9; padding: 4px 10px; font-size: 11px; cursor: pointer;
@@ -335,22 +375,40 @@ export function exportHTML(nodes: NodeRow[], edges: EdgeRow[]): string {
     .filter-btn:hover { border-color: #30363d; }
     .filter-btn.off { opacity: 0.35; }
     .filter-dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+    .export-btn {
+      background: rgba(10,14,20,0.85); border: 1px solid #1b2028; border-radius: 6px;
+      color: #58a6ff; padding: 4px 12px; font-size: 11px; cursor: pointer;
+      font-family: inherit;
+    }
+    .export-btn:hover { border-color: #58a6ff; background: rgba(88,166,255,0.08); }
   </style>
 </head>
 <body>
+
+<!-- Left: node list panel -->
+<div id="node-panel">
+  <div id="node-panel-header">Nodes (${nodes.length})</div>
+  <input id="node-search" type="text" placeholder="Search nodes…" autocomplete="off" spellcheck="false">
+  <div id="node-list"></div>
+</div>
+
+<!-- Center: graph -->
 <div id="graph">
   <div id="hud">
     <strong>Cartography</strong> &nbsp;
-    <span class="stats">${nodes.length} nodes · ${edges.length} edges</span><br>
+    <span class="stats" id="hud-stats">${nodes.length} nodes · ${edges.length} edges</span><br>
     <span class="zoom-level">Scroll = zoom · Drag = pan · Click = details</span>
   </div>
-  <div id="filters"></div>
+  <div id="toolbar"></div>
   <svg></svg>
 </div>
+
+<!-- Right: detail sidebar -->
 <div id="sidebar">
   <h2>Infrastructure Map</h2>
   <p class="hint">Click a node to view details.</p>
 </div>
+
 <script>
 const data = ${graphData};
 
@@ -363,7 +421,6 @@ const TYPE_COLORS = {
   config_file: '#adb5bd', saas_tool: '#c084fc', table: '#f97316', unknown: '#6c757d',
 };
 
-// ── Color per layer (for hull backgrounds) ────────────────────────────────
 const LAYER_COLORS = {
   saas: '#c084fc', web: '#6bcb77', data: '#ff6b6b',
   messaging: '#c77dff', infra: '#4a9eff', config: '#adb5bd', other: '#6c757d',
@@ -373,7 +430,7 @@ const LAYER_NAMES = {
   messaging: 'Messaging', infra: 'Infrastructure', config: 'Config', other: 'Other',
 };
 
-// ── Hexagon path generator ────────────────────────────────────────────────
+// ── Hexagon path ──────────────────────────────────────────────────────────
 const HEX_SIZE = { saas_tool: 16, host: 18, database_server: 18, k8s_cluster: 20, default: 14 };
 function hexSize(d) { return HEX_SIZE[d.type] || HEX_SIZE.default; }
 function hexPath(size) {
@@ -385,8 +442,41 @@ function hexPath(size) {
   return 'M' + pts.map(p => p.join(',')).join('L') + 'Z';
 }
 
-// ── Sidebar detail view ──────────────────────────────────────────────────
+// ── Left panel ────────────────────────────────────────────────────────────
+const nodeListEl = document.getElementById('node-list');
+const nodeSearchEl = document.getElementById('node-search');
+let selectedNodeId = null;
+
+function buildNodeList(filter) {
+  const q = (filter || '').toLowerCase();
+  nodeListEl.innerHTML = '';
+  const sorted = [...data.nodes].sort((a, b) => a.name.localeCompare(b.name));
+  for (const d of sorted) {
+    if (q && !d.name.toLowerCase().includes(q) && !d.type.includes(q) && !d.id.toLowerCase().includes(q)) continue;
+    const item = document.createElement('div');
+    item.className = 'node-list-item' + (d.id === selectedNodeId ? ' active' : '');
+    item.dataset.id = d.id;
+    const color = TYPE_COLORS[d.type] || '#aaa';
+    item.innerHTML = \`<span class="node-list-dot" style="background:\${color}"></span>
+      <span class="node-list-name" title="\${d.id}">\${d.name}</span>
+      <span class="node-list-type">\${d.type.replace(/_/g,' ')}</span>\`;
+    item.onclick = () => { selectNode(d); focusNode(d); };
+    nodeListEl.appendChild(item);
+  }
+}
+
+nodeSearchEl.addEventListener('input', e => buildNodeList(e.target.value));
+
+// ── Sidebar detail view ───────────────────────────────────────────────────
 const sidebar = document.getElementById('sidebar');
+
+function selectNode(d) {
+  selectedNodeId = d.id;
+  buildNodeList(nodeSearchEl.value);
+  showNode(d);
+  // highlight hex
+  d3.selectAll('.node-hex').classed('selected', nd => nd.id === d.id);
+}
 
 function showNode(d) {
   const c = TYPE_COLORS[d.type] || '#aaa';
@@ -421,7 +511,26 @@ function showNode(d) {
       \${metaRows}
     </table>
     \${related.length > 0 ? '<div class="edges-list"><strong>Connections (' + related.length + '):</strong>'+edgeItems+'</div>' : ''}
+    <div class="action-row">
+      <button class="btn-delete" onclick="deleteNode('\${d.id}')">🗑 Delete node</button>
+    </div>
   \`;
+}
+
+// ── Delete node ───────────────────────────────────────────────────────────
+function deleteNode(id) {
+  const idx = data.nodes.findIndex(n => n.id === id);
+  if (idx === -1) return;
+  data.nodes.splice(idx, 1);
+  data.links = data.links.filter(l =>
+    (l.source.id || l.source) !== id && (l.target.id || l.target) !== id
+  );
+  selectedNodeId = null;
+  sidebar.innerHTML = '<h2>Infrastructure Map</h2><p class="hint">Node deleted.</p>';
+  document.getElementById('hud-stats').textContent =
+    data.nodes.length + ' nodes · ' + data.links.length + ' edges';
+  rebuildGraph();
+  buildNodeList(nodeSearchEl.value);
 }
 
 // ── SVG setup ─────────────────────────────────────────────────────────────
@@ -431,7 +540,6 @@ const W = () => graphDiv.clientWidth;
 const H = () => graphDiv.clientHeight;
 const g = svgEl.append('g');
 
-// Arrow marker for directed edges
 svgEl.append('defs').append('marker')
   .attr('id', 'arrow').attr('viewBox', '0 0 10 6')
   .attr('refX', 10).attr('refY', 3)
@@ -440,7 +548,6 @@ svgEl.append('defs').append('marker')
   .append('path').attr('d', 'M0,0 L10,3 L0,6 Z').attr('fill', '#555');
 
 let currentZoom = 1;
-
 const zoomBehavior = d3.zoom().scaleExtent([0.08, 6]).on('zoom', e => {
   g.attr('transform', e.transform);
   currentZoom = e.transform.k;
@@ -453,7 +560,9 @@ const layers = [...new Set(data.nodes.map(d => d.layer))];
 const layerVisible = {};
 layers.forEach(l => layerVisible[l] = true);
 
-const filtersDiv = document.getElementById('filters');
+const toolbarEl = document.getElementById('toolbar');
+
+// Filter buttons
 layers.forEach(layer => {
   const btn = document.createElement('button');
   btn.className = 'filter-btn';
@@ -463,10 +572,47 @@ layers.forEach(layer => {
     btn.classList.toggle('off', !layerVisible[layer]);
     updateVisibility();
   };
-  filtersDiv.appendChild(btn);
+  toolbarEl.appendChild(btn);
 });
 
-// ── Cluster force: attract same-layer nodes toward group centroid ─────────
+// JGF export button
+const jgfBtn = document.createElement('button');
+jgfBtn.className = 'export-btn';
+jgfBtn.textContent = '↓ JGF';
+jgfBtn.title = 'Export JSON Graph Format';
+jgfBtn.onclick = exportJGF;
+toolbarEl.appendChild(jgfBtn);
+
+// ── JGF export ────────────────────────────────────────────────────────────
+function exportJGF() {
+  const jgf = {
+    graph: {
+      directed: true,
+      type: 'cartography',
+      label: 'Infrastructure Map',
+      metadata: { exportedAt: new Date().toISOString() },
+      nodes: Object.fromEntries(data.nodes.map(n => [n.id, {
+        label: n.name,
+        metadata: { type: n.type, layer: n.layer, confidence: n.confidence,
+          discoveredVia: n.discoveredVia, discoveredAt: n.discoveredAt,
+          tags: n.tags, ...n.metadata }
+      }])),
+      edges: data.links.map(l => ({
+        source: l.source.id || l.source,
+        target: l.target.id || l.target,
+        relation: l.relationship,
+        metadata: { confidence: l.confidence, evidence: l.evidence }
+      })),
+    }
+  };
+  const blob = new Blob([JSON.stringify(jgf, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'cartography-graph.jgf.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Cluster force ─────────────────────────────────────────────────────────
 function clusterForce(alpha) {
   const centroids = {};
   const counts = {};
@@ -476,42 +622,23 @@ function clusterForce(alpha) {
     centroids[d.layer].y += d.y || 0;
     counts[d.layer]++;
   });
-  for (const l in centroids) {
-    centroids[l].x /= counts[l];
-    centroids[l].y /= counts[l];
-  }
+  for (const l in centroids) { centroids[l].x /= counts[l]; centroids[l].y /= counts[l]; }
   const strength = alpha * 0.15;
   data.nodes.forEach(d => {
     const c = centroids[d.layer];
-    if (c) {
-      d.vx += (c.x - d.x) * strength;
-      d.vy += (c.y - d.y) * strength;
-    }
+    if (c) { d.vx += (c.x - d.x) * strength; d.vy += (c.y - d.y) * strength; }
   });
 }
 
-// ── Force simulation ──────────────────────────────────────────────────────
-const sim = d3.forceSimulation(data.nodes)
-  .force('link', d3.forceLink(data.links).id(d => d.id).distance(d => d.relationship === 'contains' ? 50 : 100).strength(0.4))
-  .force('charge', d3.forceManyBody().strength(-280))
-  .force('center', d3.forceCenter(W() / 2, H() / 2))
-  .force('collision', d3.forceCollide().radius(d => hexSize(d) + 10))
-  .force('cluster', clusterForce);
-
-// ── Draw: hull backgrounds per layer ──────────────────────────────────────
+// ── Hull group ────────────────────────────────────────────────────────────
 const hullGroup = g.append('g').attr('class', 'hulls');
 const hullPaths = {};
 const hullLabels = {};
-
 layers.forEach(layer => {
-  hullPaths[layer] = hullGroup.append('path')
-    .attr('class', 'hull')
-    .attr('fill', LAYER_COLORS[layer] || '#666')
-    .attr('stroke', LAYER_COLORS[layer] || '#666');
-  hullLabels[layer] = hullGroup.append('text')
-    .attr('class', 'hull-label')
-    .attr('fill', LAYER_COLORS[layer] || '#666')
-    .text(LAYER_NAMES[layer] || layer);
+  hullPaths[layer] = hullGroup.append('path').attr('class', 'hull')
+    .attr('fill', LAYER_COLORS[layer] || '#666').attr('stroke', LAYER_COLORS[layer] || '#666');
+  hullLabels[layer] = hullGroup.append('text').attr('class', 'hull-label')
+    .attr('fill', LAYER_COLORS[layer] || '#666').text(LAYER_NAMES[layer] || layer);
 });
 
 function updateHulls() {
@@ -526,7 +653,6 @@ function updateHulls() {
     }
     const hull = d3.polygonHull(pts);
     if (!hull) { hullPaths[layer].attr('d', null); return; }
-    // Pad the hull outward for organic island feel
     const cx = d3.mean(hull, p => p[0]);
     const cy = d3.mean(hull, p => p[1]);
     const padded = hull.map(p => {
@@ -539,92 +665,117 @@ function updateHulls() {
   });
 }
 
-// ── Draw: edges ───────────────────────────────────────────────────────────
+// ── Graph rendering (rebuildable after delete) ────────────────────────────
+let linkSel, linkLabelSel, nodeSel, nodeLabelSel, sim;
 const linkGroup = g.append('g');
-const link = linkGroup.selectAll('line').data(data.links).join('line')
-  .attr('class', 'link')
-  .attr('stroke', d => d.confidence < 0.6 ? '#2a2e35' : '#3d434b')
-  .attr('stroke-dasharray', d => d.confidence < 0.6 ? '4 3' : null)
-  .attr('stroke-width', d => d.confidence < 0.6 ? 0.8 : 1.2)
-  .attr('marker-end', 'url(#arrow)');
-
-link.append('title').text(d => \`\${d.relationship} (\${Math.round(d.confidence*100)}%)\n\${d.evidence||''}\`);
-
-// Edge labels
-const linkLabel = linkGroup.selectAll('text').data(data.links).join('text')
-  .attr('class', 'link-label')
-  .text(d => d.relationship);
-
-// ── Draw: nodes (hexagons) ────────────────────────────────────────────────
 const nodeGroup = g.append('g');
-const node = nodeGroup.selectAll('g').data(data.nodes).join('g')
-  .call(d3.drag()
-    .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-    .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
-    .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
-  )
-  .on('click', (e, d) => { e.stopPropagation(); showNode(d); });
 
-node.append('path')
-  .attr('class', 'node-hex')
-  .attr('d', d => hexPath(hexSize(d)))
-  .attr('fill', d => TYPE_COLORS[d.type] || '#aaa')
-  .attr('stroke', d => {
-    const c = d3.color(TYPE_COLORS[d.type] || '#aaa');
-    return c ? c.brighter(0.8).formatHex() : '#ccc';
-  })
-  .attr('fill-opacity', d => 0.6 + d.confidence * 0.4);
+function focusNode(d) {
+  if (!d.x || !d.y) return;
+  const w = W(), h = H();
+  svgEl.transition().duration(500).call(
+    zoomBehavior.transform,
+    d3.zoomIdentity.translate(w / 2, h / 2).scale(Math.min(3, currentZoom < 1 ? 1.5 : currentZoom)).translate(-d.x, -d.y)
+  );
+}
 
-node.append('title').text(d => \`\${d.name} (\${d.type})\nconf: \${Math.round(d.confidence*100)}%\`);
+function rebuildGraph() {
+  if (sim) sim.stop();
 
-// Node labels
-const nodeLabel = node.append('text')
-  .attr('class', 'node-label')
-  .attr('dy', d => hexSize(d) + 13)
-  .attr('text-anchor', 'middle')
-  .text(d => d.name.length > 20 ? d.name.substring(0, 18) + '…' : d.name);
+  // Links
+  linkSel = linkGroup.selectAll('line').data(data.links, d => \`\${d.source.id||d.source}>\${d.target.id||d.target}\`);
+  linkSel.exit().remove();
+  const linkEnter = linkSel.enter().append('line').attr('class', 'link');
+  linkSel = linkEnter.merge(linkSel)
+    .attr('stroke', d => d.confidence < 0.6 ? '#2a2e35' : '#3d434b')
+    .attr('stroke-dasharray', d => d.confidence < 0.6 ? '4 3' : null)
+    .attr('stroke-width', d => d.confidence < 0.6 ? 0.8 : 1.2)
+    .attr('marker-end', 'url(#arrow)');
+  linkSel.select('title').remove();
+  linkSel.append('title').text(d => \`\${d.relationship} (\${Math.round(d.confidence*100)}%)\n\${d.evidence||''}\`);
 
-// ── Level-of-detail: show/hide based on zoom ──────────────────────────────
+  // Link labels
+  linkLabelSel = linkGroup.selectAll('text').data(data.links, d => \`\${d.source.id||d.source}>\${d.target.id||d.target}\`);
+  linkLabelSel.exit().remove();
+  linkLabelSel = linkLabelSel.enter().append('text').attr('class', 'link-label').merge(linkLabelSel)
+    .text(d => d.relationship);
+
+  // Nodes
+  nodeSel = nodeGroup.selectAll('g').data(data.nodes, d => d.id);
+  nodeSel.exit().remove();
+  const nodeEnter = nodeSel.enter().append('g')
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+    )
+    .on('click', (e, d) => { e.stopPropagation(); selectNode(d); });
+  nodeEnter.append('path').attr('class', 'node-hex');
+  nodeEnter.append('title');
+  nodeEnter.append('text').attr('class', 'node-label').attr('text-anchor', 'middle');
+
+  nodeSel = nodeEnter.merge(nodeSel);
+  nodeSel.select('.node-hex')
+    .attr('d', d => hexPath(hexSize(d)))
+    .attr('fill', d => TYPE_COLORS[d.type] || '#aaa')
+    .attr('stroke', d => { const c = d3.color(TYPE_COLORS[d.type] || '#aaa'); return c ? c.brighter(0.8).formatHex() : '#ccc'; })
+    .attr('fill-opacity', d => 0.6 + d.confidence * 0.4)
+    .classed('selected', d => d.id === selectedNodeId);
+  nodeSel.select('title').text(d => \`\${d.name} (\${d.type})\nconf: \${Math.round(d.confidence*100)}%\`);
+  nodeLabelSel = nodeSel.select('.node-label')
+    .attr('dy', d => hexSize(d) + 13)
+    .text(d => d.name.length > 20 ? d.name.substring(0, 18) + '…' : d.name);
+
+  // Simulation
+  sim = d3.forceSimulation(data.nodes)
+    .force('link', d3.forceLink(data.links).id(d => d.id).distance(d => d.relationship === 'contains' ? 50 : 100).strength(0.4))
+    .force('charge', d3.forceManyBody().strength(-280))
+    .force('center', d3.forceCenter(W() / 2, H() / 2))
+    .force('collision', d3.forceCollide().radius(d => hexSize(d) + 10))
+    .force('cluster', clusterForce)
+    .on('tick', () => {
+      updateHulls();
+      linkSel.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+             .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      linkLabelSel.attr('x', d => (d.source.x + d.target.x) / 2)
+                  .attr('y', d => (d.source.y + d.target.y) / 2 - 4);
+      nodeSel.attr('transform', d => \`translate(\${d.x},\${d.y})\`);
+    });
+}
+
+// ── LOD & visibility ──────────────────────────────────────────────────────
 function updateLOD(k) {
-  nodeLabel.style('opacity', k > 0.5 ? Math.min(1, (k - 0.5) * 2) : 0);
-  linkLabel.style('opacity', k > 1.2 ? Math.min(1, (k - 1.2) * 3) : 0);
+  if (nodeLabelSel) nodeLabelSel.style('opacity', k > 0.5 ? Math.min(1, (k - 0.5) * 2) : 0);
+  if (linkLabelSel) linkLabelSel.style('opacity', k > 1.2 ? Math.min(1, (k - 1.2) * 3) : 0);
   d3.selectAll('.hull-label').style('font-size', k < 0.4 ? '18px' : '13px');
 }
 
-// ── Visibility filter ─────────────────────────────────────────────────────
 function updateVisibility() {
-  node.style('display', d => layerVisible[d.layer] ? null : 'none');
-  link.style('display', d => {
-    const sNode = data.nodes.find(n => n.id === (d.source.id || d.source));
-    const tNode = data.nodes.find(n => n.id === (d.target.id || d.target));
-    return (sNode && layerVisible[sNode.layer]) && (tNode && layerVisible[tNode.layer]) ? null : 'none';
+  if (!nodeSel) return;
+  nodeSel.style('display', d => layerVisible[d.layer] ? null : 'none');
+  linkSel.style('display', d => {
+    const s = data.nodes.find(n => n.id === (d.source.id||d.source));
+    const t = data.nodes.find(n => n.id === (d.target.id||d.target));
+    return (s && layerVisible[s.layer]) && (t && layerVisible[t.layer]) ? null : 'none';
   });
-  linkLabel.style('display', d => {
-    const sNode = data.nodes.find(n => n.id === (d.source.id || d.source));
-    const tNode = data.nodes.find(n => n.id === (d.target.id || d.target));
-    return (sNode && layerVisible[sNode.layer]) && (tNode && layerVisible[tNode.layer]) ? null : 'none';
+  linkLabelSel.style('display', d => {
+    const s = data.nodes.find(n => n.id === (d.source.id||d.source));
+    const t = data.nodes.find(n => n.id === (d.target.id||d.target));
+    return (s && layerVisible[s.layer]) && (t && layerVisible[t.layer]) ? null : 'none';
   });
 }
 
-// ── Tick ──────────────────────────────────────────────────────────────────
-sim.on('tick', () => {
-  updateHulls();
-  link
-    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-  linkLabel
-    .attr('x', d => (d.source.x + d.target.x) / 2)
-    .attr('y', d => (d.source.y + d.target.y) / 2 - 4);
-  node.attr('transform', d => \`translate(\${d.x},\${d.y})\`);
-});
+// ── Init ──────────────────────────────────────────────────────────────────
+rebuildGraph();
+buildNodeList();
+updateLOD(1);
 
-// Click empty space to deselect
 svgEl.on('click', () => {
+  selectedNodeId = null;
+  d3.selectAll('.node-hex').classed('selected', false);
+  buildNodeList(nodeSearchEl.value);
   sidebar.innerHTML = '<h2>Infrastructure Map</h2><p class="hint">Click a node to view details.</p>';
 });
-
-// Initial LOD
-updateLOD(1);
 </script>
 </body>
 </html>`;
