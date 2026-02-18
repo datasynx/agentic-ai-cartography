@@ -199,6 +199,15 @@ const CHROMIUM_BASE = IS_MAC
   ? `${HOME}/Library/Application Support/Chromium`
   : `${HOME}/.config/chromium`;
 
+// Snap / Flatpak variants (Linux only)
+const CHROMIUM_SNAP_BASE = `${HOME}/snap/chromium/common/chromium`;
+const CHROMIUM_FLATPAK_BASE = `${HOME}/.var/app/org.chromium.Chromium/config/chromium`;
+const CHROME_FLATPAK_BASE = `${HOME}/.var/app/com.google.Chrome/config/google-chrome`;
+const BRAVE_FLATPAK_BASE = `${HOME}/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser`;
+const EDGE_FLATPAK_BASE = `${HOME}/.var/app/com.microsoft.Edge/config/microsoft-edge`;
+const FIREFOX_SNAP_BASE = `${HOME}/snap/firefox/common/.mozilla/firefox`;
+const FIREFOX_FLATPAK_BASE = `${HOME}/.var/app/org.mozilla.firefox/.mozilla/firefox`;
+
 const EDGE_BASE = IS_MAC
   ? `${HOME}/Library/Application Support/Microsoft Edge`
   : `${HOME}/.config/microsoft-edge`;
@@ -216,21 +225,25 @@ const OPERA_BASE = IS_MAC
   : `${HOME}/.config/opera`;
 
 function firefoxProfileDirs(): string[] {
-  const base = IS_MAC
-    ? `${HOME}/Library/Application Support/Firefox/Profiles`
-    : `${HOME}/.mozilla/firefox`;
-  if (!existsSync(base)) return [];
-  try {
-    return readdirSync(base)
-      .map(d => join(base, d))
-      .filter(d => {
+  const bases = IS_MAC
+    ? [`${HOME}/Library/Application Support/Firefox/Profiles`]
+    : [`${HOME}/.mozilla/firefox`, FIREFOX_SNAP_BASE, FIREFOX_FLATPAK_BASE];
+
+  const dirs: string[] = [];
+  for (const base of bases) {
+    if (!existsSync(base)) continue;
+    try {
+      for (const d of readdirSync(base)) {
+        const full = join(base, d);
         try {
-          return statSync(d).isDirectory() && existsSync(join(d, 'places.sqlite'));
-        } catch { return false; }
-      });
-  } catch {
-    return [];
+          if (statSync(full).isDirectory() && existsSync(join(full, 'places.sqlite'))) {
+            dirs.push(full);
+          }
+        } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
   }
+  return dirs;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -238,6 +251,7 @@ function firefoxProfileDirs(): string[] {
 export async function scanAllBookmarks(): Promise<BookmarkHost[]> {
   const all: BookmarkHost[] = [];
 
+  // Standard browser paths
   for (const p of chromeLikePaths(CHROME_BASE))   all.push(...readChromeLike(p, 'chrome'));
   for (const p of chromeLikePaths(CHROMIUM_BASE)) all.push(...readChromeLike(p, 'chromium'));
   for (const p of chromeLikePaths(EDGE_BASE))     all.push(...readChromeLike(p, 'edge'));
@@ -245,6 +259,16 @@ export async function scanAllBookmarks(): Promise<BookmarkHost[]> {
   for (const p of chromeLikePaths(VIVALDI_BASE))  all.push(...readChromeLike(p, 'vivaldi'));
   for (const p of chromeLikePaths(OPERA_BASE))    all.push(...readChromeLike(p, 'opera'));
 
+  // Snap / Flatpak paths (Linux)
+  if (!IS_MAC) {
+    for (const p of chromeLikePaths(CHROMIUM_SNAP_BASE))    all.push(...readChromeLike(p, 'chromium-snap'));
+    for (const p of chromeLikePaths(CHROMIUM_FLATPAK_BASE)) all.push(...readChromeLike(p, 'chromium-flatpak'));
+    for (const p of chromeLikePaths(CHROME_FLATPAK_BASE))   all.push(...readChromeLike(p, 'chrome-flatpak'));
+    for (const p of chromeLikePaths(BRAVE_FLATPAK_BASE))    all.push(...readChromeLike(p, 'brave-flatpak'));
+    for (const p of chromeLikePaths(EDGE_FLATPAK_BASE))     all.push(...readChromeLike(p, 'edge-flatpak'));
+  }
+
+  // Firefox: standard + snap + flatpak
   for (const dir of firefoxProfileDirs()) {
     all.push(...await readFirefoxBookmarks(dir));
   }
@@ -261,6 +285,7 @@ export async function scanAllBookmarks(): Promise<BookmarkHost[]> {
 export async function scanAllHistory(): Promise<HistoryHost[]> {
   const all: HistoryHost[] = [];
 
+  // Standard browser paths
   for (const p of chromeLikeHistoryPaths(CHROME_BASE))   all.push(...await readChromiumHistory(p, 'chrome'));
   for (const p of chromeLikeHistoryPaths(CHROMIUM_BASE)) all.push(...await readChromiumHistory(p, 'chromium'));
   for (const p of chromeLikeHistoryPaths(EDGE_BASE))     all.push(...await readChromiumHistory(p, 'edge'));
@@ -268,6 +293,16 @@ export async function scanAllHistory(): Promise<HistoryHost[]> {
   for (const p of chromeLikeHistoryPaths(VIVALDI_BASE))  all.push(...await readChromiumHistory(p, 'vivaldi'));
   for (const p of chromeLikeHistoryPaths(OPERA_BASE))    all.push(...await readChromiumHistory(p, 'opera'));
 
+  // Snap / Flatpak paths (Linux)
+  if (!IS_MAC) {
+    for (const p of chromeLikeHistoryPaths(CHROMIUM_SNAP_BASE))    all.push(...await readChromiumHistory(p, 'chromium-snap'));
+    for (const p of chromeLikeHistoryPaths(CHROMIUM_FLATPAK_BASE)) all.push(...await readChromiumHistory(p, 'chromium-flatpak'));
+    for (const p of chromeLikeHistoryPaths(CHROME_FLATPAK_BASE))   all.push(...await readChromiumHistory(p, 'chrome-flatpak'));
+    for (const p of chromeLikeHistoryPaths(BRAVE_FLATPAK_BASE))    all.push(...await readChromiumHistory(p, 'brave-flatpak'));
+    for (const p of chromeLikeHistoryPaths(EDGE_FLATPAK_BASE))     all.push(...await readChromiumHistory(p, 'edge-flatpak'));
+  }
+
+  // Firefox: standard + snap + flatpak
   for (const dir of firefoxProfileDirs()) {
     all.push(...await readFirefoxHistory(dir));
   }
