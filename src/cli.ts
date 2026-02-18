@@ -37,7 +37,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
 
   program
     .name(CMD)
@@ -103,7 +103,7 @@ function main(): void {
       let edgeCount = 0;
 
       w('\n');
-      w(`  ${bold('DISCOVERY')}  ${dim(config.entryPoints.join(', '))}\n`);
+      w(`  ${bold('CARTOGRAPHY')}  ${dim(config.entryPoints.join(', '))}\n`);
       w(`  ${dim('Model: ' + config.agentModel + ' | MaxTurns: ' + config.maxTurns)}\n`);
       w(dim('  ────────────────────────────────────────────────\n'));
       w('\n');
@@ -852,8 +852,8 @@ ${infraSummary.substring(0, 12000)}`;
       out('\n');
       line();
 
-      // ── DISCOVERY
-      out(b(cyan('  DISCOVERY\n')));
+      // ── CARTOGRAPHY
+      out(b(cyan('  CARTOGRAPHY\n')));
       out('\n');
       out(`  ${green('datasynx-cartography discover')}\n`);
       out(`    Scannt die lokale Infrastruktur (Claude Sonnet).\n`);
