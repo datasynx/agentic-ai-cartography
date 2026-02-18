@@ -7,7 +7,7 @@ import type { CartographyConfig, DaemonMessage, ShadowStatus } from './types.js'
 
 export class ForegroundClient {
   async run(config: CartographyConfig): Promise<void> {
-    process.stderr.write('👁 Cartography Shadow (foreground) gestartet\n');
+    process.stderr.write('👁 Datasynx Cartography Shadow (foreground) gestartet\n');
     process.stderr.write(`   Intervall: ${config.pollIntervalMs / 1000}s | Modell: ${config.shadowModel}\n`);
     process.stderr.write('   Ctrl+C zum Beenden\n\n');
 
@@ -20,6 +20,8 @@ export class ForegroundClient {
 // Connects to a running daemon via Unix socket and provides terminal UI
 
 export class AttachClient {
+  private isPaused = false;
+
   async attach(socketPath: string): Promise<void> {
     const client = new IPCClient();
 
@@ -27,13 +29,13 @@ export class AttachClient {
       await client.connect(socketPath);
     } catch {
       process.stderr.write(`❌ Kann nicht an Daemon ankoppeln: ${socketPath}\n`);
-      process.stderr.write('   Ist der Daemon gestartet? cartography shadow status\n');
+      process.stderr.write('   Ist der Daemon gestartet? datasynx-cartography shadow status\n');
       process.exitCode = 1;
       return;
     }
 
     process.stderr.write('📡 Verbunden mit Shadow-Daemon\n');
-    process.stderr.write('   [T] Neuer Task  [S] Status  [D] Trennen  [Q] Daemon stoppen\n\n');
+    process.stderr.write('   [T] Neuer Task  [S] Status  [P] Pause/Resume  [D] Trennen  [Q] Stoppen\n\n');
 
     // Set raw mode for hotkeys
     if (process.stdin.isTTY) {
@@ -47,7 +49,6 @@ export class AttachClient {
 
       if (k === 't') {
         process.stdout.write('\nTask-Beschreibung: ');
-        // Simple readline for description
         process.stdin.once('data', (desc: string) => {
           client.send({ type: 'task-description', description: desc.trim() });
           client.send({ type: 'command', command: 'new-task' });
@@ -61,8 +62,19 @@ export class AttachClient {
         return;
       }
 
+      if (k === 'p') {
+        if (this.isPaused) {
+          client.send({ type: 'command', command: 'resume' });
+          process.stderr.write('\n▶ Resume gesendet\n');
+        } else {
+          client.send({ type: 'command', command: 'pause' });
+          process.stderr.write('\n⏸ Pause gesendet\n');
+        }
+        this.isPaused = !this.isPaused;
+        return;
+      }
+
       if (k === 'd' || k === '\u0003') {
-        // Detach (Ctrl+C also)
         process.stderr.write('\n📡 Getrennt. Daemon läuft weiter.\n');
         client.disconnect();
         if (process.stdin.isTTY) process.stdin.setRawMode(false);
@@ -85,6 +97,7 @@ export class AttachClient {
     client.on('message', (msg: DaemonMessage) => {
       switch (msg.type) {
         case 'status':
+          this.isPaused = msg.data.paused;
           renderStatus(msg.data);
           break;
         case 'event':
@@ -101,7 +114,7 @@ export class AttachClient {
           process.stdout.write(`  ℹ ${msg.message}\n`);
           break;
         case 'prompt':
-          renderPrompt(msg.prompt.kind, msg.prompt.options, (answer) => {
+          renderPrompt(msg.id, msg.prompt.kind, msg.prompt.context, msg.prompt.options, (answer) => {
             client.send({ type: 'prompt-response', id: msg.id, answer });
           });
           break;
@@ -119,20 +132,36 @@ export class AttachClient {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function renderStatus(status: ShadowStatus): void {
+  const state = status.paused ? '\x1b[33m⏸ PAUSED\x1b[0m' : '\x1b[32m● RUNNING\x1b[0m';
   process.stdout.write(
     `\n── Shadow Status ───────────────────────────────\n` +
-    `  PID: ${status.pid} | Uptime: ${Math.round(status.uptime)}s\n` +
-    `  Nodes: ${status.nodeCount} | Events: ${status.eventCount} | Tasks: ${status.taskCount}\n` +
+    `  ${state}  PID: ${status.pid} | Uptime: ${Math.round(status.uptime)}s\n` +
+    `  Nodes: ${status.nodeCount} | Events: ${status.eventCount} | Tasks: ${status.taskCount} | SOPs: ${status.sopCount}\n` +
     `  Cycles: ${status.cyclesRun} run, ${status.cyclesSkipped} skipped\n` +
     `────────────────────────────────────────────────\n`
   );
 }
 
 function renderPrompt(
+  id: string,
   kind: string,
+  context: Record<string, unknown>,
   options: string[],
   callback: (answer: string) => void,
 ): void {
+  if (id.startsWith('sop-suggest:')) {
+    const desc = context['description'] as string ?? 'Unbenannter Task';
+    process.stdout.write(`\n  📋 Task abgeschlossen: "${desc}"\n`);
+    process.stdout.write(`     Als SOP speichern?\n`);
+    options.forEach((opt, i) => process.stdout.write(`     [${i + 1}] ${opt}\n`));
+    process.stdout.write('  → ');
+    process.stdin.once('data', (data: string) => {
+      const idx = parseInt(data.trim(), 10) - 1;
+      callback(options[idx] ?? options[0] ?? '');
+    });
+    return;
+  }
+
   process.stdout.write(`\n❓ ${kind}\n`);
   options.forEach((opt, i) => process.stdout.write(`  [${i + 1}] ${opt}\n`));
   process.stdout.write('Antwort: ');

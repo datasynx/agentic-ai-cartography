@@ -4,7 +4,7 @@ import { CartographyDB } from './db.js';
 import { IPCServer, cleanStaleSocket } from './ipc.js';
 import { NotificationService } from './notify.js';
 import { runShadowCycle } from './agent.js';
-import type { CartographyConfig, ShadowStatus } from './types.js';
+import type { CartographyConfig, ShadowStatus, ClientMessage } from './types.js';
 
 // ── Snapshot ─────────────────────────────────────────────────────────────────
 
@@ -39,9 +39,12 @@ export function takeSnapshot(config: CartographyConfig): string {
 
 export class ShadowDaemon {
   private running = false;
+  private paused = false;
   private prevSnapshot = '';
   private cyclesRun = 0;
   private cyclesSkipped = 0;
+  private lastTaskCount = 0;
+  private sessionId = '';
 
   constructor(
     private config: CartographyConfig,
@@ -50,14 +53,56 @@ export class ShadowDaemon {
     private notify: NotificationService,
   ) {}
 
-  async run(): Promise<void> {
+  async run(): Promise<string> {
     this.running = true;
-    const sessionId = this.db.createSession('shadow', this.config);
+    this.sessionId = this.db.createSession('shadow', this.config);
 
     process.on('SIGTERM', () => this.stop());
     process.on('SIGINT', () => this.stop());
+    process.on('SIGUSR1', () => this.pause());
+    process.on('SIGUSR2', () => this.resume());
+
+    // Handle IPC commands from attached clients
+    this.ipc.on('message', (msg: ClientMessage) => {
+      switch (msg.type) {
+        case 'command':
+          if (msg.command === 'pause') this.pause();
+          else if (msg.command === 'resume') this.resume();
+          else if (msg.command === 'stop') this.stop();
+          else if (msg.command === 'status') {
+            this.ipc.broadcast({ type: 'status', data: this.getStatus() });
+          } else if (msg.command === 'new-task') {
+            this.db.startTask(this.sessionId);
+            this.ipc.broadcast({ type: 'info', message: 'Task gestartet' });
+          } else if (msg.command === 'end-task') {
+            this.db.endCurrentTask(this.sessionId);
+            this.ipc.broadcast({ type: 'info', message: 'Task beendet' });
+          }
+          break;
+        case 'task-description':
+          this.db.updateTaskDescription(this.sessionId, msg.description);
+          break;
+        case 'prompt-response':
+          // Handle SOP candidate response
+          if (msg.id.startsWith('sop-suggest:')) {
+            const taskId = msg.id.replace('sop-suggest:', '');
+            if (msg.answer === 'ja' || msg.answer === 'yes' || msg.answer === 'Ja, als SOP speichern') {
+              this.db.markTaskAsSOPCandidate(taskId);
+              this.ipc.broadcast({ type: 'info', message: `Task als SOP-Kandidat markiert` });
+            }
+          }
+          break;
+      }
+    });
 
     while (this.running) {
+      if (this.paused) {
+        // Still broadcast status while paused
+        this.ipc.broadcast({ type: 'status', data: this.getStatus() });
+        await sleep(this.config.pollIntervalMs);
+        continue;
+      }
+
       const snapshot = takeSnapshot(this.config);
 
       if (snapshot !== this.prevSnapshot) {
@@ -65,7 +110,7 @@ export class ShadowDaemon {
           await runShadowCycle(
             this.config,
             this.db,
-            sessionId,
+            this.sessionId,
             this.prevSnapshot,
             snapshot,
             (msg) => {
@@ -79,17 +124,19 @@ export class ShadowDaemon {
           process.stderr.write(`⚠ Cycle error: ${err}\n`);
         }
         this.prevSnapshot = snapshot;
+
+        // Check for newly completed tasks → suggest as SOP
+        this.checkForCompletedTasks();
       } else {
         this.cyclesSkipped++;
       }
 
       // Broadcast status
-      const status = this.getStatus(sessionId);
-      this.ipc.broadcast({ type: 'status', data: status });
+      this.ipc.broadcast({ type: 'status', data: this.getStatus() });
 
       // Desktop notification if no clients attached
       if (!this.ipc.hasClients()) {
-        const stats = this.db.getStats(sessionId);
+        const stats = this.db.getStats(this.sessionId);
         if (stats.events > 0 && this.cyclesRun % 10 === 0) {
           this.notify.workflowDetected(stats.tasks, `${stats.events} events so far`);
         }
@@ -98,27 +145,83 @@ export class ShadowDaemon {
       await sleep(this.config.pollIntervalMs);
     }
 
-    this.db.endSession(sessionId);
+    this.db.endSession(this.sessionId);
     this.ipc.stop();
     cleanup(this.config);
+    return this.sessionId;
+  }
+
+  pause(): void {
+    if (!this.paused) {
+      this.paused = true;
+      this.ipc.broadcast({ type: 'info', message: '⏸ Shadow-Daemon pausiert' });
+    }
+  }
+
+  resume(): void {
+    if (this.paused) {
+      this.paused = false;
+      this.ipc.broadcast({ type: 'info', message: '▶ Shadow-Daemon fortgesetzt' });
+    }
   }
 
   stop(): void {
     this.running = false;
   }
 
-  private getStatus(sessionId: string): ShadowStatus {
-    const stats = this.db.getStats(sessionId);
+  getSessionId(): string {
+    return this.sessionId;
+  }
+
+  private checkForCompletedTasks(): void {
+    const tasks = this.db.getTasks(this.sessionId);
+    const completedCount = tasks.filter(t => t.status === 'completed').length;
+
+    if (completedCount > this.lastTaskCount) {
+      // New task(s) completed — suggest as SOP candidate
+      const newlyCompleted = tasks
+        .filter(t => t.status === 'completed' && !t.isSOPCandidate)
+        .slice(-1); // most recent
+
+      for (const task of newlyCompleted) {
+        const desc = task.description ?? `Task ${task.id.substring(0, 8)}`;
+        if (this.ipc.hasClients()) {
+          this.ipc.broadcast({
+            type: 'prompt',
+            id: `sop-suggest:${task.id}`,
+            prompt: {
+              kind: 'task-boundary',
+              context: { taskId: task.id, description: desc },
+              options: ['Ja, als SOP speichern', 'Nein, überspringen'],
+              defaultAnswer: 'Ja, als SOP speichern',
+              timeoutMs: 30_000,
+              createdAt: new Date().toISOString(),
+            },
+          });
+        } else {
+          // Auto-mark as candidate when no client is attached
+          this.db.markTaskAsSOPCandidate(task.id);
+        }
+      }
+      this.lastTaskCount = completedCount;
+    }
+  }
+
+  private getStatus(): ShadowStatus {
+    const stats = this.db.getStats(this.sessionId);
+    const sops = this.db.getSOPs(this.sessionId);
     return {
       pid: process.pid,
       uptime: process.uptime(),
       nodeCount: stats.nodes,
       eventCount: stats.events,
       taskCount: stats.tasks,
+      sopCount: sops.length,
       pendingPrompts: 0,
       autoSave: this.config.autoSaveNodes,
       mode: this.config.shadowMode,
       agentActive: false,
+      paused: this.paused,
       cyclesRun: this.cyclesRun,
       cyclesSkipped: this.cyclesSkipped,
     };
@@ -131,7 +234,7 @@ export function forkDaemon(config: CartographyConfig): number {
   // The daemon entry is the same cli.ts but with --daemon flag via env
   const child = spawn(
     process.execPath,
-    [process.argv[1] ?? 'cartography', 'shadow', 'start', '--foreground', '--daemon-child'],
+    [process.argv[1] ?? 'datasynx-cartography', 'shadow', 'start', '--foreground', '--daemon-child'],
     {
       detached: true,
       stdio: 'ignore',
@@ -178,6 +281,18 @@ export function stopDaemon(pidFile: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function pauseDaemon(pidFile: string): boolean {
+  const { running, pid } = isDaemonRunning(pidFile);
+  if (!running || !pid) return false;
+  try { process.kill(pid, 'SIGUSR1'); return true; } catch { return false; }
+}
+
+export function resumeDaemon(pidFile: string): boolean {
+  const { running, pid } = isDaemonRunning(pidFile);
+  if (!running || !pid) return false;
+  try { process.kill(pid, 'SIGUSR2'); return true; } catch { return false; }
 }
 
 function cleanup(config: CartographyConfig): void {

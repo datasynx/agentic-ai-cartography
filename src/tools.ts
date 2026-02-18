@@ -1,10 +1,16 @@
 import { z } from 'zod';
 import type { CartographyDB } from './db.js';
 import { NODE_TYPES, EDGE_RELATIONSHIPS, EVENT_TYPES, SOPStepSchema } from './types.js';
+import { scanAllBookmarks } from './bookmarks.js';
 
 // Lazy import to avoid hard-wiring SDK at module parse time
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type McpServer = any;
+
+export interface CartographyToolsOptions {
+  /** Called when the agent needs a human answer. Return the user's response. */
+  onAskUser?: (question: string, context?: string) => Promise<string>;
+}
 
 export function stripSensitive(target: string): string {
   try {
@@ -18,7 +24,11 @@ export function stripSensitive(target: string): string {
   }
 }
 
-export async function createCartographyTools(db: CartographyDB, sessionId: string): Promise<McpServer> {
+export async function createCartographyTools(
+  db: CartographyDB,
+  sessionId: string,
+  opts: CartographyToolsOptions = {},
+): Promise<McpServer> {
   // Dynamically import the SDK so missing package doesn't crash at load time
   const sdk = await import('@anthropic-ai/claude-code');
   const { tool, createSdkMcpServer } = sdk as {
@@ -116,6 +126,262 @@ export async function createCartographyTools(db: CartographyDB, sessionId: strin
       }
       db.updateTaskDescription(sessionId, args['description'] as string);
       return { content: [{ type: 'text', text: '✓ Beschreibung aktualisiert' }] };
+    }),
+
+    tool('ask_user', 'Rückfrage an den User stellen — bei Unklarheiten, fehlenden Credentials-Hinweisen oder wenn Kontext fehlt', {
+      question: z.string().describe('Die Frage an den User (klar und konkret)'),
+      context: z.string().optional().describe('Optionaler Zusatzkontext warum die Frage relevant ist'),
+    }, async (args) => {
+      const question = args['question'] as string;
+      const context = args['context'] as string | undefined;
+
+      if (opts.onAskUser) {
+        const answer = await opts.onAskUser(question, context);
+        return { content: [{ type: 'text', text: answer }] };
+      }
+
+      // Fallback when not interactive (piped input, daemon, etc.)
+      return {
+        content: [{ type: 'text', text: '(Kein interaktiver Modus — bitte ohne diese Information fortfahren)' }],
+      };
+    }),
+
+    tool('scan_bookmarks', 'Alle Browser-Lesezeichen scannen — nur Hostnamen, keine persönlichen Daten', {
+      minConfidence: z.number().min(0).max(1).default(0.5).optional(),
+    }, async () => {
+      const hosts = await scanAllBookmarks();
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            count: hosts.length,
+            hosts: hosts.map(h => ({
+              hostname: h.hostname,
+              port: h.port,
+              protocol: h.protocol,
+              source: h.source,
+            })),
+            note: 'Nur Hostnamen — keine Pfade, keine persönlichen Daten. Entscheide selbst welche davon Business-Tools sind.',
+          }),
+        }],
+      };
+    }),
+
+    tool('scan_k8s_resources', 'Kubernetes-Cluster via kubectl scannen — 100% readonly (get, describe)', {
+      namespace: z.string().optional().describe('Namespace filtern — leer = alle Namespaces'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const ns = args['namespace'] as string | undefined;
+      const nsFlag = ns ? `-n ${ns}` : '--all-namespaces';
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 15_000, shell: '/bin/sh' }).toString().trim();
+        } catch (e) {
+          return `(error: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`;
+        }
+      };
+      const sections: [string, string][] = [
+        ['CONTEXT', 'kubectl config current-context 2>/dev/null || echo "(kein Context gesetzt)"'],
+        ['NODES', 'kubectl get nodes -o wide'],
+        ['NAMESPACES', 'kubectl get namespaces'],
+        ['SERVICES', `kubectl get services ${nsFlag}`],
+        ['DEPLOYMENTS', `kubectl get deployments ${nsFlag}`],
+        ['STATEFULSETS', `kubectl get statefulsets ${nsFlag}`],
+        ['INGRESSES', `kubectl get ingress ${nsFlag} 2>/dev/null || echo "(keine)"`],
+        ['PODS_RUNNING', `kubectl get pods ${nsFlag} --field-selector=status.phase=Running 2>/dev/null | head -60`],
+        ['CONFIGMAPS_SYSTEM', 'kubectl get configmaps -n kube-system 2>/dev/null | head -30'],
+      ];
+      const out = sections.map(([l, c]) => `=== ${l} ===\n${run(c)}`).join('\n\n');
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
+    tool('scan_aws_resources', 'AWS-Infrastruktur via AWS CLI scannen — 100% readonly (describe, list)', {
+      region: z.string().optional().describe('AWS Region — default: AWS_DEFAULT_REGION oder Profil'),
+      profile: z.string().optional().describe('AWS CLI Profil'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const region = args['region'] as string | undefined;
+      const profile = args['profile'] as string | undefined;
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      if (region) env['AWS_DEFAULT_REGION'] = region;
+      const pf = profile ? `--profile ${profile}` : '';
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 20_000, shell: '/bin/sh', env }).toString().trim();
+        } catch (e) {
+          return `(error: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`;
+        }
+      };
+      const sections: [string, string][] = [
+        ['IDENTITY', `aws sts get-caller-identity ${pf} --output json`],
+        ['EC2', `aws ec2 describe-instances ${pf} --query 'Reservations[*].Instances[*].[InstanceId,InstanceType,State.Name,PublicIpAddress,PrivateIpAddress,Tags[?Key==\`Name\`].Value|[0]]' --output table`],
+        ['RDS', `aws rds describe-db-instances ${pf} --query 'DBInstances[*].[DBInstanceIdentifier,Engine,DBInstanceStatus,Endpoint.Address,Endpoint.Port]' --output table`],
+        ['ELB_V2', `aws elbv2 describe-load-balancers ${pf} --query 'LoadBalancers[*].[LoadBalancerName,DNSName,Type,State.Code]' --output table`],
+        ['EKS', `aws eks list-clusters ${pf} --output json`],
+        ['ELASTICACHE', `aws elasticache describe-cache-clusters ${pf} --query 'CacheClusters[*].[CacheClusterId,Engine,CacheClusterStatus]' --output table 2>/dev/null || echo "(nicht verfügbar)"`],
+        ['S3', `aws s3 ls ${pf} 2>/dev/null || echo "(nicht verfügbar)"`],
+        ['VPC', `aws ec2 describe-vpcs ${pf} --query 'Vpcs[*].[VpcId,CidrBlock,IsDefault,Tags[?Key==\`Name\`].Value|[0]]' --output table`],
+      ];
+      const out = sections.map(([l, c]) => `=== ${l} ===\n${run(c)}`).join('\n\n');
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
+    tool('scan_gcp_resources', 'Google Cloud Platform via gcloud CLI scannen — 100% readonly (list, describe)', {
+      project: z.string().optional().describe('GCP Project ID — default: aktuelles gcloud-Projekt'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const project = args['project'] as string | undefined;
+      const pf = project ? `--project ${project}` : '';
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 20_000, shell: '/bin/sh' }).toString().trim();
+        } catch (e) {
+          return `(error: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`;
+        }
+      };
+      const sections: [string, string][] = [
+        ['IDENTITY', `gcloud config list account --format='value(core.account)' 2>/dev/null; gcloud config get-value project 2>/dev/null`],
+        ['COMPUTE_INSTANCES', `gcloud compute instances list ${pf} 2>/dev/null || echo "(error)"`],
+        ['SQL_INSTANCES', `gcloud sql instances list ${pf} 2>/dev/null || echo "(error)"`],
+        ['GKE_CLUSTERS', `gcloud container clusters list ${pf} 2>/dev/null || echo "(error)"`],
+        ['CLOUD_RUN', `gcloud run services list ${pf} --platform managed 2>/dev/null || echo "(error)"`],
+        ['CLOUD_FUNCTIONS', `gcloud functions list ${pf} 2>/dev/null || echo "(error)"`],
+        ['REDIS', `gcloud redis instances list ${pf} --regions=- 2>/dev/null || echo "(error)"`],
+        ['PUBSUB', `gcloud pubsub topics list ${pf} 2>/dev/null || echo "(error)"`],
+        ['SPANNER', `gcloud spanner instances list ${pf} 2>/dev/null || echo "(error)"`],
+      ];
+      const out = sections.map(([l, c]) => `=== ${l} ===\n${run(c)}`).join('\n\n');
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
+    tool('scan_azure_resources', 'Azure-Infrastruktur via az CLI scannen — 100% readonly (list, show)', {
+      subscription: z.string().optional().describe('Azure Subscription ID'),
+      resourceGroup: z.string().optional().describe('Resource Group filtern'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const sub = args['subscription'] as string | undefined;
+      const rg = args['resourceGroup'] as string | undefined;
+      const sf = sub ? `--subscription ${sub}` : '';
+      const rf = rg ? `--resource-group ${rg}` : '';
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 20_000, shell: '/bin/sh' }).toString().trim();
+        } catch (e) {
+          return `(error: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`;
+        }
+      };
+      const sections: [string, string][] = [
+        ['IDENTITY', `az account show --output json ${sf} 2>/dev/null || echo "(nicht eingeloggt — az login)"`],
+        ['VMS', `az vm list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['AKS', `az aks list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['SQL_SERVERS', `az sql server list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['POSTGRES', `az postgres server list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['REDIS', `az redis list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['WEBAPPS', `az webapp list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['CONTAINER_APPS', `az containerapp list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+        ['FUNCTIONS', `az functionapp list ${sf} ${rf} --output table 2>/dev/null || echo "(error)"`],
+      ];
+      const out = sections.map(([l, c]) => `=== ${l} ===\n${run(c)}`).join('\n\n');
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
+    tool('scan_installed_apps', 'Alle installierten Apps und Tools auf dem PC scannen — IDEs, Office, Dev-Tools, Business-Apps', {
+      searchHint: z.string().optional().describe('Optionaler Suchbegriff um gezielt nach bestimmten Tools zu suchen (z.B. "hubspot windsurf cursor")'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const hint = args['searchHint'] as string | undefined;
+
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 15_000, shell: '/bin/sh' }).toString().trim();
+        } catch {
+          return '';
+        }
+      };
+
+      const platform = process.platform;
+      const results: Record<string, string> = {};
+
+      if (platform === 'darwin') {
+        // macOS: scan /Applications
+        results['APPLICATIONS'] = run('ls /Applications/ 2>/dev/null | head -200') || '(leer)';
+        results['USER_APPLICATIONS'] = run('ls ~/Applications/ 2>/dev/null | head -100') || '(leer)';
+        // Homebrew
+        results['BREW_CASKS'] = run('brew list --cask 2>/dev/null | head -100') || '(brew nicht installiert)';
+        results['BREW_FORMULAE'] = run('brew list --formula 2>/dev/null | head -150') || '(brew nicht installiert)';
+        // Spotlight — find .app bundles
+        results['SPOTLIGHT_APPS'] = run('mdfind "kMDItemKind == \'Application\'" 2>/dev/null | grep -v "^/System" | grep -v "^/Library/Apple" | head -100') || '(Spotlight nicht verfügbar)';
+      } else if (platform === 'linux') {
+        // Linux: dpkg, snap, flatpak, .desktop files
+        results['DPKG'] = run('dpkg --list 2>/dev/null | awk \'{print $2}\' | head -200') || '(dpkg nicht verfügbar)';
+        results['SNAP'] = run('snap list 2>/dev/null | head -50') || '(snap nicht verfügbar)';
+        results['FLATPAK'] = run('flatpak list 2>/dev/null | head -50') || '(flatpak nicht verfügbar)';
+        results['DESKTOP_FILES'] = run('ls /usr/share/applications/*.desktop ~/.local/share/applications/*.desktop 2>/dev/null | xargs -I{} basename {} .desktop 2>/dev/null | head -100') || '(keine .desktop files)';
+        results['RPM'] = run('rpm -qa 2>/dev/null | head -200') || '(rpm nicht verfügbar)';
+      } else if (platform === 'win32') {
+        results['WINGET'] = run('winget list 2>/dev/null | head -100') || '(winget nicht verfügbar)';
+        results['PROGRAMS_x64'] = run('reg query "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /v DisplayName 2>/dev/null | findstr DisplayName | head -100') || '(nicht verfügbar)';
+      }
+
+      // Check known dev/business tools via `which`
+      const knownTools = [
+        // IDEs & Editors
+        'code', 'code-insiders', 'cursor', 'windsurf', 'zed', 'vim', 'nvim', 'emacs', 'nano', 'sublime_text', 'atom',
+        'idea', 'webstorm', 'pycharm', 'goland', 'datagrip', 'clion', 'rider', 'phpstorm', 'rubymine', 'appcode',
+        // Dev Tools
+        'git', 'gh', 'docker', 'docker-compose', 'podman', 'kubectl', 'helm', 'terraform', 'ansible',
+        'node', 'npm', 'npx', 'yarn', 'pnpm', 'bun', 'deno',
+        'python', 'python3', 'pip', 'pip3', 'pipenv', 'poetry', 'conda',
+        'ruby', 'gem', 'bundler', 'rails',
+        'java', 'mvn', 'gradle', 'kotlin',
+        'go', 'cargo', 'rustc',
+        'php', 'composer',
+        'dotnet', 'dotnet-sdk',
+        // Databases
+        'psql', 'mysql', 'mysqladmin', 'mongo', 'mongosh', 'redis-cli', 'sqlite3', 'clickhouse-client',
+        // Cloud CLIs
+        'aws', 'gcloud', 'az', 'heroku', 'fly', 'vercel', 'netlify', 'wrangler',
+        // Infra
+        'vagrant', 'packer', 'consul', 'vault', 'nomad',
+        // Communication / SaaS
+        'slack', 'discord', 'zoom', 'teams', 'skype', 'telegram', 'signal',
+        // Browsers
+        'google-chrome', 'chromium', 'firefox', 'safari', 'brave', 'opera', 'edge',
+        // Monitoring / Analytics
+        'datadog-agent', 'newrelic-agent', 'prometheus', 'grafana-cli',
+        // Other tools
+        'ngrok', 'stripe', 'supabase', 'neon',
+      ];
+
+      const found: string[] = [];
+      const notFound: string[] = [];
+      for (const t of knownTools) {
+        const r = run(`which ${t} 2>/dev/null`);
+        if (r) found.push(`${t}: ${r}`);
+        else notFound.push(t);
+      }
+      results['WHICH_FOUND'] = found.join('\n') || '(nichts gefunden)';
+      results['WHICH_NOT_FOUND'] = notFound.join(', ');
+
+      // Hint-based search: if user asks for specific tools, do targeted search
+      if (hint) {
+        const terms = hint.split(/[\s,]+/).filter(Boolean);
+        const hintResults: string[] = [];
+        for (const term of terms) {
+          const safe = term.replace(/[^a-zA-Z0-9._-]/g, '');
+          if (!safe) continue;
+          const r = run(`which ${safe} 2>/dev/null || find /Applications ~/Applications /usr/bin /usr/local/bin /opt/homebrew/bin ~/.local/bin 2>/dev/null -iname "*${safe}*" -maxdepth 3 2>/dev/null | head -5`);
+          if (r) hintResults.push(`${term}: ${r}`);
+          else hintResults.push(`${term}: (nicht gefunden)`);
+        }
+        results['HINT_SEARCH'] = hintResults.join('\n');
+      }
+
+      const out = Object.entries(results)
+        .map(([k, v]) => `=== ${k} ===\n${v}`)
+        .join('\n\n');
+
+      return { content: [{ type: 'text', text: out }] };
     }),
 
     tool('save_sop', 'Standard Operating Procedure speichern', {

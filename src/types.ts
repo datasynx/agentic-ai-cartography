@@ -7,7 +7,7 @@ export const NODE_TYPES = [
   'web_service', 'api_endpoint', 'cache_server',
   'message_broker', 'queue', 'topic',
   'container', 'pod', 'k8s_cluster',
-  'config_file', 'unknown',
+  'config_file', 'saas_tool', 'unknown',
 ] as const;
 export type NodeType = typeof NODE_TYPES[number];
 
@@ -151,7 +151,7 @@ export type DaemonMessage =
 
 export type ClientMessage =
   | { type: 'prompt-response'; id: string; answer: string }
-  | { type: 'command'; command: 'new-task' | 'end-task' | 'status' | 'stop' }
+  | { type: 'command'; command: 'new-task' | 'end-task' | 'status' | 'stop' | 'pause' | 'resume' }
   | { type: 'task-description'; description: string };
 
 export interface PendingPrompt {
@@ -169,10 +169,12 @@ export interface ShadowStatus {
   nodeCount: number;
   eventCount: number;
   taskCount: number;
+  sopCount: number;
   pendingPrompts: number;
   autoSave: boolean;
   mode: 'foreground' | 'daemon';
   agentActive: boolean;
+  paused: boolean;
   cyclesRun: number;
   cyclesSkipped: number;
 }

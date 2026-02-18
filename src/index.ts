@@ -2,12 +2,14 @@ export { CartographyDB } from './db.js';
 export { createCartographyTools, stripSensitive } from './tools.js';
 export { safetyHook } from './safety.js';
 export { runDiscovery, runShadowCycle, generateSOPs } from './agent.js';
+export type { DiscoveryEvent } from './agent.js';
 export {
   exportAll,
   exportJSON,
   exportBackstageYAML,
   exportHTML,
   exportSOPMarkdown,
+  exportSOPDashboard,
   generateTopologyMermaid,
   generateDependencyMermaid,
   generateWorkflowMermaid,
