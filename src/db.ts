@@ -401,6 +401,26 @@ export class CartographyDB {
     }));
   }
 
+  markTaskAsSOPCandidate(taskId: string): void {
+    this.db.prepare('UPDATE tasks SET is_sop_candidate = 1 WHERE id = ?').run(taskId);
+  }
+
+  getAllSOPs(): Array<SOP & { id: string; workflowId: string; generatedAt: string }> {
+    const rows = this.db.prepare('SELECT * FROM sops ORDER BY generated_at DESC').all() as Record<string, unknown>[];
+    return rows.map(r => ({
+      id: r['id'] as string,
+      workflowId: r['workflow_id'] as string,
+      title: r['title'] as string,
+      description: r['description'] as string,
+      steps: JSON.parse(r['steps'] as string) as SOP['steps'],
+      involvedSystems: JSON.parse(r['involved_systems'] as string) as string[],
+      estimatedDuration: r['estimated_duration'] as string,
+      frequency: r['frequency'] as string,
+      confidence: r['confidence'] as number,
+      generatedAt: r['generated_at'] as string,
+    }));
+  }
+
   // ── Approvals ───────────────────────────
 
   setApproval(pattern: string, action: 'save' | 'ignore' | 'auto'): void {

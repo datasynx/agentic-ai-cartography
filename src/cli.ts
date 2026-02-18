@@ -9,7 +9,7 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
 import {
-  forkDaemon, isDaemonRunning, stopDaemon, startDaemonProcess,
+  forkDaemon, isDaemonRunning, stopDaemon, pauseDaemon, resumeDaemon, startDaemonProcess,
 } from './daemon.js';
 import { ForegroundClient, AttachClient } from './client.js';
 
@@ -334,12 +334,124 @@ function main(): void {
 
   shadow
     .command('stop')
-    .description('Shadow-Daemon stoppen')
+    .description('Shadow-Daemon stoppen + SOP-Review')
+    .option('-o, --output <dir>', 'Output-Dir für SOPs + Dashboard', './datasynx-output')
+    .option('--no-review', 'SOP-Review überspringen')
+    .action(async (opts) => {
+      const config = defaultConfig({ outputDir: opts.output });
+      const stopped = stopDaemon(config.pidFile);
+
+      if (!stopped) {
+        process.stderr.write('⚠ Kein laufender Shadow-Daemon gefunden\n');
+        return;
+      }
+
+      process.stderr.write('✓ Shadow-Daemon gestoppt\n');
+
+      if (opts.review === false) return;
+
+      // Wait a moment for daemon to flush DB
+      await new Promise(r => setTimeout(r, 500));
+
+      // Generate SOPs + show review
+      const db = new CartographyDB(config.dbPath);
+      const session = db.getLatestSession('shadow');
+      if (!session) {
+        db.close();
+        return;
+      }
+
+      const stats = db.getStats(session.id);
+      const w = (s: string) => process.stderr.write(s);
+
+      w('\n');
+      w(dim('  ────────────────────────────────────────────────\n'));
+      w(bold('  Shadow-Session Review\n'));
+      w(dim(`  Session: ${session.id}\n`));
+      w(dim(`  Nodes: ${stats.nodes} | Events: ${stats.events} | Tasks: ${stats.tasks}\n`));
+      w(dim('  ────────────────────────────────────────────────\n'));
+      w('\n');
+
+      // Generate SOPs if tasks exist
+      if (stats.tasks > 0) {
+        try {
+          w('  SOPs generieren...\n');
+          const count = await generateSOPs(db, session.id);
+          w(`  ${green('✓')} ${count} SOPs generiert\n\n`);
+        } catch (err) {
+          w(`  ${red('✗')} SOP-Generierung fehlgeschlagen: ${err}\n\n`);
+        }
+      }
+
+      // Show SOPs as markdown review
+      const { exportSOPMarkdown, exportSOPDashboard } = await import('./exporter.js');
+      const sops = db.getSOPs(session.id);
+
+      if (sops.length > 0) {
+        w(bold('  SOPs zur Überprüfung:\n\n'));
+        for (const sop of sops) {
+          const md = exportSOPMarkdown(sop);
+          // Indent each line for terminal display
+          for (const line of md.split('\n')) {
+            process.stdout.write(`  ${line}\n`);
+          }
+          process.stdout.write('\n');
+          w(dim('  ────────────────────────────────────────────────\n\n'));
+        }
+
+        // Export SOP dashboard HTML
+        const { mkdirSync, writeFileSync } = await import('node:fs');
+        const { join, resolve: resolvePath } = await import('node:path');
+
+        mkdirSync(config.outputDir, { recursive: true });
+        mkdirSync(join(config.outputDir, 'sops'), { recursive: true });
+
+        // Write individual SOP markdown files
+        for (const sop of sops) {
+          const filename = sop.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.md';
+          writeFileSync(join(config.outputDir, 'sops', filename), exportSOPMarkdown(sop));
+        }
+
+        // Write SOP dashboard HTML
+        const allSOPs = db.getAllSOPs();
+        const dashboardHtml = exportSOPDashboard(allSOPs);
+        const dashboardPath = join(config.outputDir, 'sop-dashboard.html');
+        writeFileSync(dashboardPath, dashboardHtml);
+
+        const absPath = resolvePath(dashboardPath);
+        w(`  ${green('✓')} ${sops.length} SOP-Markdown-Dateien geschrieben\n`);
+        w(`  ${green('✓')} SOP Dashboard: ${cyan(`file://${absPath}`)}\n`);
+        w('\n');
+        w(dim(`  Öffne im Browser: ${bold(`file://${absPath}`)}\n`));
+        w('\n');
+      } else {
+        w(dim('  Keine SOPs in dieser Session.\n\n'));
+      }
+
+      db.close();
+    });
+
+  shadow
+    .command('pause')
+    .description('Shadow-Daemon pausieren')
     .action(() => {
       const config = defaultConfig();
-      const stopped = stopDaemon(config.pidFile);
-      if (stopped) {
-        process.stderr.write('✓ Shadow-Daemon gestoppt\n');
+      const paused = pauseDaemon(config.pidFile);
+      if (paused) {
+        process.stderr.write('⏸ Shadow-Daemon pausiert\n');
+      } else {
+        process.stderr.write('⚠ Kein laufender Shadow-Daemon gefunden\n');
+      }
+    });
+
+  shadow
+    .command('resume')
+    .description('Shadow-Daemon fortsetzen')
+    .action(() => {
+      const config = defaultConfig();
+      const resumed = resumeDaemon(config.pidFile);
+      if (resumed) {
+        process.stderr.write('▶ Shadow-Daemon fortgesetzt\n');
       } else {
         process.stderr.write('⚠ Kein laufender Shadow-Daemon gefunden\n');
       }
@@ -1148,9 +1260,11 @@ ${infraSummary.substring(0, 12000)}`;
     o(`  ${_g('seed')}                 ${_d('Bekannte Tools/DBs/APIs manuell eintragen')}\n`);
     o(`  ${_g('bookmarks')}            ${_d('Browser-Lesezeichen anzeigen')}\n`);
     o(`  ${_g('shadow start')}         ${_d('Background-Daemon starten (Claude Haiku)')}\n`);
-    o(`  ${_g('shadow stop')}          ${_d('Daemon stoppen')}\n`);
+    o(`  ${_g('shadow pause')}         ${_d('Daemon pausieren')}\n`);
+    o(`  ${_g('shadow resume')}        ${_d('Daemon fortsetzen')}\n`);
+    o(`  ${_g('shadow stop')}          ${_d('Stoppen + SOP-Review + Dashboard')}\n`);
     o(`  ${_g('shadow status')}        ${_d('Daemon-Status anzeigen')}\n`);
-    o(`  ${_g('shadow attach')}        ${_d('Live an Daemon ankoppeln')}\n`);
+    o(`  ${_g('shadow attach')}        ${_d('Live-Steuerung: [T] [S] [P] [D] [Q]')}\n`);
     o(`  ${_g('sops')} ${_d('[session]')}      ${_d('SOPs aus Workflows generieren')}\n`);
     o(`  ${_g('export')} ${_d('[session]')}    ${_d('Mermaid, JSON, YAML, HTML exportieren')}\n`);
     o(`  ${_g('show')} ${_d('[session]')}      ${_d('Session-Details anzeigen')}\n`);

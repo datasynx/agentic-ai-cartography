@@ -9,6 +9,7 @@ export {
   exportBackstageYAML,
   exportHTML,
   exportSOPMarkdown,
+  exportSOPDashboard,
   generateTopologyMermaid,
   generateDependencyMermaid,
   generateWorkflowMermaid,
