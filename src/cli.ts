@@ -37,7 +37,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
 
   program
     .name(CMD)
@@ -155,6 +155,10 @@ function main(): void {
             } else if (toolName === 'scan_bookmarks') {
               logLine(cyan('🔖'), `Browser-Lesezeichen werden gescannt…`);
               startSpinner(`scan_bookmarks`);
+            } else if (toolName === 'scan_installed_apps') {
+              const sh = event.input['searchHint'] as string | undefined;
+              logLine(cyan('🖥'), sh ? `Installierte Apps gesucht: ${bold(sh)}` : `Alle installierten Apps werden gescannt…`);
+              startSpinner(`scan_installed_apps`);
             } else if (toolName === 'ask_user') {
               // Just display; actual interaction is handled by onAskUser below
               const q = (event.input['question'] as string ?? '').substring(0, 100);
@@ -196,7 +200,7 @@ function main(): void {
       };
 
       try {
-        await runDiscovery(config, db, sessionId, handleEvent, onAskUser);
+        await runDiscovery(config, db, sessionId, handleEvent, onAskUser, undefined);
       } catch (err) {
         stopSpinner();
         w(`\n  ${bold('\x1b[31m✗\x1b[0m')}  Discovery fehlgeschlagen: ${err}\n`);
@@ -275,6 +279,58 @@ function main(): void {
         } catch { /* ignore */ }
       }
       w('\n');
+
+      // ── Human-in-the-Loop: Follow-up Discovery Chat ───────────────────────
+      if (process.stdin.isTTY) {
+        w(dim('  ────────────────────────────────────────────────\n'));
+        w(`  ${bold('WEITERSUCHEN')}  ${dim('Discovery interaktiv verfeinern')}\n`);
+        w(dim('  Gib Suchbegriffe ein (z.B. "hubspot windsurf cursor") oder Enter zum Beenden.\n'));
+        w('\n');
+
+        // Reset event counters for follow-up rounds
+        nodeCount = 0;
+        edgeCount = 0;
+
+        let continueDiscovery = true;
+        while (continueDiscovery) {
+          const rlFollowup = createInterface({ input: process.stdin, output: process.stderr });
+          const followupHint = await new Promise<string>(resolve =>
+            rlFollowup.question(`  ${yellow('→')}  Suche nach (Enter = Beenden): `, resolve)
+          );
+          rlFollowup.close();
+
+          if (!followupHint.trim()) {
+            continueDiscovery = false;
+            break;
+          }
+
+          const followupHintTrimmed = followupHint.trim();
+          w('\n');
+          w(`  ${cyan(bold('⟳'))}  Suche nach: ${bold(followupHintTrimmed)}\n`);
+          w('\n');
+
+          try {
+            await runDiscovery(config, db, sessionId, handleEvent, onAskUser, followupHintTrimmed);
+          } catch (err) {
+            stopSpinner();
+            w(`\n  ${red('✗')}  Fehler: ${err}\n`);
+          }
+
+          stopSpinner();
+          const followupStats = db.getStats(sessionId);
+          w('\n');
+          w(dim('  ────────────────────────────────────────────────\n'));
+          w(`  ${green(bold('✓'))}  Gesamt jetzt: ${bold(String(followupStats.nodes))} nodes, ${bold(String(followupStats.edges))} edges\n`);
+          w('\n');
+
+          // Re-export with updated data
+          exportAll(db, sessionId, config.outputDir);
+          if (existsSync(htmlPath)) {
+            w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('topology.html aktualisiert'))}\n`);
+          }
+          w('\n');
+        }
+      }
 
       db.close();
     });

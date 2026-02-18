@@ -285,6 +285,105 @@ export async function createCartographyTools(
       return { content: [{ type: 'text', text: out }] };
     }),
 
+    tool('scan_installed_apps', 'Alle installierten Apps und Tools auf dem PC scannen — IDEs, Office, Dev-Tools, Business-Apps', {
+      searchHint: z.string().optional().describe('Optionaler Suchbegriff um gezielt nach bestimmten Tools zu suchen (z.B. "hubspot windsurf cursor")'),
+    }, async (args) => {
+      const { execSync } = await import('node:child_process');
+      const hint = args['searchHint'] as string | undefined;
+
+      const run = (cmd: string): string => {
+        try {
+          return execSync(cmd, { stdio: 'pipe', timeout: 15_000, shell: '/bin/sh' }).toString().trim();
+        } catch {
+          return '';
+        }
+      };
+
+      const platform = process.platform;
+      const results: Record<string, string> = {};
+
+      if (platform === 'darwin') {
+        // macOS: scan /Applications
+        results['APPLICATIONS'] = run('ls /Applications/ 2>/dev/null | head -200') || '(leer)';
+        results['USER_APPLICATIONS'] = run('ls ~/Applications/ 2>/dev/null | head -100') || '(leer)';
+        // Homebrew
+        results['BREW_CASKS'] = run('brew list --cask 2>/dev/null | head -100') || '(brew nicht installiert)';
+        results['BREW_FORMULAE'] = run('brew list --formula 2>/dev/null | head -150') || '(brew nicht installiert)';
+        // Spotlight — find .app bundles
+        results['SPOTLIGHT_APPS'] = run('mdfind "kMDItemKind == \'Application\'" 2>/dev/null | grep -v "^/System" | grep -v "^/Library/Apple" | head -100') || '(Spotlight nicht verfügbar)';
+      } else if (platform === 'linux') {
+        // Linux: dpkg, snap, flatpak, .desktop files
+        results['DPKG'] = run('dpkg --list 2>/dev/null | awk \'{print $2}\' | head -200') || '(dpkg nicht verfügbar)';
+        results['SNAP'] = run('snap list 2>/dev/null | head -50') || '(snap nicht verfügbar)';
+        results['FLATPAK'] = run('flatpak list 2>/dev/null | head -50') || '(flatpak nicht verfügbar)';
+        results['DESKTOP_FILES'] = run('ls /usr/share/applications/*.desktop ~/.local/share/applications/*.desktop 2>/dev/null | xargs -I{} basename {} .desktop 2>/dev/null | head -100') || '(keine .desktop files)';
+        results['RPM'] = run('rpm -qa 2>/dev/null | head -200') || '(rpm nicht verfügbar)';
+      } else if (platform === 'win32') {
+        results['WINGET'] = run('winget list 2>/dev/null | head -100') || '(winget nicht verfügbar)';
+        results['PROGRAMS_x64'] = run('reg query "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /v DisplayName 2>/dev/null | findstr DisplayName | head -100') || '(nicht verfügbar)';
+      }
+
+      // Check known dev/business tools via `which`
+      const knownTools = [
+        // IDEs & Editors
+        'code', 'code-insiders', 'cursor', 'windsurf', 'zed', 'vim', 'nvim', 'emacs', 'nano', 'sublime_text', 'atom',
+        'idea', 'webstorm', 'pycharm', 'goland', 'datagrip', 'clion', 'rider', 'phpstorm', 'rubymine', 'appcode',
+        // Dev Tools
+        'git', 'gh', 'docker', 'docker-compose', 'podman', 'kubectl', 'helm', 'terraform', 'ansible',
+        'node', 'npm', 'npx', 'yarn', 'pnpm', 'bun', 'deno',
+        'python', 'python3', 'pip', 'pip3', 'pipenv', 'poetry', 'conda',
+        'ruby', 'gem', 'bundler', 'rails',
+        'java', 'mvn', 'gradle', 'kotlin',
+        'go', 'cargo', 'rustc',
+        'php', 'composer',
+        'dotnet', 'dotnet-sdk',
+        // Databases
+        'psql', 'mysql', 'mysqladmin', 'mongo', 'mongosh', 'redis-cli', 'sqlite3', 'clickhouse-client',
+        // Cloud CLIs
+        'aws', 'gcloud', 'az', 'heroku', 'fly', 'vercel', 'netlify', 'wrangler',
+        // Infra
+        'vagrant', 'packer', 'consul', 'vault', 'nomad',
+        // Communication / SaaS
+        'slack', 'discord', 'zoom', 'teams', 'skype', 'telegram', 'signal',
+        // Browsers
+        'google-chrome', 'chromium', 'firefox', 'safari', 'brave', 'opera', 'edge',
+        // Monitoring / Analytics
+        'datadog-agent', 'newrelic-agent', 'prometheus', 'grafana-cli',
+        // Other tools
+        'ngrok', 'stripe', 'supabase', 'neon',
+      ];
+
+      const found: string[] = [];
+      const notFound: string[] = [];
+      for (const t of knownTools) {
+        const r = run(`which ${t} 2>/dev/null`);
+        if (r) found.push(`${t}: ${r}`);
+        else notFound.push(t);
+      }
+      results['WHICH_FOUND'] = found.join('\n') || '(nichts gefunden)';
+      results['WHICH_NOT_FOUND'] = notFound.join(', ');
+
+      // Hint-based search: if user asks for specific tools, do targeted search
+      if (hint) {
+        const terms = hint.split(/[\s,]+/).filter(Boolean);
+        const hintResults: string[] = [];
+        for (const term of terms) {
+          const safe = term.replace(/[^a-zA-Z0-9._-]/g, '');
+          if (!safe) continue;
+          const r = run(`which ${safe} 2>/dev/null || find /Applications ~/Applications /usr/bin /usr/local/bin /opt/homebrew/bin ~/.local/bin 2>/dev/null -iname "*${safe}*" -maxdepth 3 2>/dev/null | head -5`);
+          if (r) hintResults.push(`${term}: ${r}`);
+          else hintResults.push(`${term}: (nicht gefunden)`);
+        }
+        results['HINT_SEARCH'] = hintResults.join('\n');
+      }
+
+      const out = Object.entries(results)
+        .map(([k, v]) => `=== ${k} ===\n${v}`)
+        .join('\n\n');
+
+      return { content: [{ type: 'text', text: out }] };
+    }),
+
     tool('save_sop', 'Standard Operating Procedure speichern', {
       workflowId: z.string(),
       title: z.string(),

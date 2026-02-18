@@ -22,12 +22,17 @@ export async function runDiscovery(
   sessionId: string,
   onEvent?: (event: DiscoveryEvent) => void,
   onAskUser?: AskUserFn,
+  hint?: string,
 ): Promise<void> {
   const { query } = await import('@anthropic-ai/claude-code');
   const tools = await createCartographyTools(db, sessionId, { onAskUser });
 
-  const systemPrompt = `Du bist ein Infrastruktur-Discovery-Agent. Kartographiere die gesamte Systemlandschaft — lokale Services UND SaaS-Tools des Users.
+  const hintSection = hint
+    ? `\n⚡ USER-HINT (PRIORITÄT): Der User möchte gezielt nach folgenden Tools suchen: "${hint}"\n  → scan_installed_apps(searchHint: "${hint}") SOFORT ausführen und diese Tools als saas_tool oder config_file speichern!\n`
+    : '';
 
+  const systemPrompt = `Du bist ein Infrastruktur-Discovery-Agent. Kartographiere die gesamte Systemlandschaft — lokale Services, SaaS-Tools UND alle installierten Apps/Tools des Users.
+${hintSection}
 ━━ PFLICHT-REIHENFOLGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SCHRITT 1 — Browser-Lesezeichen (IMMER ZUERST):
   scan_bookmarks() aufrufen → jede zurückgegebene Domain klassifizieren:
@@ -35,26 +40,36 @@ SCHRITT 1 — Browser-Lesezeichen (IMMER ZUERST):
   • Interne Hosts (IPs, custom.company.com:PORT) → save_node als web_service
   • Persönliches (Social Media, News, Streaming, Shopping) → IGNORIEREN, NICHT speichern
 
-SCHRITT 2 — Lokale Infrastruktur:
+SCHRITT 2 — Installierte Apps & Tools (SEHR WICHTIG):
+  scan_installed_apps() aufrufen → ALLE gefundenen Apps/Tools klassifizieren:
+  • IDEs (VS Code, Cursor, Windsurf, JetBrains, etc.) → save_node als saas_tool mit category="ide"
+  • Office & Produktivität (Word, Excel, Notion, Obsidian, etc.) → save_node als saas_tool mit category="productivity"
+  • Dev-Tools (Docker, kubectl, git, Node, Python, etc.) → save_node als saas_tool mit category="dev-tool"
+  • Business-Apps (Slack, Zoom, HubSpot, Salesforce, etc.) → save_node als saas_tool mit category="business"
+  • Browser (Chrome, Firefox, Safari, etc.) → save_node als saas_tool mit category="browser"
+  • Design-Tools (Figma, Sketch, Adobe, etc.) → save_node als saas_tool mit category="design"
+  ALLE relevanten Tools speichern — auch wenn offline/lokal!
+
+SCHRITT 3 — Lokale Infrastruktur:
   ss -tlnp && ps aux → alle lauschenden Ports/Prozesse identifizieren
   Jeden Service vertiefen: DB→Schemas, API→Endpoints, Queue→Topics
 
-SCHRITT 3 — Cloud & Kubernetes (falls CLI vorhanden):
+SCHRITT 4 — Cloud & Kubernetes (falls CLI vorhanden):
   scan_k8s_resources() → Nodes, Services, Pods, Deployments, Ingresses
   scan_aws_resources()  → EC2, RDS, ELB, EKS, ElastiCache, S3 (falls AWS CLI + Credentials)
   scan_gcp_resources()  → Compute, SQL, GKE, Cloud Run, Functions (falls gcloud + Auth)
   scan_azure_resources() → VMs, AKS, SQL, Redis, WebApps (falls az CLI + Login)
   Fehler / "nicht verfügbar" → ignorieren, weiter mit nächstem Tool
 
-SCHRITT 4 — Config-Files:
+SCHRITT 5 — Config-Files:
   .env, docker-compose.yml, application.yml, kubernetes/*.yml
   Nur Host:Port extrahieren — KEINE Credentials
 
-SCHRITT 5 — Rückfragen bei Unklarheit:
+SCHRITT 6 — Rückfragen bei Unklarheit:
   ask_user() nutzen wenn: Dienst unklar ist, Kontext fehlt, oder User Input sinnvoll wäre
   Beispiele: "Welche Umgebung ist das (dev/staging/prod)?", "Ist <host> ein internes Tool?"
 
-SCHRITT 6 — Fertig wenn alle Spuren erschöpft.
+SCHRITT 7 — Fertig wenn alle Spuren erschöpft.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PORT-MAPPING: 5432=postgres, 3306=mysql, 27017=mongodb, 6379=redis,
@@ -64,16 +79,23 @@ PORT-MAPPING: 5432=postgres, 3306=mysql, 27017=mongodb, 6379=redis,
 REGELN:
 • Nur read-only (ss, ps, cat, head, curl -s, docker inspect, kubectl get)
 • Node IDs: "type:host:port" oder "type:name" — keine Pfade, keine Credentials
-• saas_tool IDs: "saas_tool:github.com", "saas_tool:notion.so"
-• Confidence: 0.9 direkt gesehen, 0.7 aus Config/Bookmarks, 0.5 Vermutung
-• metadata erlaubt: { description, category, port, version } — keine Passwörter
+• saas_tool IDs: "saas_tool:github.com", "saas_tool:vscode", "saas_tool:cursor"
+• Installed-App IDs: "saas_tool:<appname>" z.B. "saas_tool:slack", "saas_tool:docker-desktop"
+• Confidence: 0.9 direkt gesehen, 0.7 aus Config/Bookmarks/Apps, 0.5 Vermutung
+• metadata erlaubt: { description, category, port, version, path } — keine Passwörter
 • get_catalog vor save_node → Duplikate vermeiden
 • Edges speichern wenn Verbindungen klar erkennbar sind
 
 Entrypoints: ${config.entryPoints.join(', ')}`;
 
-  const initialPrompt = `Starte Discovery jetzt.
+  const initialPrompt = hint
+    ? `Starte Discovery mit USER-HINT: "${hint}".
+Führe SOFORT scan_installed_apps(searchHint: "${hint}") aus um nach diesen Tools zu suchen.
+Dann scan_bookmarks, dann lokale Services.
+Nutze ask_user wenn du Kontext vom User brauchst.`
+    : `Starte Discovery jetzt.
 Führe SOFORT als erstes scan_bookmarks aus — noch bevor du ss oder ps verwendest.
+Danach scan_installed_apps() für alle installierten Apps und Tools.
 Dann systematisch lokale Services, dann Config-Files.
 Nutze ask_user wenn du Kontext vom User brauchst.`;
 
@@ -92,6 +114,7 @@ Nutze ask_user wenn du Kontext vom User brauchst.`;
         'mcp__cartograph__save_edge',
         'mcp__cartograph__get_catalog',
         'mcp__cartograph__scan_bookmarks',
+        'mcp__cartograph__scan_installed_apps',
         'mcp__cartograph__scan_k8s_resources',
         'mcp__cartograph__scan_aws_resources',
         'mcp__cartograph__scan_gcp_resources',
