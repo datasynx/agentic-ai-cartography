@@ -59,7 +59,6 @@ $ datasynx-cartography discover
 | **Browser Bookmarks** | Chrome, Firefox, Safari, Brave, Edge — extracts business/SaaS domains automatically |
 | **Cloud Scanning** | AWS (EC2/RDS/EKS/S3), GCP (Compute/GKE/Cloud Run), Azure (AKS/WebApps), Kubernetes |
 | **Human-in-the-Loop** | Chat with the agent mid-discovery: type `"hubspot windsurf"` to search for specific tools |
-| **Shadow Daemon** | Background observer every 30s — detects new services, ports, processes |
 | **SOP Generation** | Automatically generates Standard Operating Procedures from observed workflows |
 | **SOP Dashboard** | HTML dashboard with all SOPs, step details, frequency stats |
 | **Export Formats** | Mermaid topology, D3.js interactive graph, Backstage YAML, JSON, SOP Markdown |
@@ -107,22 +106,6 @@ datasynx-cartography seed
 # View all browser bookmarks
 datasynx-cartography bookmarks
 
-# Start background observer (Claude Haiku, every 30s)
-datasynx-cartography shadow start
-
-# Attach to live event feed
-datasynx-cartography shadow attach     # [P] pause  [T] new task  [D] detach  [Q] stop
-
-# Pause / resume the daemon
-datasynx-cartography shadow pause
-datasynx-cartography shadow resume
-
-# Stop daemon + generate SOPs + open HTML dashboard
-datasynx-cartography shadow stop
-
-# Generate SOPs manually from a session
-datasynx-cartography sops [session-id]
-
 # Full feature reference
 datasynx-cartography docs
 ```
@@ -153,29 +136,9 @@ Discovery pipeline (automatic, in order):
 5. **Config files** — `.env`, `docker-compose.yml`, etc.
 6. **Human-in-the-loop** — interactive follow-up after initial scan
 
-### Shadow Daemon
-
-```
-datasynx-cartography shadow start [options]
-
-  --interval <ms>       Poll interval        (default: 30000, min: 15000)
-  --inactivity <ms>     Task boundary gap    (default: 300000)
-  --model <m>           Claude model         (default: claude-haiku-4-5-...)
-  --track-windows       Track window focus (requires xdotool)
-  --auto-save           Save nodes without prompting
-  --foreground          Run in foreground (no fork)
-
-datasynx-cartography shadow stop      # stops + generates SOPs + opens dashboard
-datasynx-cartography shadow pause     # SIGUSR1
-datasynx-cartography shadow resume    # SIGUSR2
-datasynx-cartography shadow status
-datasynx-cartography shadow attach
-```
-
 ### Analysis & Export
 
 ```
-datasynx-cartography sops [session-id]             Generate SOPs from observed workflows
 datasynx-cartography export [session-id] [options]
   --format <fmt...>    mermaid, json, yaml, html, sops  (default: all)
   -o, --output <dir>   Output directory
@@ -213,12 +176,7 @@ datasynx-output/
 | Mode | Model | Interval | per Hour | per 8h Day |
 |------|-------|----------|----------|------------|
 | Discover | Sonnet | one-shot | $0.15–0.50 | one-shot |
-| Shadow | Haiku | 30s | $0.12–0.36 | $0.96–2.88 |
-| Shadow | Haiku | 60s | $0.06–0.18 | $0.48–1.44 |
-| Shadow (quiet)* | Haiku | 30s | ~$0.02 | ~$0.16 |
 | SOP generation | Sonnet | one-shot | $0.01–0.03 | one-shot |
-
-\* *quiet = diff-check skips ~90% of cycles when the system is idle*
 
 ---
 
@@ -228,22 +186,13 @@ datasynx-output/
 CLI (Commander.js)
   └── Preflight: Claude CLI + API key + interval validation
       └── Agent Orchestrator (src/agent.ts)
-          ├── runDiscovery()     Claude Sonnet + Bash + MCP Tools
-          │   ├── scan_bookmarks()         browser bookmark extraction
-          │   ├── scan_installed_apps()    /Applications, brew, dpkg, which
-          │   ├── scan_k8s_resources()     kubectl (readonly)
-          │   ├── scan_aws/gcp/azure()     cloud CLI scans (readonly)
-          │   └── ask_user()               human-in-the-loop questions
-          ├── runShadowCycle()   Claude Haiku + MCP Tools only (no Bash)
-          └── generateSOPs()     Anthropic Messages API (no agent loop)
+          └── runDiscovery()     Claude Sonnet + Bash + MCP Tools
+              ├── scan_bookmarks()         browser bookmark extraction
+              ├── scan_installed_apps()    /Applications, brew, dpkg, which
+              ├── scan_k8s_resources()     kubectl (readonly)
+              ├── scan_aws/gcp/azure()     cloud CLI scans (readonly)
+              └── ask_user()               human-in-the-loop questions
               └── Custom MCP Tools → CartographyDB (SQLite WAL)
-
-Shadow Daemon (src/daemon.ts)
-  ├── takeSnapshot()   →  ss + ps  (no Claude!)
-  ├── Diff-check       →  calls Claude only when something changed
-  ├── SIGUSR1/2        →  pause / resume
-  ├── IPC Server       →  Unix socket ~/.cartography/daemon.sock
-  └── Notifications    →  desktop alerts when no client attached
 ```
 
 ### Safety
@@ -260,8 +209,6 @@ Every Bash call is guarded by a `PreToolUse` hook that blocks destructive comman
 import {
   CartographyDB,
   runDiscovery,
-  runShadowCycle,
-  generateSOPs,
   exportAll,
   exportSOPDashboard,
   safetyHook,

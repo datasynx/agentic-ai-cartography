@@ -78,7 +78,7 @@ describe('CartographyDB', () => {
 
   it('inserts and retrieves events', () => {
     const config = defaultConfig();
-    const sessionId = db.createSession('shadow', config);
+    const sessionId = db.createSession('discover', config);
 
     db.insertEvent(sessionId, {
       eventType: 'connection_open',
@@ -95,7 +95,7 @@ describe('CartographyDB', () => {
 
   it('manages tasks', () => {
     const config = defaultConfig();
-    const sessionId = db.createSession('shadow', config);
+    const sessionId = db.createSession('discover', config);
 
     const taskId = db.startTask(sessionId, 'Deploy check');
     expect(taskId).toBeTruthy();
@@ -132,7 +132,7 @@ describe('CartographyDB', () => {
   it('gets latest session', () => {
     const config = defaultConfig();
     db.createSession('discover', config);
-    const id2 = db.createSession('shadow', config);
+    const id2 = db.createSession('discover', config);
 
     const latest = db.getLatestSession();
     expect(latest?.id).toBe(id2);
