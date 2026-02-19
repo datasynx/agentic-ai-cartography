@@ -920,7 +920,7 @@ export function exportSOPDashboard(sops: Array<SOP & { id: string; workflowId: s
 <body>
 <div class="header">
   <h1>SOP Dashboard</h1>
-  <div class="subtitle">Datasynx Cartography — Standard Operating Procedures</div>
+  <div class="subtitle">Cartography — Standard Operating Procedures</div>
   <div class="stats-row">
     <div class="stat-card"><div class="value" id="sop-count">0</div><div class="label">SOPs</div></div>
     <div class="stat-card"><div class="value" id="step-count">0</div><div class="label">Total Steps</div></div>
@@ -957,7 +957,7 @@ systems.forEach(([name, count]) => {
 
 const listDiv = document.getElementById('sop-list');
 if (sops.length === 0) {
-  listDiv.innerHTML = '<div class="empty">No SOPs found. Start the shadow daemon and observe workflows.</div>';
+  listDiv.innerHTML = '<div class="empty">No SOPs found. Run a discovery session first.</div>';
 }
 
 sops.forEach((sop, i) => {

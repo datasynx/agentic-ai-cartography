@@ -6,7 +6,7 @@ import type {
   NodeRow, EdgeRow, SessionRow, SOP,
 } from './types.js';
 
-// ── Shadow DB Row Types (used internally + by @datasynx/cartography-shadow) ──
+// ── DB Row Types ──
 
 export interface EventRow {
   id: string;
@@ -54,7 +54,7 @@ PRAGMA busy_timeout = 5000;
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
-  mode TEXT NOT NULL CHECK (mode IN ('discover','shadow')),
+  mode TEXT NOT NULL CHECK (mode IN ('discover')),
   started_at TEXT NOT NULL,
   completed_at TEXT,
   config TEXT NOT NULL DEFAULT '{}'
@@ -178,7 +178,7 @@ export class CartographyDB {
 
   // ── Sessions ────────────────────────────
 
-  createSession(mode: 'discover' | 'shadow', config: CartographyConfig): string {
+  createSession(mode: 'discover', config: CartographyConfig): string {
     const id = crypto.randomUUID();
     this.db.prepare(
       'INSERT INTO sessions (id, mode, started_at, config) VALUES (?, ?, ?, ?)'
@@ -211,7 +211,7 @@ export class CartographyDB {
   private mapSession(r: Record<string, unknown>): SessionRow {
     return {
       id: r['id'] as string,
-      mode: r['mode'] as 'discover' | 'shadow',
+      mode: r['mode'] as 'discover',
       startedAt: r['started_at'] as string,
       completedAt: (r['completed_at'] as string | null) ?? undefined,
       config: r['config'] as string,

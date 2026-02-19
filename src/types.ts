@@ -77,7 +77,7 @@ export interface EdgeRow extends DiscoveryEdge {
 
 export interface SessionRow {
   id: string;
-  mode: 'discover' | 'shadow';
+  mode: 'discover';
   startedAt: string;
   completedAt?: string;
   config: string;
