@@ -28,7 +28,7 @@ function main(): void {
 
   program
     .name(CMD)
-    .description('AI-powered Infrastructure Cartography & SOP Generation')
+    .description('AI-powered Infrastructure Cartography')
     .version(VERSION);
 
   // ── DISCOVERY ──────────────────────────────────────────────────────────────

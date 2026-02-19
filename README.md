@@ -2,7 +2,7 @@
 
 # 🗺️ Datasynx Cartography
 
-**AI-powered Infrastructure Cartography & SOP Generation**
+**AI-powered Infrastructure Cartography**
 
 [![npm version](https://img.shields.io/npm/v/@datasynx/agentic-ai-cartography?style=flat-square&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
 [![npm downloads](https://img.shields.io/npm/dm/@datasynx/agentic-ai-cartography?style=flat-square&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
@@ -13,7 +13,7 @@
 
 <br/>
 
-*Claude IS the agent — it decides which read-only commands to run, analyses the output, and stores results via custom MCP tools into SQLite. No hand-written parsers, diff logic, or decision trees.*
+*Claude IS the agent — it decides which read-only commands to run, analyses the output, and stores results via custom MCP tools into SQLite. No hand-written parsers, diff logic, or decision trees. SOP generation is available separately via [@datasynx/cartography-shadow](https://github.com/datasynx-ai/agentic-ai-shadowing).*
 
 <br/>
 
@@ -59,9 +59,7 @@ $ datasynx-cartography discover
 | **Browser Bookmarks** | Chrome, Firefox, Safari, Brave, Edge — extracts business/SaaS domains automatically |
 | **Cloud Scanning** | AWS (EC2/RDS/EKS/S3), GCP (Compute/GKE/Cloud Run), Azure (AKS/WebApps), Kubernetes |
 | **Human-in-the-Loop** | Chat with the agent mid-discovery: type `"hubspot windsurf"` to search for specific tools |
-| **SOP Generation** | Automatically generates Standard Operating Procedures from observed workflows |
-| **SOP Dashboard** | HTML dashboard with all SOPs, step details, frequency stats |
-| **Export Formats** | Mermaid topology, D3.js interactive graph, Backstage YAML, JSON, SOP Markdown |
+| **Export Formats** | Mermaid topology, D3.js interactive graph, Backstage YAML, JSON |
 | **Safety First** | `PreToolUse` hook blocks all destructive Bash commands — 100% read-only |
 
 ---
@@ -140,7 +138,7 @@ Discovery pipeline (automatic, in order):
 
 ```
 datasynx-cartography export [session-id] [options]
-  --format <fmt...>    mermaid, json, yaml, html, sops  (default: all)
+  --format <fmt...>    mermaid, json, yaml, html  (default: all)
   -o, --output <dir>   Output directory
 datasynx-cartography show [session-id]             Session details + node list
 datasynx-cartography sessions                      List all sessions
@@ -160,23 +158,16 @@ datasynx-output/
 ├── catalog-info.yaml          Backstage service catalog
 ├── topology.mermaid           Infrastructure topology (graph TB)
 ├── dependencies.mermaid       Service dependencies (graph LR)
-├── topology.html              Interactive D3.js force graph
-├── sop-dashboard.html         HTML dashboard with all SOPs + frequency stats
-├── sops/
-│   ├── deploy-check.md
-│   └── db-migration.md
-└── workflows/
-    └── workflow-001.mermaid
+└── topology.html              Interactive D3.js force graph
 ```
 
 ---
 
 ## Cost Estimate
 
-| Mode | Model | Interval | per Hour | per 8h Day |
-|------|-------|----------|----------|------------|
-| Discover | Sonnet | one-shot | $0.15–0.50 | one-shot |
-| SOP generation | Sonnet | one-shot | $0.01–0.03 | one-shot |
+| Mode | Model | Interval | Typical Cost |
+|------|-------|----------|-------------|
+| Discover | Sonnet | one-shot | $0.15–0.50 |
 
 ---
 
@@ -210,7 +201,6 @@ import {
   CartographyDB,
   runDiscovery,
   exportAll,
-  exportSOPDashboard,
   safetyHook,
   defaultConfig,
 } from '@datasynx/agentic-ai-cartography';
