@@ -17,13 +17,6 @@ export const EDGE_RELATIONSHIPS = [
 ] as const;
 export type EdgeRelationship = typeof EDGE_RELATIONSHIPS[number];
 
-export const EVENT_TYPES = [
-  'process_start', 'process_end',
-  'connection_open', 'connection_close',
-  'window_focus', 'tool_switch',
-] as const;
-export type EventType = typeof EVENT_TYPES[number];
-
 // ── Zod Schemas ──────────────────────────
 
 export const NodeSchema = z.object({
@@ -45,17 +38,6 @@ export const EdgeSchema = z.object({
   confidence: z.number().min(0).max(1).default(0.5),
 });
 export type DiscoveryEdge = z.infer<typeof EdgeSchema>;
-
-export const EventSchema = z.object({
-  eventType: z.enum(EVENT_TYPES),
-  process: z.string(),
-  pid: z.number(),
-  target: z.string().optional(),
-  targetType: z.enum(NODE_TYPES).optional(),
-  protocol: z.string().optional(),
-  port: z.number().optional(),
-});
-export type ActivityEvent = z.infer<typeof EventSchema>;
 
 export const SOPStepSchema = z.object({
   order: z.number(),
@@ -93,45 +75,6 @@ export interface EdgeRow extends DiscoveryEdge {
   pathId?: string;
 }
 
-export interface EventRow {
-  id: string;
-  sessionId: string;
-  taskId?: string;
-  timestamp: string;
-  eventType: EventType;
-  process: string;
-  pid: number;
-  target?: string;
-  targetType?: NodeType;
-  port?: number;
-  durationMs?: number;
-}
-
-export interface TaskRow {
-  id: string;
-  sessionId: string;
-  description?: string;
-  startedAt: string;
-  completedAt?: string;
-  steps: string;
-  involvedServices: string;
-  status: 'active' | 'completed' | 'cancelled';
-  isSOPCandidate: boolean;
-}
-
-export interface WorkflowRow {
-  id: string;
-  sessionId: string;
-  name?: string;
-  pattern: string;
-  taskIds: string;
-  occurrences: number;
-  firstSeen: string;
-  lastSeen: string;
-  avgDurationMs: number;
-  involvedServices: string;
-}
-
 export interface SessionRow {
   id: string;
   mode: 'discover' | 'shadow';
@@ -140,91 +83,28 @@ export interface SessionRow {
   config: string;
 }
 
-// ── IPC Protokoll ────────────────────────
-
-export type DaemonMessage =
-  | { type: 'event'; data: EventRow }
-  | { type: 'prompt'; id: string; prompt: PendingPrompt }
-  | { type: 'status'; data: ShadowStatus }
-  | { type: 'agent-output'; text: string }
-  | { type: 'info'; message: string };
-
-export type ClientMessage =
-  | { type: 'prompt-response'; id: string; answer: string }
-  | { type: 'command'; command: 'new-task' | 'end-task' | 'status' | 'stop' | 'pause' | 'resume' }
-  | { type: 'task-description'; description: string };
-
-export interface PendingPrompt {
-  kind: 'node-approval' | 'task-boundary' | 'task-end';
-  context: Record<string, unknown>;
-  options: string[];
-  defaultAnswer: string;
-  timeoutMs: number;
-  createdAt: string;
-}
-
-export interface ShadowStatus {
-  pid: number;
-  uptime: number;
-  nodeCount: number;
-  eventCount: number;
-  taskCount: number;
-  sopCount: number;
-  pendingPrompts: number;
-  autoSave: boolean;
-  mode: 'foreground' | 'daemon';
-  agentActive: boolean;
-  paused: boolean;
-  cyclesRun: number;
-  cyclesSkipped: number;
-}
-
 // ── Config ───────────────────────────────
 
-export const MIN_POLL_INTERVAL_MS = 15_000; // 15s Minimum (Agent SDK Overhead)
-
 export interface CartographyConfig {
-  mode: 'discover' | 'shadow';
   maxDepth: number;
   maxTurns: number;
   entryPoints: string[];
   agentModel: string;
-  shadowMode: 'foreground' | 'daemon';
-  pollIntervalMs: number;
-  inactivityTimeoutMs: number;
-  promptTimeoutMs: number;
-  trackWindowFocus: boolean;
-  autoSaveNodes: boolean;
-  enableNotifications: boolean;
-  shadowModel: string;
   organization?: string;
   outputDir: string;
   dbPath: string;
-  socketPath: string;
-  pidFile: string;
   verbose: boolean;
 }
 
 export function defaultConfig(overrides: Partial<CartographyConfig> = {}): CartographyConfig {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? '/tmp';
   return {
-    mode: 'discover',
     maxDepth: 8,
     maxTurns: 50,
     entryPoints: ['localhost'],
     agentModel: 'claude-sonnet-4-5-20250929',
-    shadowMode: 'daemon',
-    pollIntervalMs: 30_000,
-    inactivityTimeoutMs: 300_000,
-    promptTimeoutMs: 60_000,
-    trackWindowFocus: false,
-    autoSaveNodes: false,
-    enableNotifications: true,
-    shadowModel: 'claude-haiku-4-5-20251001',
     outputDir: './cartography-output',
     dbPath: `${home}/.cartography/cartography.db`,
-    socketPath: `${home}/.cartography/daemon.sock`,
-    pidFile: `${home}/.cartography/daemon.pid`,
     verbose: false,
     ...overrides,
   };

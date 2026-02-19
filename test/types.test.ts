@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NodeSchema, EdgeSchema, EventSchema, defaultConfig, MIN_POLL_INTERVAL_MS } from '../src/types.js';
+import { NodeSchema, EdgeSchema, defaultConfig } from '../src/types.js';
 
 describe('NodeSchema', () => {
   it('validates a valid node', () => {
@@ -61,33 +61,16 @@ describe('EdgeSchema', () => {
   });
 });
 
-describe('EventSchema', () => {
-  it('validates a process_start event', () => {
-    const result = EventSchema.safeParse({
-      eventType: 'process_start',
-      process: 'node',
-      pid: 12345,
-    });
-    expect(result.success).toBe(true);
-  });
-});
-
 describe('defaultConfig', () => {
   it('returns valid defaults', () => {
     const config = defaultConfig();
-    expect(config.pollIntervalMs).toBe(30_000);
     expect(config.maxTurns).toBe(50);
     expect(config.maxDepth).toBe(8);
     expect(config.entryPoints).toEqual(['localhost']);
   });
 
   it('applies overrides', () => {
-    const config = defaultConfig({ pollIntervalMs: 60_000, verbose: true });
-    expect(config.pollIntervalMs).toBe(60_000);
+    const config = defaultConfig({ verbose: true });
     expect(config.verbose).toBe(true);
-  });
-
-  it('MIN_POLL_INTERVAL_MS is 15000', () => {
-    expect(MIN_POLL_INTERVAL_MS).toBe(15_000);
   });
 });

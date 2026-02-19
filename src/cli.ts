@@ -1,17 +1,13 @@
 import { Command } from 'commander';
-import { checkPrerequisites, checkPollInterval } from './preflight.js';
+import { checkPrerequisites } from './preflight.js';
 import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
-import { runDiscovery, generateSOPs } from './agent.js';
+import { runDiscovery } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
 import { exportAll } from './exporter.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
-import {
-  forkDaemon, isDaemonRunning, stopDaemon, pauseDaemon, resumeDaemon, startDaemonProcess,
-} from './daemon.js';
-import { ForegroundClient, AttachClient } from './client.js';
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
 const bold    = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -22,16 +18,7 @@ const yellow  = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
 const red     = (s: string) => `\x1b[31m${s}\x1b[0m`;
 
-// ── Daemon child-process entry ────────────────────────────────────────────────
-if (process.env.CARTOGRAPHYY_DAEMON === '1') {
-  const config = JSON.parse(process.env.CARTOGRAPHYY_CONFIG ?? '{}') as ReturnType<typeof defaultConfig>;
-  startDaemonProcess(config).catch((err) => {
-    process.stderr.write(`Daemon fatal: ${err}\n`);
-    process.exitCode = 1;
-  });
-} else {
-  main();
-}
+main();
 
 function main(): void {
   const program = new Command();
@@ -61,7 +48,6 @@ function main(): void {
       checkPrerequisites();
 
       const config = defaultConfig({
-        mode: 'discover',
         entryPoints: opts.entry,
         maxDepth: parseInt(opts.depth, 10),
         maxTurns: parseInt(opts.maxTurns, 10),
@@ -352,235 +338,7 @@ function main(): void {
       db.close();
     });
 
-  // ── SHADOW ────────────────────────────────────────────────────────────────
-
-  const shadow = program.command('shadow').description('Manage the shadow daemon');
-
-  shadow
-    .command('start')
-    .description('Start the shadow daemon')
-    .option('--interval <ms>', 'Poll interval in ms', '30000')
-    .option('--inactivity <ms>', 'Task boundary gap in ms', '300000')
-    .option('--track-windows', 'Track window focus (requires xdotool)', false)
-    .option('--auto-save', 'Save nodes without prompting', false)
-    .option('--no-notifications', 'Disable desktop notifications')
-    .option('--model <m>', 'Analysis model', 'claude-haiku-4-5-20251001')
-    .option('--foreground', 'Run in foreground (no daemon fork)', false)
-    .option('--db <path>', 'DB path')
-    .option('--daemon-child', 'Internal: marks this as a daemon child process') // internal flag
-    .action(async (opts) => {
-      checkPrerequisites();
-
-      const intervalMs = checkPollInterval(parseInt(opts.interval, 10));
-
-      const config = defaultConfig({
-        mode: 'shadow',
-        shadowMode: opts.foreground ? 'foreground' : 'daemon',
-        pollIntervalMs: intervalMs,
-        inactivityTimeoutMs: parseInt(opts.inactivity, 10),
-        trackWindowFocus: opts.trackWindows,
-        autoSaveNodes: opts.autoSave,
-        enableNotifications: opts.notifications !== false,
-        shadowModel: opts.model,
-        ...(opts.db ? { dbPath: opts.db } : {}),
-      });
-
-      // Check if already running
-      const { running } = isDaemonRunning(config.pidFile);
-      if (running) {
-        process.stderr.write('❌ Shadow daemon is already running. Use: datasynx-cartography shadow status\n');
-        process.exitCode = 1;
-        return;
-      }
-
-      if (opts.foreground) {
-        const client = new ForegroundClient();
-        await client.run(config);
-      } else {
-        const pid = forkDaemon(config);
-        process.stderr.write(`👁 Shadow daemon started (PID ${pid})\n`);
-        process.stderr.write(`   Interval: ${intervalMs / 1000}s | Model: ${config.shadowModel}\n`);
-        process.stderr.write('   datasynx-cartography shadow attach  — attach to live events\n');
-        process.stderr.write('   datasynx-cartography shadow stop    — stop daemon\n\n');
-      }
-    });
-
-  shadow
-    .command('stop')
-    .description('Stop shadow daemon + SOP review')
-    .option('-o, --output <dir>', 'Output directory for SOPs + dashboard', './datasynx-output')
-    .option('--no-review', 'Skip SOP review')
-    .action(async (opts) => {
-      const config = defaultConfig({ outputDir: opts.output });
-      const stopped = stopDaemon(config.pidFile);
-
-      if (!stopped) {
-        process.stderr.write('⚠ No running shadow daemon found\n');
-        return;
-      }
-
-      process.stderr.write('✓ Shadow daemon stopped\n');
-
-      if (opts.review === false) return;
-
-      // Wait a moment for daemon to flush DB
-      await new Promise(r => setTimeout(r, 500));
-
-      // Generate SOPs + show review
-      const db = new CartographyDB(config.dbPath);
-      const session = db.getLatestSession('shadow');
-      if (!session) {
-        db.close();
-        return;
-      }
-
-      const stats = db.getStats(session.id);
-      const w = (s: string) => process.stderr.write(s);
-
-      w('\n');
-      w(dim('  ────────────────────────────────────────────────\n'));
-      w(bold('  Shadow Session Review\n'));
-      w(dim(`  Session: ${session.id}\n`));
-      w(dim(`  Nodes: ${stats.nodes} | Events: ${stats.events} | Tasks: ${stats.tasks}\n`));
-      w(dim('  ────────────────────────────────────────────────\n'));
-      w('\n');
-
-      // Generate SOPs if tasks exist
-      if (stats.tasks > 0) {
-        try {
-          w('  Generating SOPs...\n');
-          const count = await generateSOPs(db, session.id);
-          w(`  ${green('✓')} ${count} SOPs generated\n\n`);
-        } catch (err) {
-          w(`  ${red('✗')} SOP generation failed: ${err}\n\n`);
-        }
-      }
-
-      // Show SOPs as markdown review
-      const { exportSOPMarkdown, exportSOPDashboard } = await import('./exporter.js');
-      const sops = db.getSOPs(session.id);
-
-      if (sops.length > 0) {
-        w(bold('  SOPs for review:\n\n'));
-        for (const sop of sops) {
-          const md = exportSOPMarkdown(sop);
-          // Indent each line for terminal display
-          for (const line of md.split('\n')) {
-            process.stdout.write(`  ${line}\n`);
-          }
-          process.stdout.write('\n');
-          w(dim('  ────────────────────────────────────────────────\n\n'));
-        }
-
-        // Export SOP dashboard HTML
-        const { mkdirSync, writeFileSync } = await import('node:fs');
-        const { join, resolve: resolvePath } = await import('node:path');
-
-        mkdirSync(config.outputDir, { recursive: true });
-        mkdirSync(join(config.outputDir, 'sops'), { recursive: true });
-
-        // Write individual SOP markdown files
-        for (const sop of sops) {
-          const filename = sop.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.md';
-          writeFileSync(join(config.outputDir, 'sops', filename), exportSOPMarkdown(sop));
-        }
-
-        // Write SOP dashboard HTML
-        const allSOPs = db.getAllSOPs();
-        const dashboardHtml = exportSOPDashboard(allSOPs);
-        const dashboardPath = join(config.outputDir, 'sop-dashboard.html');
-        writeFileSync(dashboardPath, dashboardHtml);
-
-        const absPath = resolvePath(dashboardPath);
-        w(`  ${green('✓')} ${sops.length} SOP markdown files written\n`);
-        w(`  ${green('✓')} SOP Dashboard: ${cyan(`file://${absPath}`)}\n`);
-        w('\n');
-        w(dim(`  Open in browser: ${bold(`file://${absPath}`)}\n`));
-        w('\n');
-      } else {
-        w(dim('  No SOPs in this session.\n\n'));
-      }
-
-      db.close();
-    });
-
-  shadow
-    .command('pause')
-    .description('Pause the shadow daemon')
-    .action(() => {
-      const config = defaultConfig();
-      const paused = pauseDaemon(config.pidFile);
-      if (paused) {
-        process.stderr.write('⏸ Shadow daemon paused\n');
-      } else {
-        process.stderr.write('⚠ No running shadow daemon found\n');
-      }
-    });
-
-  shadow
-    .command('resume')
-    .description('Resume the shadow daemon')
-    .action(() => {
-      const config = defaultConfig();
-      const resumed = resumeDaemon(config.pidFile);
-      if (resumed) {
-        process.stderr.write('▶ Shadow daemon resumed\n');
-      } else {
-        process.stderr.write('⚠ No running shadow daemon found\n');
-      }
-    });
-
-  shadow
-    .command('status')
-    .description('Show shadow daemon status')
-    .action(() => {
-      const config = defaultConfig();
-      const { running, pid } = isDaemonRunning(config.pidFile);
-      if (running) {
-        process.stdout.write(`✓ Shadow daemon running (PID ${pid})\n`);
-        process.stdout.write(`   Socket: ${config.socketPath}\n`);
-      } else {
-        process.stdout.write('✗ Shadow daemon stopped\n');
-      }
-    });
-
-  shadow
-    .command('attach')
-    .description('Attach to a running shadow daemon')
-    .action(async () => {
-      const config = defaultConfig();
-      const client = new AttachClient();
-      await client.attach(config.socketPath);
-    });
-
   // ── ANALYSE & EXPORT ──────────────────────────────────────────────────────
-
-  program
-    .command('sops [session-id]')
-    .description('Generate SOPs from observed workflows')
-    .action(async (sessionId?: string) => {
-      checkPrerequisites();
-
-      const config = defaultConfig();
-      const db = new CartographyDB(config.dbPath);
-
-      const session = sessionId
-        ? db.getSession(sessionId)
-        : db.getLatestSession('shadow');
-
-      if (!session) {
-        process.stderr.write('❌ No shadow session found. Run: datasynx-cartography shadow start\n');
-        db.close();
-        process.exitCode = 1;
-        return;
-      }
-
-      process.stderr.write(`🔄 Generating SOPs from session ${session.id}...\n`);
-      const count = await generateSOPs(db, session.id);
-      process.stderr.write(`✓ ${count} SOPs generated\n`);
-
-      db.close();
-    });
 
   program
     .command('export [session-id]')
@@ -898,40 +656,8 @@ ${infraSummary.substring(0, 12000)}`;
       out('\n');
       line();
 
-      // ── SHADOW
-      out(b(cyan('  SHADOW DAEMON\n')));
-      out('\n');
-      out(`  ${green('datasynx-cartography shadow start')}\n`);
-      out(`    Starts a background daemon that takes a system snapshot every 30s\n`);
-      out(`    (ss + ps). Claude Haiku is called only when something changes.\n`);
-      out('\n');
-      out(dim('    Options:\n'));
-      out(dim('      --interval <ms>       Poll interval        (default: 30000, min: 15000)\n'));
-      out(dim('      --inactivity <ms>     Task boundary gap    (default: 300000 = 5 min)\n'));
-      out(dim('      --model <m>           Analysis model       (default: claude-haiku-4-5-...)\n'));
-      out(dim('      --track-windows       Track window focus (requires xdotool)\n'));
-      out(dim('      --auto-save           Save nodes without prompting\n'));
-      out(dim('      --no-notifications    Disable desktop notifications\n'));
-      out(dim('      --foreground          Run in terminal (no daemon fork)\n'));
-      out('\n');
-      out(`  ${green('datasynx-cartography shadow stop')}     ${dim('Stop via SIGTERM')}\n`);
-      out(`  ${green('datasynx-cartography shadow status')}   ${dim('Show PID + socket path')}\n`);
-      out(`  ${green('datasynx-cartography shadow attach')}   ${dim('Live events in terminal, hotkeys: [T] [S] [D] [Q]')}\n`);
-      out('\n');
-      out(dim('    Hotkeys in attach mode:\n'));
-      out(dim('      [T]  Start new task (with description)\n'));
-      out(dim('      [S]  Show status dump (nodes, events, tasks, cycles)\n'));
-      out(dim('      [D]  Detach — daemon keeps running\n'));
-      out(dim('      [Q]  Stop daemon and quit\n'));
-      out('\n');
-      line();
-
       // ── ANALYSIS & EXPORT
       out(b(cyan('  ANALYSIS & EXPORT\n')));
-      out('\n');
-      out(`  ${green('datasynx-cartography sops [session-id]')}\n`);
-      out(`    Clusters completed tasks and generates SOPs via Claude Sonnet.\n`);
-      out(`    Uses the Anthropic Messages API (no agent loop, one request per cluster).\n`);
       out('\n');
       out(`  ${green('datasynx-cartography export [session-id]')}\n`);
       out(dim('    --format <fmt...>   mermaid, json, yaml, html, sops  (default: all)\n'));
@@ -948,12 +674,6 @@ ${infraSummary.substring(0, 12000)}`;
       out(yellow('  Mode           Model    Interval     per Hour     per 8h Day\n'));
       out(dim('  ─────────────────────────────────────────────────────────────\n'));
       out(`  Discovery      Sonnet   one-shot     $0.15–0.50   one-shot\n`);
-      out(`  Shadow         Haiku    30s          $0.12–0.36   $0.96–2.88\n`);
-      out(`  Shadow         Haiku    60s          $0.06–0.18   $0.48–1.44\n`);
-      out(`  Shadow (quiet) Haiku    30s          ~$0.02       ~$0.16\n`);
-      out(`  SOP gen        Sonnet   one-shot     $0.01–0.03   one-shot\n`);
-      out('\n');
-      out(dim('  * "quiet" = diff-check skips 90%+ cycles when system is unchanged\n'));
       out('\n');
       line();
 
@@ -963,19 +683,12 @@ ${infraSummary.substring(0, 12000)}`;
       out(dim('  CLI (Commander)\n'));
       out(dim('    └── Preflight: Claude CLI check + API key + interval validation\n'));
       out(dim('        └── Agent Orchestrator (agent.ts)\n'));
-      out(dim('            ├── runDiscovery()    → Claude Sonnet + Bash + MCP Tools\n'));
-      out(dim('            ├── runShadowCycle()  → Claude Haiku + MCP Tools only (no Bash)\n'));
-      out(dim('            └── generateSOPs()    → Anthropic Messages API (no agent loop)\n'));
+      out(dim('            └── runDiscovery()    → Claude Sonnet + Bash + MCP Tools\n'));
       out(dim('                └── Custom MCP Tools (tools.ts)\n'));
-      out(dim('                    save_node, save_edge, save_event,\n'));
+      out(dim('                    save_node, save_edge,\n'));
       out(dim('                    scan_bookmarks, scan_browser_history,\n'));
       out(dim('                    scan_installed_apps, scan_local_databases\n'));
       out(dim('                    └── CartographyDB (SQLite WAL)\n'));
-      out(dim('  Shadow Daemon (daemon.ts)\n'));
-      out(dim('    ├── takeSnapshot() → ss + ps  [no Claude!]\n'));
-      out(dim('    ├── Diff-Check → calls Claude only on changes\n'));
-      out(dim('    ├── IPC Server (Unix socket ~/.cartography/daemon.sock)\n'));
-      out(dim('    └── NotificationService (desktop alerts when no client attached)\n'));
       out('\n');
       line();
 
@@ -991,11 +704,8 @@ ${infraSummary.substring(0, 12000)}`;
       out('\n');
       out(dim('  # 3. Go\n'));
       out('  datasynx-cartography discover\n');
-      out('  datasynx-cartography shadow start\n');
       out('\n');
-      out(dim('  Data:   ~/.cartography/cartography.db\n'));
-      out(dim('  Socket: ~/.cartography/daemon.sock\n'));
-      out(dim('  PID:    ~/.cartography/daemon.pid\n'));
+      out(dim('  Data: ~/.cartography/cartography.db\n'));
       out('\n');
     });
 
@@ -1333,13 +1043,6 @@ ${infraSummary.substring(0, 12000)}`;
     o(`  ${_g('discover')}             ${_d('Scan infrastructure (Claude Sonnet)')}\n`);
     o(`  ${_g('seed')}                 ${_d('Manually add known tools/DBs/APIs')}\n`);
     o(`  ${_g('bookmarks')}            ${_d('View browser bookmarks')}\n`);
-    o(`  ${_g('shadow start')}         ${_d('Start background daemon (Claude Haiku)')}\n`);
-    o(`  ${_g('shadow pause')}         ${_d('Pause daemon')}\n`);
-    o(`  ${_g('shadow resume')}        ${_d('Resume daemon')}\n`);
-    o(`  ${_g('shadow stop')}          ${_d('Stop + SOP review + dashboard')}\n`);
-    o(`  ${_g('shadow status')}        ${_d('Show daemon status')}\n`);
-    o(`  ${_g('shadow attach')}        ${_d('Live control: [T] [S] [P] [D] [Q]')}\n`);
-    o(`  ${_g('sops')} ${_d('[session]')}      ${_d('Generate SOPs from workflows')}\n`);
     o(`  ${_g('export')} ${_d('[session]')}    ${_d('Export Mermaid, JSON, YAML, HTML')}\n`);
     o(`  ${_g('show')} ${_d('[session]')}      ${_d('Show session details')}\n`);
     o(`  ${_g('sessions')}             ${_d('List all sessions')}\n`);
@@ -1353,7 +1056,6 @@ ${infraSummary.substring(0, 12000)}`;
     o(`  ${_m('$')} ${_b('datasynx-cartography doctor')}         ${_d('Check requirements')}\n`);
     o(`  ${_m('$')} ${_b('datasynx-cartography seed')}           ${_d('Add known infrastructure')}\n`);
     o(`  ${_m('$')} ${_b('datasynx-cartography discover')}       ${_d('One-time scan')}\n`);
-    o(`  ${_m('$')} ${_b('datasynx-cartography shadow start')}   ${_d('Continuous monitoring')}\n`);
     o('\n');
     o(_d('  Docs:   datasynx-cartography docs\n'));
     o(_d('  Help:   datasynx-cartography --help\n'));

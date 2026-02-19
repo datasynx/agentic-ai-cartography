@@ -2,9 +2,50 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
-  CartographyConfig, DiscoveryNode, DiscoveryEdge, ActivityEvent,
-  NodeRow, EdgeRow, EventRow, TaskRow, WorkflowRow, SessionRow, SOP,
+  CartographyConfig, DiscoveryNode, DiscoveryEdge,
+  NodeRow, EdgeRow, SessionRow, SOP,
 } from './types.js';
+
+// ── Shadow DB Row Types (used internally + by @datasynx/cartography-shadow) ──
+
+export interface EventRow {
+  id: string;
+  sessionId: string;
+  taskId?: string;
+  timestamp: string;
+  eventType: string;
+  process: string;
+  pid: number;
+  target?: string;
+  targetType?: string;
+  port?: number;
+  durationMs?: number;
+}
+
+export interface TaskRow {
+  id: string;
+  sessionId: string;
+  description?: string;
+  startedAt: string;
+  completedAt?: string;
+  steps: string;
+  involvedServices: string;
+  status: 'active' | 'completed' | 'cancelled';
+  isSOPCandidate: boolean;
+}
+
+export interface WorkflowRow {
+  id: string;
+  sessionId: string;
+  name?: string;
+  pattern: string;
+  taskIds: string;
+  occurrences: number;
+  firstSeen: string;
+  lastSeen: string;
+  avgDurationMs: number;
+  involvedServices: string;
+}
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -248,7 +289,7 @@ export class CartographyDB {
 
   // ── Events ──────────────────────────────
 
-  insertEvent(sessionId: string, event: ActivityEvent, taskId?: string): void {
+  insertEvent(sessionId: string, event: Pick<EventRow, 'eventType' | 'process' | 'pid' | 'target' | 'targetType' | 'port'>, taskId?: string): void {
     const id = crypto.randomUUID();
     this.db.prepare(`
       INSERT INTO activity_events

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CartographyDB } from './db.js';
-import { NODE_TYPES, EDGE_RELATIONSHIPS, EVENT_TYPES, SOPStepSchema } from './types.js';
+import { NODE_TYPES, EDGE_RELATIONSHIPS, SOPStepSchema } from './types.js';
 import { scanAllBookmarks, scanAllHistory } from './bookmarks.js';
 
 // Lazy import to avoid hard-wiring SDK at module parse time
@@ -76,25 +76,6 @@ export async function createCartographyTools(
       return { content: [{ type: 'text', text: `✓ ${args['sourceId']}→${args['targetId']}` }] };
     }),
 
-    tool('save_event', 'Save an activity event (process/connection observed)', {
-      eventType: z.enum(EVENT_TYPES),
-      process: z.string(),
-      pid: z.number(),
-      target: z.string().optional(),
-      targetType: z.enum(NODE_TYPES).optional(),
-      port: z.number().optional(),
-    }, async (args) => {
-      db.insertEvent(sessionId, {
-        eventType: args['eventType'] as typeof EVENT_TYPES[number],
-        process: args['process'] as string,
-        pid: args['pid'] as number,
-        target: args['target'] ? stripSensitive(args['target'] as string) : undefined,
-        targetType: args['targetType'] as typeof NODE_TYPES[number] | undefined,
-        port: args['port'] as number | undefined,
-      });
-      return { content: [{ type: 'text', text: `✓ ${args['eventType']}` }] };
-    }),
-
     tool('get_catalog', 'Get the current catalog — use before save_node to avoid duplicates', {
       includeEdges: z.boolean().default(true),
     }, async (args) => {
@@ -109,23 +90,6 @@ export async function createCartographyTools(
           }),
         }],
       };
-    }),
-
-    tool('manage_task', 'Start, end or describe a workflow task', {
-      action: z.enum(['start', 'end', 'describe']),
-      description: z.string().optional(),
-    }, async (args) => {
-      const action = args['action'] as string;
-      if (action === 'start') {
-        const id = db.startTask(sessionId, args['description'] as string | undefined);
-        return { content: [{ type: 'text', text: `✓ Task started: ${id}` }] };
-      }
-      if (action === 'end') {
-        db.endCurrentTask(sessionId);
-        return { content: [{ type: 'text', text: '✓ Task ended' }] };
-      }
-      db.updateTaskDescription(sessionId, args['description'] as string);
-      return { content: [{ type: 'text', text: '✓ Description updated' }] };
     }),
 
     tool('ask_user', 'Ask the user a question — for clarifications, missing context, or consent (e.g. before scanning browser history)', {
