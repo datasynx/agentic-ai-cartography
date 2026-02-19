@@ -1,0 +1,26 @@
+{
+  "name": "@datasynx/cartography-shadow",
+  "version": "0.1.0",
+  "description": "Shadow daemon for @datasynx/agentic-ai-cartography — continuous system monitoring, task tracking & SOP generation",
+  "type": "module",
+  "private": true,
+  "keywords": [
+    "shadow",
+    "daemon",
+    "monitoring",
+    "cartography",
+    "sop",
+    "claude",
+    "ai-agent"
+  ],
+  "author": {
+    "name": "Datasynx AI",
+    "url": "https://github.com/datasynx-ai"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/datasynx-ai/agentic-ai-shadowing.git"
+  },
+  "note": "This package is not yet ready for publishing. See docs/SHADOW_SPEC.md for the implementation spec."
+}
