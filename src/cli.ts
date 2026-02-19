@@ -272,13 +272,17 @@ function main(): void {
 
       w('\n');
       if (existsSync(htmlPath)) {
-        w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('Open topology.html'))}\n`);
+        const fileUrl = `file://${htmlPath}`;
+        w(`  ${green('→')}  ${osc8(fileUrl, bold('Open topology.html'))}\n`);
+        w(`     ${dim(fileUrl)}\n`);
       }
       if (existsSync(topoPath)) {
         try {
           const code = readFileSync(topoPath, 'utf8');
-          const b64 = Buffer.from(JSON.stringify({ code, mermaid: { theme: 'dark' } })).toString('base64');
-          w(`  ${cyan('→')}  ${osc8(`https://mermaid.live/view#base64:${b64}`, bold('Open in mermaid.live'))}\n`);
+          const b64 = Buffer.from(JSON.stringify({ code, mermaid: { theme: 'dark' } })).toString('base64url');
+          const liveUrl = `https://mermaid.live/view#base64:${b64}`;
+          w(`  ${cyan('→')}  ${osc8(liveUrl, bold('Open in mermaid.live'))}\n`);
+          w(`     ${dim(liveUrl)}\n`);
         } catch { /* ignore */ }
       }
       w('\n');
