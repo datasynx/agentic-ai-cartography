@@ -1,5 +1,5 @@
 import { homedir, tmpdir } from 'node:os';
-import { existsSync, readFileSync, readdirSync, copyFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, copyFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -9,6 +9,10 @@ export interface BookmarkHost {
   port: number;
   protocol: 'http' | 'https';
   source: string;
+}
+
+export interface HistoryHost extends BookmarkHost {
+  visitCount: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -61,10 +65,10 @@ function readChromeLike(filePath: string, source: string): BookmarkHost[] {
   }
 }
 
-async function readFirefox(profileDir: string): Promise<BookmarkHost[]> {
+async function readFirefoxBookmarks(profileDir: string): Promise<BookmarkHost[]> {
   const src = join(profileDir, 'places.sqlite');
   if (!existsSync(src)) return [];
-  const tmp = join(tmpdir(), `cartograph_ff_${Date.now()}.sqlite`);
+  const tmp = join(tmpdir(), `cartograph_ff_bm_${Date.now()}.sqlite`);
   try {
     copyFileSync(src, tmp);
     const { default: Database } = await import('better-sqlite3');
@@ -80,6 +84,69 @@ async function readFirefox(profileDir: string): Promise<BookmarkHost[]> {
     return rows.map(r => extractHost(r.url, 'firefox')).filter((h): h is BookmarkHost => h !== null);
   } catch {
     return [];
+  } finally {
+    try { (await import('node:fs')).unlinkSync(tmp); } catch { /* ignore */ }
+  }
+}
+
+export async function readFirefoxHistory(profileDir: string): Promise<HistoryHost[]> {
+  const src = join(profileDir, 'places.sqlite');
+  if (!existsSync(src)) return [];
+  const tmp = join(tmpdir(), `cartograph_ff_hist_${Date.now()}.sqlite`);
+  try {
+    copyFileSync(src, tmp);
+    const { default: Database } = await import('better-sqlite3');
+    const db = new Database(tmp, { readonly: true, fileMustExist: true });
+    const rows = db.prepare(`
+      SELECT url, visit_count
+      FROM moz_places
+      WHERE url NOT LIKE 'place:%'
+        AND visit_count > 0
+      ORDER BY visit_count DESC
+      LIMIT 5000
+    `).all() as { url: string; visit_count: number }[];
+    db.close();
+    return rows
+      .map(r => {
+        const h = extractHost(r.url, 'firefox');
+        if (!h) return null;
+        return { ...h, visitCount: r.visit_count };
+      })
+      .filter((h): h is HistoryHost => h !== null);
+  } catch {
+    return [];
+  } finally {
+    try { (await import('node:fs')).unlinkSync(tmp); } catch { /* ignore */ }
+  }
+}
+
+async function readChromiumHistory(historyPath: string, source: string): Promise<HistoryHost[]> {
+  if (!existsSync(historyPath)) return [];
+  const tmp = join(tmpdir(), `cartograph_ch_hist_${Date.now()}.sqlite`);
+  try {
+    copyFileSync(historyPath, tmp);
+    const { default: Database } = await import('better-sqlite3');
+    const db = new Database(tmp, { readonly: true, fileMustExist: true });
+    const rows = db.prepare(`
+      SELECT url, visit_count
+      FROM urls
+      WHERE hidden = 0
+        AND visit_count > 0
+      ORDER BY visit_count DESC
+      LIMIT 5000
+    `).all() as { url: string; visit_count: number }[];
+    db.close();
+    return rows
+      .map(r => {
+        const h = extractHost(r.url, source);
+        if (!h) return null;
+        return { ...h, visitCount: r.visit_count };
+      })
+      .filter((h): h is HistoryHost => h !== null);
+  } catch {
+    return [];
+  } finally {
+    try { (await import('node:fs')).unlinkSync(tmp); } catch { /* ignore */ }
   }
 }
 
@@ -88,30 +155,95 @@ async function readFirefox(profileDir: string): Promise<BookmarkHost[]> {
 const HOME = homedir();
 const IS_MAC = process.platform === 'darwin';
 
-const CHROME_PATHS = IS_MAC
-  ? [`${HOME}/Library/Application Support/Google/Chrome/Default/Bookmarks`]
-  : [`${HOME}/.config/google-chrome/Default/Bookmarks`];
+// Browser bookmark file paths (multiple profiles supported)
+function chromeLikePaths(base: string): string[] {
+  const paths: string[] = [];
+  const defaultPath = join(base, 'Default', 'Bookmarks');
+  if (existsSync(defaultPath)) paths.push(defaultPath);
+  // Also check Profile 1, Profile 2, etc.
+  if (existsSync(base)) {
+    try {
+      for (const entry of readdirSync(base)) {
+        if (entry.startsWith('Profile ')) {
+          const p = join(base, entry, 'Bookmarks');
+          if (existsSync(p)) paths.push(p);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  return paths;
+}
 
-const EDGE_PATHS = IS_MAC
-  ? [`${HOME}/Library/Application Support/Microsoft Edge/Default/Bookmarks`]
-  : [`${HOME}/.config/microsoft-edge/Default/Bookmarks`];
+function chromeLikeHistoryPaths(base: string): string[] {
+  const paths: string[] = [];
+  const defaultPath = join(base, 'Default', 'History');
+  if (existsSync(defaultPath)) paths.push(defaultPath);
+  if (existsSync(base)) {
+    try {
+      for (const entry of readdirSync(base)) {
+        if (entry.startsWith('Profile ')) {
+          const p = join(base, entry, 'History');
+          if (existsSync(p)) paths.push(p);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  return paths;
+}
 
-const BRAVE_PATHS = IS_MAC
-  ? [`${HOME}/Library/Application Support/BraveSoftware/Brave-Browser/Default/Bookmarks`]
-  : [`${HOME}/.config/BraveSoftware/Brave-Browser/Default/Bookmarks`];
+const CHROME_BASE = IS_MAC
+  ? `${HOME}/Library/Application Support/Google/Chrome`
+  : `${HOME}/.config/google-chrome`;
+
+const CHROMIUM_BASE = IS_MAC
+  ? `${HOME}/Library/Application Support/Chromium`
+  : `${HOME}/.config/chromium`;
+
+// Snap / Flatpak variants (Linux only)
+const CHROMIUM_SNAP_BASE = `${HOME}/snap/chromium/common/chromium`;
+const CHROMIUM_FLATPAK_BASE = `${HOME}/.var/app/org.chromium.Chromium/config/chromium`;
+const CHROME_FLATPAK_BASE = `${HOME}/.var/app/com.google.Chrome/config/google-chrome`;
+const BRAVE_FLATPAK_BASE = `${HOME}/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser`;
+const EDGE_FLATPAK_BASE = `${HOME}/.var/app/com.microsoft.Edge/config/microsoft-edge`;
+const FIREFOX_SNAP_BASE = `${HOME}/snap/firefox/common/.mozilla/firefox`;
+const FIREFOX_FLATPAK_BASE = `${HOME}/.var/app/org.mozilla.firefox/.mozilla/firefox`;
+
+const EDGE_BASE = IS_MAC
+  ? `${HOME}/Library/Application Support/Microsoft Edge`
+  : `${HOME}/.config/microsoft-edge`;
+
+const BRAVE_BASE = IS_MAC
+  ? `${HOME}/Library/Application Support/BraveSoftware/Brave-Browser`
+  : `${HOME}/.config/BraveSoftware/Brave-Browser`;
+
+const VIVALDI_BASE = IS_MAC
+  ? `${HOME}/Library/Application Support/Vivaldi`
+  : `${HOME}/.config/vivaldi`;
+
+const OPERA_BASE = IS_MAC
+  ? `${HOME}/Library/Application Support/com.operasoftware.Opera`
+  : `${HOME}/.config/opera`;
 
 function firefoxProfileDirs(): string[] {
-  const base = IS_MAC
-    ? `${HOME}/Library/Application Support/Firefox/Profiles`
-    : `${HOME}/.mozilla/firefox`;
-  if (!existsSync(base)) return [];
-  try {
-    return readdirSync(base)
-      .filter(d => d.includes('.default') || d.includes('-release'))
-      .map(d => join(base, d));
-  } catch {
-    return [];
+  const bases = IS_MAC
+    ? [`${HOME}/Library/Application Support/Firefox/Profiles`]
+    : [`${HOME}/.mozilla/firefox`, FIREFOX_SNAP_BASE, FIREFOX_FLATPAK_BASE];
+
+  const dirs: string[] = [];
+  for (const base of bases) {
+    if (!existsSync(base)) continue;
+    try {
+      for (const d of readdirSync(base)) {
+        const full = join(base, d);
+        try {
+          if (statSync(full).isDirectory() && existsSync(join(full, 'places.sqlite'))) {
+            dirs.push(full);
+          }
+        } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
   }
+  return dirs;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -119,20 +251,73 @@ function firefoxProfileDirs(): string[] {
 export async function scanAllBookmarks(): Promise<BookmarkHost[]> {
   const all: BookmarkHost[] = [];
 
-  for (const p of CHROME_PATHS) all.push(...readChromeLike(p, 'chrome'));
-  for (const p of EDGE_PATHS)   all.push(...readChromeLike(p, 'edge'));
-  for (const p of BRAVE_PATHS)  all.push(...readChromeLike(p, 'brave'));
+  // Standard browser paths
+  for (const p of chromeLikePaths(CHROME_BASE))   all.push(...readChromeLike(p, 'chrome'));
+  for (const p of chromeLikePaths(CHROMIUM_BASE)) all.push(...readChromeLike(p, 'chromium'));
+  for (const p of chromeLikePaths(EDGE_BASE))     all.push(...readChromeLike(p, 'edge'));
+  for (const p of chromeLikePaths(BRAVE_BASE))    all.push(...readChromeLike(p, 'brave'));
+  for (const p of chromeLikePaths(VIVALDI_BASE))  all.push(...readChromeLike(p, 'vivaldi'));
+  for (const p of chromeLikePaths(OPERA_BASE))    all.push(...readChromeLike(p, 'opera'));
 
-  for (const dir of firefoxProfileDirs()) {
-    all.push(...await readFirefox(dir));
+  // Snap / Flatpak paths (Linux)
+  if (!IS_MAC) {
+    for (const p of chromeLikePaths(CHROMIUM_SNAP_BASE))    all.push(...readChromeLike(p, 'chromium-snap'));
+    for (const p of chromeLikePaths(CHROMIUM_FLATPAK_BASE)) all.push(...readChromeLike(p, 'chromium-flatpak'));
+    for (const p of chromeLikePaths(CHROME_FLATPAK_BASE))   all.push(...readChromeLike(p, 'chrome-flatpak'));
+    for (const p of chromeLikePaths(BRAVE_FLATPAK_BASE))    all.push(...readChromeLike(p, 'brave-flatpak'));
+    for (const p of chromeLikePaths(EDGE_FLATPAK_BASE))     all.push(...readChromeLike(p, 'edge-flatpak'));
   }
 
-  // Deduplicate by hostname (port not included — same host on 80+443 = same service)
+  // Firefox: standard + snap + flatpak
+  for (const dir of firefoxProfileDirs()) {
+    all.push(...await readFirefoxBookmarks(dir));
+  }
+
+  // Deduplicate by hostname
   const seen = new Set<string>();
   return all.filter(h => {
-    const key = h.hostname;
-    if (seen.has(key)) return false;
-    seen.add(key);
+    if (seen.has(h.hostname)) return false;
+    seen.add(h.hostname);
     return true;
   });
+}
+
+export async function scanAllHistory(): Promise<HistoryHost[]> {
+  const all: HistoryHost[] = [];
+
+  // Standard browser paths
+  for (const p of chromeLikeHistoryPaths(CHROME_BASE))   all.push(...await readChromiumHistory(p, 'chrome'));
+  for (const p of chromeLikeHistoryPaths(CHROMIUM_BASE)) all.push(...await readChromiumHistory(p, 'chromium'));
+  for (const p of chromeLikeHistoryPaths(EDGE_BASE))     all.push(...await readChromiumHistory(p, 'edge'));
+  for (const p of chromeLikeHistoryPaths(BRAVE_BASE))    all.push(...await readChromiumHistory(p, 'brave'));
+  for (const p of chromeLikeHistoryPaths(VIVALDI_BASE))  all.push(...await readChromiumHistory(p, 'vivaldi'));
+  for (const p of chromeLikeHistoryPaths(OPERA_BASE))    all.push(...await readChromiumHistory(p, 'opera'));
+
+  // Snap / Flatpak paths (Linux)
+  if (!IS_MAC) {
+    for (const p of chromeLikeHistoryPaths(CHROMIUM_SNAP_BASE))    all.push(...await readChromiumHistory(p, 'chromium-snap'));
+    for (const p of chromeLikeHistoryPaths(CHROMIUM_FLATPAK_BASE)) all.push(...await readChromiumHistory(p, 'chromium-flatpak'));
+    for (const p of chromeLikeHistoryPaths(CHROME_FLATPAK_BASE))   all.push(...await readChromiumHistory(p, 'chrome-flatpak'));
+    for (const p of chromeLikeHistoryPaths(BRAVE_FLATPAK_BASE))    all.push(...await readChromiumHistory(p, 'brave-flatpak'));
+    for (const p of chromeLikeHistoryPaths(EDGE_FLATPAK_BASE))     all.push(...await readChromiumHistory(p, 'edge-flatpak'));
+  }
+
+  // Firefox: standard + snap + flatpak
+  for (const dir of firefoxProfileDirs()) {
+    all.push(...await readFirefoxHistory(dir));
+  }
+
+  // Deduplicate by hostname, summing visit counts
+  const byHost = new Map<string, HistoryHost>();
+  for (const h of all) {
+    const existing = byHost.get(h.hostname);
+    if (existing) {
+      existing.visitCount += h.visitCount;
+    } else {
+      byHost.set(h.hostname, { ...h });
+    }
+  }
+
+  // Sort by visit count descending
+  return [...byHost.values()].sort((a, b) => b.visitCount - a.visitCount);
 }

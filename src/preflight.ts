@@ -1,7 +1,6 @@
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MIN_POLL_INTERVAL_MS } from './types.js';
 
 function isOAuthLoggedIn(): boolean {
   // Claude CLI speichert OAuth-Tokens in ~/.claude/.credentials.json
@@ -50,14 +49,4 @@ export function checkPrerequisites(): void {
   } else if (hasOAuth && !hasApiKey) {
     process.stderr.write('✓ Eingeloggt via claude login (Subscription)\n');
   }
-}
-
-export function checkPollInterval(intervalMs: number): number {
-  if (intervalMs < MIN_POLL_INTERVAL_MS) {
-    process.stderr.write(
-      `⚠ Minimum Shadow-Intervall: ${MIN_POLL_INTERVAL_MS / 1000} Sekunden (Agent SDK Overhead)\n`
-    );
-    return MIN_POLL_INTERVAL_MS;
-  }
-  return intervalMs;
 }

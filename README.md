@@ -1,38 +1,76 @@
-# @datasynx-ai/agentic-ai-cartography
+<div align="center">
+
+# 🗺️ Datasynx Cartography
 
 **AI-powered Infrastructure Cartography & SOP Generation**
 
-Cartography uses the **Claude Agent SDK** to automatically discover your infrastructure, map dependencies, and generate Standard Operating Procedures from observed workflows — all from your terminal.
+[![npm version](https://img.shields.io/npm/v/@datasynx/agentic-ai-cartography?style=flat-square&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
+[![npm downloads](https://img.shields.io/npm/dm/@datasynx/agentic-ai-cartography?style=flat-square&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Node.js ≥18](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Built with Claude](https://img.shields.io/badge/Built_with-Claude_Agent_SDK-D4A017?style=flat-square&logo=anthropic&logoColor=white)](https://github.com/anthropics/claude-code)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Datasynx_AI-0077B5?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/datasynx-ai/)
+
+<br/>
+
+*Claude IS the agent — it decides which read-only commands to run, analyses the output, and stores results via custom MCP tools into SQLite. No hand-written parsers, diff logic, or decision trees.*
+
+<br/>
+
+**[📦 npm](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography) · [💼 LinkedIn](https://www.linkedin.com/company/datasynx-ai/) · [🐛 Issues](https://github.com/datasynx/agentic-ai-cartography/issues)**
+
+</div>
+
+---
+
+## What it does
 
 ```
-$ cartography discover
-🔍 Scanning localhost...
-   ├── postgres:5432 (3 databases, 47 tables)
-   ├── redis:6379 (standalone, 12 keys)
-   ├── nginx:80 → upstream:3000 (express)
-   │   └── GET /api/users, POST /api/auth, ...
-   ├── rabbitmq:5672 (3 queues)
-   └── grafana:3000 → prometheus:9090
-✓ 8 nodes, 11 edges discovered
-✓ Exported: catalog.json, topology.mermaid, catalog-info.yaml
+$ datasynx-cartography discover
 
-$ cartography shadow start
-👁 Shadow daemon started (PID 48291)
-   Observing network + processes every 30s...
+  CARTOGRAPHY  localhost
+  ─────────────────────────────────────────────
+  🔖  Browser bookmarks scanned…
+  🖥  All installed apps scanned…
+  +  Node  saas_tool:vscode           [saas_tool]   90%
+  +  Node  saas_tool:cursor           [saas_tool]   90%
+  +  Node  saas_tool:docker-desktop   [saas_tool]   90%
+  +  Node  saas_tool:github.com       [saas_tool]   70%  🔖
+  +  Node  web_service:localhost:5432 [database]    90%
+  +  Node  web_service:localhost:6379 [cache]       90%
+  ~  Edge  web_service:app → web_service:localhost:5432  uses
+  ─────────────────────────────────────────────
+  DONE  9 nodes, 3 edges  in 38.4s
 
-$ cartography shadow stop
-✓ Shadow stopped. 142 events, 3 tasks, 2 workflows detected.
-✓ Generated: sops/deploy-check.md, sops/db-migration.md
+  WEITERSUCHEN  — Discovery interaktiv verfeinern
+  → Suche nach (Enter = Beenden): hubspot windsurf
+  ⟳  Suche nach: hubspot windsurf
+  +  Node  saas_tool:hubspot.com      [saas_tool]   70%  🔖
+  +  Node  saas_tool:windsurf         [saas_tool]   90%
 ```
 
-Claude **is** the agent — it decides which read-only commands to run, analyses the output, and stores results via custom MCP tools into SQLite. No hand-written parsers, diff logic, or decision trees.
+---
+
+## Features
+
+| Feature | Details |
+|---------|---------|
+| **Installed App Scan** | Scans `/Applications`, Homebrew, dpkg/snap/flatpak, Spotlight + 60 known tools via `which` |
+| **Browser Bookmarks** | Chrome, Firefox, Safari, Brave, Edge — extracts business/SaaS domains automatically |
+| **Cloud Scanning** | AWS (EC2/RDS/EKS/S3), GCP (Compute/GKE/Cloud Run), Azure (AKS/WebApps), Kubernetes |
+| **Human-in-the-Loop** | Chat with the agent mid-discovery: type `"hubspot windsurf"` to search for specific tools |
+| **Shadow Daemon** | Background observer every 30s — detects new services, ports, processes |
+| **SOP Generation** | Automatically generates Standard Operating Procedures from observed workflows |
+| **SOP Dashboard** | HTML dashboard with all SOPs, step details, frequency stats |
+| **Export Formats** | Mermaid topology, D3.js interactive graph, Backstage YAML, JSON, SOP Markdown |
+| **Safety First** | `PreToolUse` hook blocks all destructive Bash commands — 100% read-only |
 
 ---
 
 ## Requirements
 
 - **Node.js ≥ 18**
-- **Claude CLI** (runtime dependency — the Agent SDK starts it as a child process)
+- **Claude CLI** — the Agent SDK starts it as a subprocess
 
 ```bash
 npm install -g @anthropic-ai/claude-code
@@ -44,55 +82,81 @@ claude login
 ## Install
 
 ```bash
-npm install -g @datasynx-ai/agentic-ai-cartography
+npm install -g @datasynx/agentic-ai-cartography
 ```
+
+[![npm](https://img.shields.io/badge/npm-@datasynx%2Fagentic--ai--cartography-CB3837?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
 
 ---
 
 ## Quick Start
 
 ```bash
-# Discover your infrastructure (one-shot, Claude Sonnet)
-cartography discover
+# Check all requirements
+datasynx-cartography doctor
+
+# Discover your full infrastructure (one-shot, Claude Sonnet)
+# → scans bookmarks, installed apps, local services, cloud, config files
+# → then interactive follow-up: type tool names to search further
+datasynx-cartography discover
+
+# Seed infrastructure manually (JSON file or interactive)
+datasynx-cartography seed --file infra.json
+datasynx-cartography seed
+
+# View all browser bookmarks
+datasynx-cartography bookmarks
 
 # Start background observer (Claude Haiku, every 30s)
-cartography shadow start
+datasynx-cartography shadow start
 
-# Attach to see live events
-cartography shadow attach
+# Attach to live event feed
+datasynx-cartography shadow attach     # [P] pause  [T] new task  [D] detach  [Q] stop
 
-# After observing: generate SOPs from workflows
-cartography sops
+# Pause / resume the daemon
+datasynx-cartography shadow pause
+datasynx-cartography shadow resume
 
-# Stop daemon
-cartography shadow stop
+# Stop daemon + generate SOPs + open HTML dashboard
+datasynx-cartography shadow stop
 
-# Full feature overview
-cartography docs
+# Generate SOPs manually from a session
+datasynx-cartography sops [session-id]
+
+# Full feature reference
+datasynx-cartography docs
 ```
 
 ---
 
 ## Commands
 
-### Discovery
+### Cartography (Discovery)
 
 ```
-cartography discover [options]
+datasynx-cartography discover [options]
 
   --entry <hosts...>    Start hosts          (default: localhost)
   --depth <n>           Max crawl depth      (default: 8)
   --max-turns <n>       Max agent turns      (default: 50)
   --model <m>           Claude model         (default: claude-sonnet-4-5-...)
   --org <name>          Org name for Backstage YAML
-  -o, --output <dir>    Output directory     (default: ./cartography-output)
+  -o, --output <dir>    Output directory     (default: ./datasynx-output)
   -v, --verbose         Show agent reasoning
 ```
+
+Discovery pipeline (automatic, in order):
+1. **Browser bookmarks** — every domain classified as saas_tool or web_service
+2. **Installed apps** — all IDEs, business tools, dev tools, browsers
+3. **Local services** — `ss`, `ps`, port-to-service mapping
+4. **Cloud & Kubernetes** — AWS/GCP/Azure/k8s (skipped gracefully if not configured)
+5. **Config files** — `.env`, `docker-compose.yml`, etc.
+6. **Human-in-the-loop** — interactive follow-up after initial scan
 
 ### Shadow Daemon
 
 ```
-cartography shadow start [options]
+datasynx-cartography shadow start [options]
 
   --interval <ms>       Poll interval        (default: 30000, min: 15000)
   --inactivity <ms>     Task boundary gap    (default: 300000)
@@ -101,21 +165,26 @@ cartography shadow start [options]
   --auto-save           Save nodes without prompting
   --foreground          Run in foreground (no fork)
 
-cartography shadow stop
-cartography shadow status
-cartography shadow attach    # hotkeys: [T] new task  [S] status  [D] detach  [Q] stop
+datasynx-cartography shadow stop      # stops + generates SOPs + opens dashboard
+datasynx-cartography shadow pause     # SIGUSR1
+datasynx-cartography shadow resume    # SIGUSR2
+datasynx-cartography shadow status
+datasynx-cartography shadow attach
 ```
 
 ### Analysis & Export
 
 ```
-cartography sops [session-id]              Generate SOPs from observed workflows
-cartography export [session-id] [options]  Export all formats
+datasynx-cartography sops [session-id]             Generate SOPs from observed workflows
+datasynx-cartography export [session-id] [options]
   --format <fmt...>    mermaid, json, yaml, html, sops  (default: all)
   -o, --output <dir>   Output directory
-cartography show [session-id]              Session details + node list
-cartography sessions                       List all sessions
-cartography docs                           Full feature reference
+datasynx-cartography show [session-id]             Session details + node list
+datasynx-cartography sessions                      List all sessions
+datasynx-cartography bookmarks                     View all browser bookmarks
+datasynx-cartography seed [--file <path>]          Manually add infrastructure nodes
+datasynx-cartography doctor                        Check all requirements + cloud CLIs
+datasynx-cartography docs                          Full feature reference
 ```
 
 ---
@@ -123,12 +192,13 @@ cartography docs                           Full feature reference
 ## Output Files
 
 ```
-cartography-output/
+datasynx-output/
 ├── catalog.json               Full machine-readable dump
 ├── catalog-info.yaml          Backstage service catalog
 ├── topology.mermaid           Infrastructure topology (graph TB)
 ├── dependencies.mermaid       Service dependencies (graph LR)
 ├── topology.html              Interactive D3.js force graph
+├── sop-dashboard.html         HTML dashboard with all SOPs + frequency stats
 ├── sops/
 │   ├── deploy-check.md
 │   └── db-migration.md
@@ -138,11 +208,11 @@ cartography-output/
 
 ---
 
-## Costs
+## Cost Estimate
 
 | Mode | Model | Interval | per Hour | per 8h Day |
 |------|-------|----------|----------|------------|
-| Discovery | Sonnet | one-shot | $0.15–0.50 | one-shot |
+| Discover | Sonnet | one-shot | $0.15–0.50 | one-shot |
 | Shadow | Haiku | 30s | $0.12–0.36 | $0.96–2.88 |
 | Shadow | Haiku | 60s | $0.06–0.18 | $0.48–1.44 |
 | Shadow (quiet)* | Haiku | 30s | ~$0.02 | ~$0.16 |
@@ -155,28 +225,32 @@ cartography-output/
 ## Architecture
 
 ```
-CLI (Commander)
-  └── Preflight: Claude CLI check + API key + interval validation
-      └── Agent Orchestrator
+CLI (Commander.js)
+  └── Preflight: Claude CLI + API key + interval validation
+      └── Agent Orchestrator (src/agent.ts)
           ├── runDiscovery()     Claude Sonnet + Bash + MCP Tools
-          ├── runShadowCycle()   Claude Haiku + MCP Tools only (no Bash!)
+          │   ├── scan_bookmarks()         browser bookmark extraction
+          │   ├── scan_installed_apps()    /Applications, brew, dpkg, which
+          │   ├── scan_k8s_resources()     kubectl (readonly)
+          │   ├── scan_aws/gcp/azure()     cloud CLI scans (readonly)
+          │   └── ask_user()               human-in-the-loop questions
+          ├── runShadowCycle()   Claude Haiku + MCP Tools only (no Bash)
           └── generateSOPs()     Anthropic Messages API (no agent loop)
-              └── Custom MCP Tools: save_node, save_edge, save_event,
-                                    get_catalog, manage_task, save_sop
-                  └── CartographyDB (SQLite WAL, ~/.cartography/cartography.db)
+              └── Custom MCP Tools → CartographyDB (SQLite WAL)
 
-Shadow Daemon
-  ├── takeSnapshot()  →  ss + ps  (no Claude!)
-  ├── Diff-check      →  only calls Claude when something changed
-  ├── IPC Server      →  Unix socket ~/.cartography/daemon.sock
-  └── Notifications   →  desktop alerts when no client attached
+Shadow Daemon (src/daemon.ts)
+  ├── takeSnapshot()   →  ss + ps  (no Claude!)
+  ├── Diff-check       →  calls Claude only when something changed
+  ├── SIGUSR1/2        →  pause / resume
+  ├── IPC Server       →  Unix socket ~/.cartography/daemon.sock
+  └── Notifications    →  desktop alerts when no client attached
 ```
 
 ### Safety
 
-Every Bash call is guarded by a `PreToolUse` hook that blocks any destructive command:
-`rm`, `mv`, `dd`, `chmod`, `kill`, `docker rm/run/exec`, `kubectl delete/apply/exec`, redirects (`>`), and more.
-Claude only reads — never writes, never deletes.
+Every Bash call is guarded by a `PreToolUse` hook that blocks destructive commands:
+`rm`, `mv`, `dd`, `chmod`, `kill`, `docker rm/run/exec`, `kubectl delete/apply/exec`, redirects (`>`), pipes to shell, and more.
+**Claude only reads — never writes, never deletes.**
 
 ---
 
@@ -189,13 +263,27 @@ import {
   runShadowCycle,
   generateSOPs,
   exportAll,
+  exportSOPDashboard,
   safetyHook,
   defaultConfig,
-} from '@datasynx-ai/agentic-ai-cartography';
+} from '@datasynx/agentic-ai-cartography';
+
+// Run a discovery pass with optional user hint
+await runDiscovery(config, db, sessionId, onEvent, onAskUser, 'hubspot windsurf');
 ```
+
+---
+
+## Built by
+
+<div align="center">
+
+[![Datasynx AI on LinkedIn](https://img.shields.io/badge/Datasynx_AI-Follow_on_LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/datasynx-ai/)
+
+</div>
 
 ---
 
 ## License
 
-MIT — © Datasynx AI
+MIT — © [Datasynx AI](https://www.linkedin.com/company/datasynx-ai/)

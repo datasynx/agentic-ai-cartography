@@ -1,6 +1,6 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "AI-powered infrastructure cartography & SOP generation CLI — built on Claude Agent SDK",
   "type": "module",
   "bin": {
@@ -60,7 +60,6 @@
     "@anthropic-ai/sdk": "^0.74.0",
     "better-sqlite3": "^12.6.0",
     "commander": "^12.1.0",
-    "node-notifier": "^10.0.1",
     "ora": "^8.2.0",
     "picocolors": "^1.1.1",
     "zod": "^3.24.0"
