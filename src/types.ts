@@ -27,8 +27,40 @@ export const NodeSchema = z.object({
   confidence: z.number().min(0).max(1).default(0.5),
   metadata: z.record(z.unknown()).default({}),
   tags: z.array(z.string()).default([]),
+  // Hex map fields
+  domain: z.string().optional().describe('Business domain, e.g. "Marketing", "Finance"'),
+  subDomain: z.string().optional().describe('Sub-domain, e.g. "Forecast client orders"'),
+  qualityScore: z.number().min(0).max(100).optional().describe('Data quality score 0–100'),
 });
 export type DiscoveryNode = z.infer<typeof NodeSchema>;
+
+// ── Hex Map Types ─────────────────────────
+
+export interface HexAsset {
+  id: string;
+  name: string;
+  domain: string;
+  subDomain?: string;
+  qualityScore?: number;
+  metadata: Record<string, unknown>;
+  position: { q: number; r: number };
+}
+
+export interface HexCluster {
+  id: string;
+  label: string;
+  domain: string;
+  color: string;
+  assets: HexAsset[];
+  centroid: { x: number; y: number };
+}
+
+export interface HexConnection {
+  id: string;
+  sourceAssetId: string;
+  targetAssetId: string;
+  type?: string;
+}
 
 export const EdgeSchema = z.object({
   sourceId: z.string(),
@@ -66,6 +98,11 @@ export interface NodeRow extends DiscoveryNode {
   discoveredAt: string;
   depth: number;
   pathId?: string;
+}
+
+export interface ConnectionRow extends HexConnection {
+  sessionId: string;
+  createdAt: string;
 }
 
 export interface EdgeRow extends DiscoveryEdge {

@@ -4,10 +4,11 @@ import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
 import { runDiscovery } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
-import { exportAll } from './exporter.js';
-import { readFileSync, existsSync } from 'fs';
+import { exportAll, exportHexMap } from './exporter.js';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
+import { execSync } from 'child_process';
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
 const bold    = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -268,9 +269,15 @@ function main(): void {
       // ── Diagram links ───────────────────────────────────────────────────────
       const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
       const htmlPath = resolve(config.outputDir, 'topology.html');
+      const hexmapPath = resolve(config.outputDir, 'hexmap.html');
       const topoPath = resolve(config.outputDir, 'topology.mermaid');
 
       w('\n');
+      if (existsSync(hexmapPath)) {
+        const fileUrl = `file://${hexmapPath}`;
+        w(`  ${green('→')}  ${osc8(fileUrl, bold('Open hexmap.html'))}  ${dim('← Data Cartography Map')}\n`);
+        w(`     ${dim(fileUrl)}\n`);
+      }
       if (existsSync(htmlPath)) {
         w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('Open topology.html'))}\n`);
       }
@@ -344,7 +351,7 @@ function main(): void {
     .command('export [session-id]')
     .description('Generate all output files')
     .option('-o, --output <dir>', 'Output directory', './datasynx-output')
-    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,sops')
+    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,hexmap,sops')
     .action((sessionId: string | undefined, opts) => {
       const config = defaultConfig({ outputDir: opts.output });
       const db = new CartographyDB(config.dbPath);
@@ -360,11 +367,55 @@ function main(): void {
         return;
       }
 
-      const formats = opts.format ?? ['mermaid', 'json', 'yaml', 'html', 'sops'];
+      const formats = opts.format ?? ['mermaid', 'json', 'yaml', 'html', 'hexmap', 'sops'];
       exportAll(db, session.id, opts.output, formats);
       process.stderr.write(`✓ Exported to: ${opts.output}\n`);
 
       db.close();
+    });
+
+  // ── map command ─────────────────────────────────────────────────────────────
+  program
+    .command('map [session-id]')
+    .description('Open the interactive Data Cartography hex map in your browser')
+    .option('-o, --output <dir>', 'Output directory', './datasynx-output')
+    .action((sessionId: string | undefined, opts) => {
+      const config = defaultConfig({ outputDir: opts.output });
+      const db = new CartographyDB(config.dbPath);
+
+      const session = sessionId
+        ? db.getSession(sessionId)
+        : db.getLatestSession();
+
+      if (!session) {
+        process.stderr.write('❌ No session found. Run discover first.\n');
+        db.close();
+        process.exitCode = 1;
+        return;
+      }
+
+      const nodes = db.getNodes(session.id);
+      const connections = db.getConnections(session.id);
+      const outDir = resolve(opts.output);
+      const outPath = resolve(outDir, 'hexmap.html');
+
+      import('node:fs').then(({ mkdirSync }) => mkdirSync(outDir, { recursive: true })).catch(() => {});
+      writeFileSync(outPath, exportHexMap(nodes, connections));
+      db.close();
+
+      const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
+      const fileUrl = `file://${outPath}`;
+      process.stderr.write(`\n  ${green('→')}  ${osc8(fileUrl, bold('Open hexmap.html'))}\n`);
+      process.stderr.write(`     ${dim(fileUrl)}\n\n`);
+
+      try {
+        const cmd = process.platform === 'darwin'
+          ? `open "${outPath}"`
+          : process.platform === 'win32'
+            ? `start "" "${outPath}"`
+            : `xdg-open "${outPath}"`;
+        execSync(cmd, { stdio: 'ignore' });
+      } catch { /* ignore — user can open manually */ }
     });
 
   program
@@ -789,6 +840,9 @@ ${infraSummary.substring(0, 12000)}`;
           const port = entry['port'] as number | undefined;
           const tags = (entry['tags'] as string[] | undefined) ?? [];
           const metadata = (entry['metadata'] as Record<string, unknown> | undefined) ?? {};
+          const domain = entry['domain'] as string | undefined;
+          const subDomain = entry['subDomain'] as string | undefined;
+          const qualityScore = entry['qualityScore'] as number | undefined;
 
           if (!type || !name) {
             w(yellow(`  ⚠  Skipped (no type/name): ${JSON.stringify(entry)}\n`));
@@ -807,6 +861,9 @@ ${infraSummary.substring(0, 12000)}`;
             confidence: 1.0,
             metadata: { ...metadata, ...(host ? { host } : {}), ...(port ? { port } : {}) },
             tags,
+            domain,
+            subDomain,
+            qualityScore,
           });
           out(`  ${green('+')}  ${cyan(id)}  ${dim('(' + type + ')')}\n`);
           saved++;
@@ -866,10 +923,16 @@ ${infraSummary.substring(0, 12000)}`;
         const hostRaw = (await ask(`  ${cyan('Host / IP')} ${dim('[optional, Enter=skip]')}: `)).trim();
         const portRaw = (await ask(`  ${cyan('Port')} ${dim('[optional]')}: `)).trim();
         const tagsRaw = (await ask(`  ${cyan('Tags')} ${dim('[comma-separated, optional]')}: `)).trim();
+        const domainRaw = (await ask(`  ${cyan('Domain')} ${dim('[e.g. "Marketing", "Finance", optional]')}: `)).trim();
+        const subDomainRaw = (await ask(`  ${cyan('Sub-domain')} ${dim('[e.g. "Forecast client orders", optional]')}: `)).trim();
+        const qualityRaw = (await ask(`  ${cyan('Quality score')} ${dim('[0–100, optional]')}: `)).trim();
 
         const host = hostRaw || undefined;
         const port = portRaw ? parseInt(portRaw, 10) : undefined;
         const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+        const domain = domainRaw || undefined;
+        const subDomain = subDomainRaw || undefined;
+        const qualityScore = qualityRaw ? Math.max(0, Math.min(100, parseFloat(qualityRaw))) : undefined;
 
         const id = host
           ? `${nodeType}:${host}${port ? ':' + port : ''}`
@@ -883,6 +946,9 @@ ${infraSummary.substring(0, 12000)}`;
           confidence: 1.0,
           metadata: { ...(host ? { host } : {}), ...(port ? { port } : {}) },
           tags,
+          domain,
+          subDomain,
+          qualityScore,
         });
         out(`  ${green('+')}  ${cyan(id)}\n`);
         saved++;

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
   CartographyConfig, DiscoveryNode, DiscoveryEdge,
-  NodeRow, EdgeRow, SessionRow, SOP,
+  NodeRow, EdgeRow, SessionRow, SOP, HexConnection, ConnectionRow,
 } from './types.js';
 
 // ── DB Row Types ──
@@ -72,7 +72,19 @@ CREATE TABLE IF NOT EXISTS nodes (
   confidence REAL DEFAULT 0.5,
   metadata TEXT NOT NULL DEFAULT '{}',
   tags TEXT NOT NULL DEFAULT '[]',
+  domain TEXT,
+  sub_domain TEXT,
+  quality_score REAL,
   PRIMARY KEY (id, session_id)
+);
+
+CREATE TABLE IF NOT EXISTS connections (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
+  source_asset_id TEXT NOT NULL,
+  target_asset_id TEXT NOT NULL,
+  type TEXT,
+  created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -149,6 +161,7 @@ CREATE INDEX IF NOT EXISTS idx_edges_session ON edges(session_id);
 CREATE INDEX IF NOT EXISTS idx_events_session ON activity_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_events_task ON activity_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
+CREATE INDEX IF NOT EXISTS idx_connections_session ON connections(session_id);
 `;
 
 export class CartographyDB {
@@ -167,7 +180,25 @@ export class CartographyDB {
     const version = (this.db.pragma('user_version', { simple: true }) as number);
     if (version === 0) {
       this.db.exec(SCHEMA);
-      this.db.pragma('user_version = 1');
+      this.db.pragma('user_version = 2');
+    } else if (version === 1) {
+      // v1 → v2: add hex map columns to nodes + connections table
+      const cols = (this.db.prepare("PRAGMA table_info(nodes)").all() as Array<{ name: string }>).map(c => c.name);
+      if (!cols.includes('domain')) this.db.exec('ALTER TABLE nodes ADD COLUMN domain TEXT');
+      if (!cols.includes('sub_domain')) this.db.exec('ALTER TABLE nodes ADD COLUMN sub_domain TEXT');
+      if (!cols.includes('quality_score')) this.db.exec('ALTER TABLE nodes ADD COLUMN quality_score REAL');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS connections (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES sessions(id),
+          source_asset_id TEXT NOT NULL,
+          target_asset_id TEXT NOT NULL,
+          type TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_connections_session ON connections(session_id);
+      `);
+      this.db.pragma('user_version = 2');
     }
   }
 
@@ -223,19 +254,27 @@ export class CartographyDB {
   upsertNode(sessionId: string, node: DiscoveryNode, depth = 0): void {
     this.db.prepare(`
       INSERT OR REPLACE INTO nodes
-        (id, session_id, type, name, discovered_via, discovered_at, depth, confidence, metadata, tags)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, session_id, type, name, discovered_via, discovered_at, depth, confidence, metadata, tags,
+         domain, sub_domain, quality_score)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       node.id, sessionId, node.type, node.name, node.discoveredVia,
       new Date().toISOString(), depth, node.confidence,
       JSON.stringify(node.metadata ?? {}),
       JSON.stringify(node.tags ?? []),
+      node.domain ?? null,
+      node.subDomain ?? null,
+      node.qualityScore ?? null,
     );
   }
 
   getNodes(sessionId: string): NodeRow[] {
     const rows = this.db.prepare('SELECT * FROM nodes WHERE session_id = ?').all(sessionId) as Record<string, unknown>[];
-    return rows.map(r => ({
+    return rows.map(r => this.mapNode(r));
+  }
+
+  private mapNode(r: Record<string, unknown>): NodeRow {
+    return {
       id: r['id'] as string,
       sessionId: r['session_id'] as string,
       type: r['type'] as NodeRow['type'],
@@ -247,7 +286,10 @@ export class CartographyDB {
       metadata: JSON.parse(r['metadata'] as string) as Record<string, unknown>,
       tags: JSON.parse(r['tags'] as string) as string[],
       pathId: r['path_id'] as string | undefined,
-    }));
+      domain: (r['domain'] as string | null) ?? undefined,
+      subDomain: (r['sub_domain'] as string | null) ?? undefined,
+      qualityScore: (r['quality_score'] as number | null) ?? undefined,
+    };
   }
 
   deleteNode(sessionId: string, nodeId: string): void {
@@ -460,6 +502,38 @@ export class CartographyDB {
       confidence: r['confidence'] as number,
       generatedAt: r['generated_at'] as string,
     }));
+  }
+
+  // ── Connections (user-created hex map links) ─────────────────────────────
+
+  upsertConnection(sessionId: string, conn: Omit<HexConnection, 'id'>): string {
+    // Idempotent: same source+target+type = same connection
+    const existing = this.db.prepare(
+      'SELECT id FROM connections WHERE session_id = ? AND source_asset_id = ? AND target_asset_id = ?'
+    ).get(sessionId, conn.sourceAssetId, conn.targetAssetId) as { id: string } | undefined;
+    if (existing) return existing.id;
+    const id = crypto.randomUUID();
+    this.db.prepare(`
+      INSERT INTO connections (id, session_id, source_asset_id, target_asset_id, type, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, sessionId, conn.sourceAssetId, conn.targetAssetId, conn.type ?? null, new Date().toISOString());
+    return id;
+  }
+
+  getConnections(sessionId: string): ConnectionRow[] {
+    const rows = this.db.prepare('SELECT * FROM connections WHERE session_id = ?').all(sessionId) as Record<string, unknown>[];
+    return rows.map(r => ({
+      id: r['id'] as string,
+      sessionId: r['session_id'] as string,
+      sourceAssetId: r['source_asset_id'] as string,
+      targetAssetId: r['target_asset_id'] as string,
+      type: (r['type'] as string | null) ?? undefined,
+      createdAt: r['created_at'] as string,
+    }));
+  }
+
+  deleteConnection(sessionId: string, connectionId: string): void {
+    this.db.prepare('DELETE FROM connections WHERE session_id = ? AND id = ?').run(sessionId, connectionId);
   }
 
   // ── Approvals ───────────────────────────

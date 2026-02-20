@@ -1,7 +1,7 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "0.3.1",
-  "description": "AI-powered infrastructure cartography & SOP generation CLI — built on Claude Agent SDK",
+  "version": "0.4.0",
+  "description": "AI-powered infrastructure cartography CLI — built on Claude Agent SDK",
   "type": "module",
   "bin": {
     "datasynx-cartography": "./dist/cli.js"

@@ -1,7 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CartographyDB } from './db.js';
-import type { NodeRow, EdgeRow, SOP } from './types.js';
+import type { NodeRow, EdgeRow, SOP, ConnectionRow } from './types.js';
+import { buildClusterLayout, shadeVariant } from './cluster.js';
+import { hexToPixel, hexCorners, pointInHex } from './hex.js';
 
 // ── Layer assignment ─────────────────────────────────────────────────────────
 
@@ -1010,7 +1012,7 @@ export function exportAll(
   db: CartographyDB,
   sessionId: string,
   outputDir: string,
-  formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'sops'],
+  formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'hexmap', 'sops'],
 ): void {
   mkdirSync(outputDir, { recursive: true });
   mkdirSync(join(outputDir, 'sops'), { recursive: true });
@@ -1053,4 +1055,796 @@ export function exportAll(
       process.stderr.write(`✓ ${sops.length} SOPs + workflow diagrams\n`);
     }
   }
+
+  if (formats.includes('hexmap')) {
+    const connections = db.getConnections(sessionId);
+    writeFileSync(join(outputDir, 'hexmap.html'), exportHexMap(nodes, connections));
+    process.stderr.write('✓ hexmap.html\n');
+  }
+}
+
+// ── Hex Map Export ────────────────────────────────────────────────────────────
+
+export function exportHexMap(nodes: NodeRow[], connections: ConnectionRow[]): string {
+  const layout = buildClusterLayout(nodes);
+  const { clusters, subClusters, hexSize, bounds } = layout;
+
+  // Pre-serialise data for the inline script
+  const clustersJson = JSON.stringify(clusters.map(c => ({
+    id: c.id,
+    label: c.label,
+    domain: c.domain,
+    color: c.color,
+    centroid: c.centroid,
+    assets: c.assets.map(a => ({
+      id: a.id,
+      name: a.name,
+      domain: a.domain,
+      subDomain: a.subDomain ?? null,
+      qualityScore: a.qualityScore ?? null,
+      metadata: a.metadata,
+      q: a.position.q,
+      r: a.position.r,
+    })),
+  })));
+
+  const subClustersJson = JSON.stringify(
+    Object.fromEntries(
+      Array.from(subClusters.entries()).map(([cid, subs]) => [
+        cid,
+        subs.map(s => ({ subDomain: s.subDomain, assetIds: s.assetIds, centroid: s.centroid })),
+      ])
+    )
+  );
+
+  const connectionsJson = JSON.stringify(connections.map(c => ({
+    id: c.id,
+    sourceAssetId: c.sourceAssetId,
+    targetAssetId: c.targetAssetId,
+    type: c.type ?? 'connection',
+  })));
+
+  const hexSizeVal = hexSize;
+  const isEmpty = nodes.length === 0;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Data Cartography Map</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body{display:flex;flex-direction:column;background:#f8fafc;color:#1e293b}
+#topbar{
+  height:48px;display:flex;align-items:center;gap:16px;padding:0 20px;
+  background:#fff;border-bottom:1px solid #e2e8f0;z-index:10;flex-shrink:0;
+}
+#topbar h1{font-size:15px;font-weight:600;color:#0f172a;letter-spacing:-0.01em}
+#topbar .nav-items{display:flex;gap:4px;margin-left:auto}
+#topbar .nav-item{
+  padding:5px 12px;border-radius:6px;font-size:13px;cursor:pointer;
+  color:#64748b;border:none;background:transparent;
+}
+#topbar .nav-item:hover{background:#f1f5f9;color:#0f172a}
+#topbar .nav-item.active{background:#eff6ff;color:#2563eb;font-weight:500}
+#search-box{
+  display:flex;align-items:center;gap:8px;background:#f1f5f9;
+  border-radius:8px;padding:5px 10px;margin-left:8px;
+}
+#search-box input{
+  border:none;background:transparent;font-size:13px;outline:none;width:160px;color:#0f172a;
+}
+#search-box input::placeholder{color:#94a3b8}
+#search-icon{color:#94a3b8;font-size:14px}
+#main{flex:1;display:flex;overflow:hidden;position:relative}
+#canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:grab}
+#canvas-wrap.dragging{cursor:grabbing}
+#canvas-wrap.connecting{cursor:crosshair}
+canvas{display:block;width:100%;height:100%}
+/* Detail panel */
+#detail-panel{
+  width:280px;background:#fff;border-left:1px solid #e2e8f0;
+  display:flex;flex-direction:column;transform:translateX(100%);
+  transition:transform .2s ease;z-index:5;flex-shrink:0;overflow-y:auto;
+}
+#detail-panel.open{transform:translateX(0)}
+#detail-panel .panel-header{
+  padding:16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;
+}
+#detail-panel .panel-header h3{font-size:14px;font-weight:600;flex:1;word-break:break-word}
+#detail-panel .close-btn{
+  width:24px;height:24px;border:none;background:transparent;cursor:pointer;
+  color:#94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:16px;
+}
+#detail-panel .close-btn:hover{background:#f1f5f9;color:#0f172a}
+#detail-panel .panel-body{padding:12px 16px;display:flex;flex-direction:column;gap:12px}
+#detail-panel .meta-row{display:flex;flex-direction:column;gap:3px}
+#detail-panel .meta-label{font-size:11px;font-weight:500;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
+#detail-panel .meta-value{font-size:13px;color:#1e293b;word-break:break-all}
+#detail-panel .quality-bar{height:6px;border-radius:3px;background:#e2e8f0;margin-top:4px}
+#detail-panel .quality-fill{height:6px;border-radius:3px;transition:width .3s}
+#detail-panel .badge{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+  border-radius:12px;font-size:11px;font-weight:500;
+}
+/* Bottom-left toolbar */
+#toolbar-left{
+  position:absolute;bottom:20px;left:20px;display:flex;gap:8px;z-index:10;
+}
+.tb-btn{
+  width:40px;height:40px;border-radius:10px;border:1px solid #e2e8f0;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  transition:all .15s;position:relative;
+}
+.tb-btn:hover{border-color:#94a3b8;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.tb-btn.active{background:#eff6ff;border-color:#3b82f6}
+.tb-btn[title]:hover::after{
+  content:attr(title);position:absolute;bottom:calc(100% + 6px);left:50%;
+  transform:translateX(-50%);background:#1e293b;color:#fff;padding:4px 8px;
+  border-radius:5px;font-size:11px;white-space:nowrap;pointer-events:none;
+}
+/* Bottom-right toolbar */
+#toolbar-right{
+  position:absolute;bottom:20px;right:20px;display:flex;flex-direction:column;
+  align-items:flex-end;gap:8px;z-index:10;
+}
+#zoom-controls{display:flex;align-items:center;gap:6px}
+.zoom-btn{
+  width:34px;height:34px;border-radius:8px;border:1px solid #e2e8f0;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;
+  font-size:18px;color:#1e293b;display:flex;align-items:center;justify-content:center;
+}
+.zoom-btn:hover{background:#f1f5f9}
+#zoom-pct{
+  font-size:12px;font-weight:500;color:#64748b;min-width:38px;text-align:center;
+}
+#detail-selector{display:flex;flex-direction:column;gap:4px}
+.detail-btn{
+  width:34px;height:34px;border-radius:8px;border:1px solid #e2e8f0;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;
+  font-size:12px;font-weight:600;color:#64748b;display:flex;align-items:center;justify-content:center;
+}
+.detail-btn:hover{background:#f1f5f9;color:#0f172a}
+.detail-btn.active{background:#eff6ff;border-color:#3b82f6;color:#2563eb}
+#connect-btn{
+  width:40px;height:40px;border-radius:10px;border:1px solid #e2e8f0;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;
+  font-size:18px;display:flex;align-items:center;justify-content:center;
+}
+#connect-btn.active{background:#fef3c7;border-color:#f59e0b}
+/* Tooltip */
+#tooltip{
+  position:fixed;background:#1e293b;color:#fff;border-radius:8px;
+  padding:8px 12px;font-size:12px;pointer-events:none;z-index:100;
+  display:none;max-width:200px;box-shadow:0 4px 12px rgba(0,0,0,.15);
+}
+#tooltip .tt-name{font-weight:600;margin-bottom:2px}
+#tooltip .tt-domain{color:#94a3b8;font-size:11px}
+/* Empty state */
+#empty-state{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;color:#94a3b8;
+}
+#empty-state .es-icon{font-size:48px}
+#empty-state p{font-size:14px}
+/* Theme toggle */
+#theme-btn{
+  width:40px;height:40px;border-radius:10px;border:1px solid #e2e8f0;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;
+  font-size:18px;display:flex;align-items:center;justify-content:center;
+}
+/* Dark mode overrides */
+body.dark{background:#0f172a;color:#e2e8f0}
+body.dark #topbar{background:#1e293b;border-color:#334155}
+body.dark #topbar h1{color:#f1f5f9}
+body.dark #topbar .nav-item{color:#94a3b8}
+body.dark #topbar .nav-item:hover{background:#334155;color:#f1f5f9}
+body.dark #search-box{background:#334155}
+body.dark #search-box input{color:#f1f5f9}
+body.dark #detail-panel{background:#1e293b;border-color:#334155}
+body.dark #detail-panel .panel-header{border-color:#334155}
+body.dark #detail-panel .meta-value{color:#e2e8f0}
+body.dark .tb-btn,body.dark .zoom-btn,body.dark .detail-btn,body.dark #connect-btn,body.dark #theme-btn{
+  background:#1e293b;border-color:#334155;color:#e2e8f0;
+}
+body.dark .tb-btn:hover,body.dark .zoom-btn:hover,body.dark .detail-btn:hover{background:#334155}
+body.dark #zoom-pct{color:#94a3b8}
+/* Connection mode indicator */
+#connect-hint{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  background:#fef3c7;border:1px solid #f59e0b;color:#92400e;
+  padding:6px 14px;border-radius:20px;font-size:12px;font-weight:500;
+  display:none;z-index:20;pointer-events:none;
+}
+</style>
+</head>
+<body>
+<!-- Top bar -->
+<div id="topbar">
+  <h1>🗺 Data Cartography Map</h1>
+  <div class="nav-items">
+    <button class="nav-item active">Data Product Map</button>
+    <button class="nav-item">Raw Data Map</button>
+    <button class="nav-item">Analysis</button>
+  </div>
+  <div id="search-box">
+    <span id="search-icon">⌕</span>
+    <input id="search-input" type="text" placeholder="Search assets…" aria-label="Search data assets"/>
+  </div>
+  <button id="theme-btn" title="Toggle dark/light mode" aria-label="Toggle theme">🌙</button>
+</div>
+
+<!-- Main area -->
+<div id="main">
+  <div id="canvas-wrap" role="application" aria-label="Data cartography hex map" tabindex="0">
+    <canvas id="hexmap" aria-hidden="true"></canvas>
+    ${isEmpty ? '<div id="empty-state"><div class="es-icon">🗺</div><p>No data assets available</p><p style="font-size:12px">Run <code>datasynx-cartography discover</code> to populate the map</p></div>' : ''}
+  </div>
+  <div id="detail-panel" role="complementary" aria-label="Asset details">
+    <div class="panel-header">
+      <h3 id="dp-name">—</h3>
+      <button class="close-btn" id="dp-close" aria-label="Close panel">✕</button>
+    </div>
+    <div class="panel-body" id="dp-body"></div>
+  </div>
+</div>
+
+<!-- Bottom-left toolbar -->
+<div id="toolbar-left">
+  <button class="tb-btn active" id="btn-org" title="Organization view" aria-pressed="true" aria-label="Organization view">🏢</button>
+  <button class="tb-btn active" id="btn-labels" title="Show labels" aria-pressed="true" aria-label="Toggle labels">🏷</button>
+  <button class="tb-btn" id="btn-quality" title="Quality layer" aria-pressed="false" aria-label="Toggle quality layer">👁</button>
+</div>
+
+<!-- Bottom-right toolbar -->
+<div id="toolbar-right">
+  <div id="zoom-controls">
+    <button class="zoom-btn" id="zoom-out" aria-label="Zoom out">−</button>
+    <span id="zoom-pct">100%</span>
+    <button class="zoom-btn" id="zoom-in" aria-label="Zoom in">+</button>
+  </div>
+  <div id="detail-selector">
+    <button class="detail-btn" id="dl-1" aria-label="Detail level 1">1</button>
+    <button class="detail-btn active" id="dl-2" aria-label="Detail level 2">2</button>
+    <button class="detail-btn" id="dl-3" aria-label="Detail level 3">3</button>
+    <button class="detail-btn" id="dl-4" aria-label="Detail level 4">4</button>
+  </div>
+  <button id="connect-btn" title="Connection tool" aria-label="Toggle connection tool">🔗</button>
+</div>
+
+<!-- Connection mode hint -->
+<div id="connect-hint">Click two assets to create a connection</div>
+
+<!-- Hover tooltip -->
+<div id="tooltip" role="tooltip">
+  <div class="tt-name" id="tt-name"></div>
+  <div class="tt-domain" id="tt-domain"></div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ── Data ─────────────────────────────────────────────────────────────────────
+const CLUSTERS = ${clustersJson};
+const SUB_CLUSTERS = ${subClustersJson};
+const CONNECTIONS = ${connectionsJson};
+const HEX_SIZE = ${hexSizeVal};
+const IS_EMPTY = ${isEmpty};
+
+// Build flat asset index
+const assetIndex = new Map();
+for (const c of CLUSTERS) {
+  for (const a of c.assets) {
+    assetIndex.set(a.id, { ...a, clusterColor: c.color, clusterId: c.id });
+  }
+}
+
+// ── Canvas Setup ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('hexmap');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+
+let W = 0, H = 0;
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+window.addEventListener('resize', resize);
+
+// ── Viewport state ────────────────────────────────────────────────────────────
+let vx = 0, vy = 0, scale = 1;
+let detailLevel = 2;
+let showLabels = true;
+let showQuality = false;
+let showOrg = true;
+let isDark = false;
+let connectMode = false;
+let connectFirst = null;
+let hoveredAssetId = null;
+let selectedAssetId = null;
+let searchQuery = '';
+let localConnections = [...CONNECTIONS];
+
+function fitToView() {
+  if (IS_EMPTY || CLUSTERS.length === 0) { vx = 0; vy = 0; scale = 1; return; }
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  for (const c of CLUSTERS) for (const a of c.assets) {
+    const px = hexToPixelX(a.q, a.r);
+    const py = hexToPixelY(a.q, a.r);
+    if(px<minX)minX=px; if(py<minY)minY=py;
+    if(px>maxX)maxX=px; if(py>maxY)maxY=py;
+  }
+  const pw = maxX-minX+HEX_SIZE*4, ph = maxY-minY+HEX_SIZE*4;
+  scale = Math.min(W/pw, H/ph, 1) * 0.85;
+  vx = W/2 - ((minX+maxX)/2)*scale;
+  vy = H/2 - ((minY+maxY)/2)*scale;
+}
+
+// ── Hex math (inline for self-contained HTML) ─────────────────────────────────
+function hexToPixelX(q, r) { return HEX_SIZE * (Math.sqrt(3)*q + Math.sqrt(3)/2*r); }
+function hexToPixelY(q, r) { return HEX_SIZE * (3/2*r); }
+
+function worldToScreen(wx, wy) {
+  return { x: wx*scale+vx, y: wy*scale+vy };
+}
+function screenToWorld(sx, sy) {
+  return { x: (sx-vx)/scale, y: (sy-vy)/scale };
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+function hexPath(cx, cy, r) {
+  ctx.beginPath();
+  for (let i=0;i<6;i++) {
+    const angle = Math.PI/180*(60*i-30);
+    const x = cx+r*Math.cos(angle), y = cy+r*Math.sin(angle);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = isDark ? '#0f172a' : '#f8fafc';
+  ctx.fillRect(0, 0, W, H);
+
+  if (IS_EMPTY) return;
+
+  const size = HEX_SIZE * scale;
+  const matchedIds = getSearchMatches();
+  const hasSearch = searchQuery.length > 0;
+
+  // ── Draw connections (edges) ──────────────────────────────────────────────
+  ctx.save();
+  ctx.strokeStyle = isDark ? 'rgba(148,163,184,0.4)' : 'rgba(100,116,139,0.3)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,4]);
+  for (const conn of localConnections) {
+    const src = assetIndex.get(conn.sourceAssetId);
+    const tgt = assetIndex.get(conn.targetAssetId);
+    if (!src || !tgt) continue;
+    const sp = worldToScreen(hexToPixelX(src.q, src.r), hexToPixelY(src.q, src.r));
+    const tp = worldToScreen(hexToPixelX(tgt.q, tgt.r), hexToPixelY(tgt.q, tgt.r));
+    ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(tp.x, tp.y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // ── Draw hexagons per cluster ─────────────────────────────────────────────
+  for (const cluster of CLUSTERS) {
+    const baseColor = cluster.color;
+    const isClusterMatch = !hasSearch || cluster.assets.some(a =>
+      matchedIds.has(a.id)
+    );
+    const clusterDim = hasSearch && !isClusterMatch;
+
+    for (let ai=0; ai<cluster.assets.length; ai++) {
+      const asset = cluster.assets[ai];
+      const wx = hexToPixelX(asset.q, asset.r);
+      const wy = hexToPixelY(asset.q, asset.r);
+      const s = worldToScreen(wx, wy);
+      const cx = s.x, cy = s.y;
+
+      // Frustum cull
+      if (cx+size<0 || cx-size>W || cy+size<0 || cy-size>H) continue;
+
+      // Shade variation: every 3rd hex slightly lighter
+      const shade = ai%3===0 ? 18 : ai%3===1 ? 8 : 0;
+      let fillColor = shadeVariant(baseColor, shade);
+
+      // Quality layer override
+      if (showQuality && asset.qualityScore !== null) {
+        const q = asset.qualityScore;
+        if (q < 40) fillColor = '#ef4444';
+        else if (q < 70) fillColor = '#f97316';
+      }
+
+      // Dim non-matching in search
+      const alpha = clusterDim ? 0.18 : 1;
+
+      // Hover / selected highlight
+      const isHovered = asset.id === hoveredAssetId;
+      const isSelected = asset.id === selectedAssetId;
+      const isConnectFirst = asset.id === connectFirst;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      hexPath(cx, cy, size*0.92);
+
+      if (isDark) {
+        // Glow effect in dark mode
+        if (isHovered || isSelected || isConnectFirst) {
+          ctx.shadowColor = fillColor;
+          ctx.shadowBlur = isSelected ? 16 : 8;
+        }
+      }
+
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+
+      if (isSelected || isConnectFirst) {
+        ctx.strokeStyle = isConnectFirst ? '#f59e0b' : '#fff';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else if (isHovered) {
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.2)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+
+      // Quality dot indicator
+      if (showQuality && asset.qualityScore !== null && size > 8) {
+        const q = asset.qualityScore;
+        if (q < 70) {
+          ctx.beginPath();
+          ctx.arc(cx+size*0.4, cy-size*0.4, Math.max(3, size*0.14), 0, Math.PI*2);
+          ctx.fillStyle = q<40 ? '#ef4444' : '#f97316';
+          ctx.fill();
+        }
+      }
+
+      // Asset-level labels (detail 4, or 3 at high zoom)
+      const showAssetLabel = showLabels && !clusterDim && (
+        (detailLevel >= 4) ||
+        (detailLevel === 3 && scale >= 0.8)
+      );
+      if (showAssetLabel && size > 14) {
+        const label = asset.name.length > 12 ? asset.name.substring(0,11)+'…' : asset.name;
+        ctx.save();
+        ctx.font = \`\${Math.max(8, Math.min(11, size*0.38))}px -apple-system,sans-serif\`;
+        ctx.fillStyle = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.9)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, cx, cy);
+        ctx.restore();
+      }
+    }
+  }
+
+  // ── Cluster labels (pill badges) ──────────────────────────────────────────
+  if (showLabels && detailLevel >= 1) {
+    for (const cluster of CLUSTERS) {
+      if (cluster.assets.length === 0) continue;
+      const hasSearch_ = searchQuery.length > 0;
+      const isMatch = !hasSearch_ || cluster.assets.some(a => getSearchMatches().has(a.id));
+      if (hasSearch_ && !isMatch) continue;
+
+      const s = worldToScreen(cluster.centroid.x, cluster.centroid.y);
+      drawPillLabel(s.x, s.y, cluster.label, cluster.color, 14, isDark);
+    }
+  }
+
+  // ── Sub-cluster labels (detail 2+) ───────────────────────────────────────
+  if (showLabels && detailLevel >= 2) {
+    for (const [clusterId, subs] of Object.entries(SUB_CLUSTERS)) {
+      for (const sub of subs) {
+        const s = worldToScreen(sub.centroid.x, sub.centroid.y);
+        // Offset slightly below cluster centroid
+        drawPillLabel(s.x, s.y + size*1.8, sub.subDomain, '#64748b', 11, isDark);
+      }
+    }
+  }
+}
+
+function shadeVariant(hex, amount) {
+  if (!hex || hex.length < 7) return hex;
+  const num = parseInt(hex.replace('#',''), 16);
+  const r = Math.min(255, (num>>16) + amount);
+  const g = Math.min(255, ((num>>8)&0xff) + amount);
+  const b = Math.min(255, (num&0xff) + amount);
+  return '#' + r.toString(16).padStart(2,'0') + g.toString(16).padStart(2,'0') + b.toString(16).padStart(2,'0');
+}
+
+function drawPillLabel(x, y, text, color, fontSize, dark) {
+  if (!text) return;
+  ctx.save();
+  ctx.font = \`600 \${fontSize}px -apple-system,sans-serif\`;
+  const tw = ctx.measureText(text).width;
+  const ph = fontSize+8, pw = tw+20;
+  // Pill background
+  ctx.beginPath();
+  ctx.roundRect(x-pw/2, y-ph/2, pw, ph, ph/2);
+  ctx.fillStyle = dark ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.92)';
+  ctx.shadowColor = 'rgba(0,0,0,0.15)';
+  ctx.shadowBlur = 6;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  // Text
+  ctx.fillStyle = dark ? '#e2e8f0' : '#0f172a';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+// ── Hit testing ───────────────────────────────────────────────────────────────
+function getAssetAtScreen(sx, sy) {
+  const w = screenToWorld(sx, sy);
+  const size = HEX_SIZE;
+  for (const cluster of CLUSTERS) {
+    for (const asset of cluster.assets) {
+      const wx = hexToPixelX(asset.q, asset.r);
+      const wy = hexToPixelY(asset.q, asset.r);
+      const dx = Math.abs(w.x-wx), dy = Math.abs(w.y-wy);
+      const hw = Math.sqrt(3)/2*size;
+      if (dx > hw || dy > size) continue;
+      if (hw*size - size*dx - (hw/2)*dy >= 0) return asset;
+    }
+  }
+  return null;
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+function getSearchMatches() {
+  if (!searchQuery) return new Set();
+  const q = searchQuery.toLowerCase();
+  const matches = new Set();
+  for (const c of CLUSTERS) {
+    for (const a of c.assets) {
+      if (a.name.toLowerCase().includes(q) ||
+          (a.domain && a.domain.toLowerCase().includes(q)) ||
+          (a.subDomain && a.subDomain.toLowerCase().includes(q))) {
+        matches.add(a.id);
+      }
+    }
+  }
+  return matches;
+}
+
+// ── Pan & Zoom ────────────────────────────────────────────────────────────────
+let dragging = false, lastMX = 0, lastMY = 0;
+
+wrap.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  dragging = true; lastMX = e.clientX; lastMY = e.clientY;
+  wrap.classList.add('dragging');
+});
+window.addEventListener('mouseup', () => { dragging = false; wrap.classList.remove('dragging'); });
+window.addEventListener('mousemove', e => {
+  if (dragging) {
+    vx += e.clientX - lastMX; vy += e.clientY - lastMY;
+    lastMX = e.clientX; lastMY = e.clientY;
+    draw();
+    return;
+  }
+  const rect = wrap.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const asset = getAssetAtScreen(sx, sy);
+  const newId = asset ? asset.id : null;
+  if (newId !== hoveredAssetId) { hoveredAssetId = newId; draw(); }
+  if (asset) {
+    const tooltip = document.getElementById('tooltip');
+    document.getElementById('tt-name').textContent = asset.name;
+    document.getElementById('tt-domain').textContent = asset.domain + (asset.subDomain ? ' › '+asset.subDomain : '');
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX+12)+'px';
+    tooltip.style.top = (e.clientY-8)+'px';
+  } else {
+    document.getElementById('tooltip').style.display = 'none';
+  }
+});
+
+wrap.addEventListener('click', e => {
+  const rect = wrap.getBoundingClientRect();
+  const sx = e.clientX-rect.left, sy = e.clientY-rect.top;
+  const asset = getAssetAtScreen(sx, sy);
+  if (connectMode) {
+    if (!asset) return;
+    if (!connectFirst) {
+      connectFirst = asset.id; draw();
+    } else if (connectFirst !== asset.id) {
+      // Create connection
+      const conn = {id: crypto.randomUUID(), sourceAssetId: connectFirst, targetAssetId: asset.id, type:'connection'};
+      localConnections.push(conn);
+      connectFirst = null;
+      draw();
+    }
+    return;
+  }
+  if (asset) {
+    selectedAssetId = asset.id;
+    showDetailPanel(asset);
+  } else {
+    selectedAssetId = null;
+    document.getElementById('detail-panel').classList.remove('open');
+  }
+  draw();
+});
+
+// Touch pan
+let lastTouches = [];
+wrap.addEventListener('touchstart', e => { lastTouches = [...e.touches]; }, { passive:true });
+wrap.addEventListener('touchmove', e => {
+  if (e.touches.length === 1) {
+    const dx = e.touches[0].clientX - lastTouches[0].clientX;
+    const dy = e.touches[0].clientY - lastTouches[0].clientY;
+    vx += dx; vy += dy; draw();
+  } else if (e.touches.length === 2) {
+    // Pinch zoom
+    const d0 = Math.hypot(lastTouches[0].clientX-lastTouches[1].clientX, lastTouches[0].clientY-lastTouches[1].clientY);
+    const d1 = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    const mx = (e.touches[0].clientX+e.touches[1].clientX)/2;
+    const my = (e.touches[0].clientY+e.touches[1].clientY)/2;
+    applyZoom(d1/d0, mx, my);
+  }
+  lastTouches = [...e.touches];
+}, { passive:true });
+
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = wrap.getBoundingClientRect();
+  const factor = e.deltaY < 0 ? 1.12 : 1/1.12;
+  applyZoom(factor, e.clientX-rect.left, e.clientY-rect.top);
+}, { passive:false });
+
+function applyZoom(factor, sx, sy) {
+  const newScale = Math.max(0.05, Math.min(8, scale*factor));
+  const wx = (sx-vx)/scale, wy = (sy-vy)/scale;
+  scale = newScale;
+  vx = sx - wx*scale; vy = sy - wy*scale;
+  document.getElementById('zoom-pct').textContent = Math.round(scale*100)+'%';
+  draw();
+}
+
+document.getElementById('zoom-in').addEventListener('click', () => applyZoom(1.25, W/2, H/2));
+document.getElementById('zoom-out').addEventListener('click', () => applyZoom(1/1.25, W/2, H/2));
+
+// Keyboard navigation
+wrap.addEventListener('keydown', e => {
+  const step = 40;
+  if (e.key === 'ArrowLeft') { vx += step; draw(); }
+  else if (e.key === 'ArrowRight') { vx -= step; draw(); }
+  else if (e.key === 'ArrowUp') { vy += step; draw(); }
+  else if (e.key === 'ArrowDown') { vy -= step; draw(); }
+  else if (e.key === '+' || e.key === '=') applyZoom(1.2, W/2, H/2);
+  else if (e.key === '-') applyZoom(1/1.2, W/2, H/2);
+  else if (e.key === 'Escape') {
+    selectedAssetId = null;
+    document.getElementById('detail-panel').classList.remove('open');
+    if (connectMode) toggleConnectMode();
+    draw();
+  }
+});
+
+// ── Detail Panel ──────────────────────────────────────────────────────────────
+function showDetailPanel(asset) {
+  document.getElementById('dp-name').textContent = asset.name;
+  const body = document.getElementById('dp-body');
+  const rows = [
+    ['Domain', asset.domain],
+    ['Sub-domain', asset.subDomain],
+    ['Quality Score', asset.qualityScore !== null ? renderQuality(asset.qualityScore) : null],
+    ...Object.entries(asset.metadata || {}).slice(0,8).map(([k,v]) => [k, String(v)]),
+  ].filter(([,v]) => v !== null && v !== undefined && v !== '');
+
+  body.innerHTML = rows.map(([label, value]) => \`
+    <div class="meta-row">
+      <div class="meta-label">\${escHtml(String(label))}</div>
+      <div class="meta-value">\${value}</div>
+    </div>\`).join('');
+
+  // Connections
+  const related = localConnections.filter(c => c.sourceAssetId===asset.id || c.targetAssetId===asset.id);
+  if (related.length > 0) {
+    body.innerHTML += \`<div class="meta-row"><div class="meta-label">Connections (\${related.length})</div><div>\${
+      related.map(c => {
+        const otherId = c.sourceAssetId===asset.id ? c.targetAssetId : c.sourceAssetId;
+        const other = assetIndex.get(otherId);
+        return \`<div class="meta-value" style="margin-top:4px;font-size:12px">\${other ? escHtml(other.name) : otherId}</div>\`;
+      }).join('')
+    }</div></div>\`;
+  }
+
+  document.getElementById('detail-panel').classList.add('open');
+}
+
+function renderQuality(score) {
+  const color = score>=70 ? '#22c55e' : score>=40 ? '#f97316' : '#ef4444';
+  return \`\${score}/100 <div class="quality-bar"><div class="quality-fill" style="width:\${score}%;background:\${color}"></div></div>\`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.getElementById('dp-close').addEventListener('click', () => {
+  document.getElementById('detail-panel').classList.remove('open');
+  selectedAssetId = null; draw();
+});
+
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+[1,2,3,4].forEach(n => {
+  document.getElementById('dl-'+n).addEventListener('click', () => {
+    detailLevel = n;
+    document.querySelectorAll('.detail-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('dl-'+n).classList.add('active');
+    draw();
+  });
+});
+
+document.getElementById('btn-org').addEventListener('click', () => {
+  showOrg = !showOrg;
+  document.getElementById('btn-org').classList.toggle('active', showOrg);
+  draw();
+});
+document.getElementById('btn-labels').addEventListener('click', () => {
+  showLabels = !showLabels;
+  document.getElementById('btn-labels').classList.toggle('active', showLabels);
+  draw();
+});
+document.getElementById('btn-quality').addEventListener('click', () => {
+  showQuality = !showQuality;
+  document.getElementById('btn-quality').classList.toggle('active', showQuality);
+  draw();
+});
+
+function toggleConnectMode() {
+  connectMode = !connectMode;
+  connectFirst = null;
+  document.getElementById('connect-btn').classList.toggle('active', connectMode);
+  wrap.classList.toggle('connecting', connectMode);
+  document.getElementById('connect-hint').style.display = connectMode ? 'block' : 'none';
+  draw();
+}
+document.getElementById('connect-btn').addEventListener('click', toggleConnectMode);
+
+document.getElementById('theme-btn').addEventListener('click', () => {
+  isDark = !isDark;
+  document.body.classList.toggle('dark', isDark);
+  document.getElementById('theme-btn').textContent = isDark ? '☀️' : '🌙';
+  draw();
+});
+
+// ── Search ────────────────────────────────────────────────────────────────────
+document.getElementById('search-input').addEventListener('input', e => {
+  searchQuery = e.target.value.trim();
+  draw();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+resize();
+fitToView();
+document.getElementById('zoom-pct').textContent = Math.round(scale*100)+'%';
+draw();
+
+})();
+</script>
+</body>
+</html>`;
 }
