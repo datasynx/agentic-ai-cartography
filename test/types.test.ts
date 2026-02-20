@@ -61,6 +61,54 @@ describe('EdgeSchema', () => {
   });
 });
 
+describe('NodeSchema hex fields', () => {
+  it('accepts domain, subDomain, qualityScore', () => {
+    const result = NodeSchema.safeParse({
+      id: 'saas_tool:hubspot',
+      type: 'saas_tool',
+      name: 'HubSpot',
+      discoveredVia: 'manual',
+      confidence: 1,
+      domain: 'Marketing',
+      subDomain: 'Client Lifetime Value',
+      qualityScore: 85,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.domain).toBe('Marketing');
+      expect(result.data.subDomain).toBe('Client Lifetime Value');
+      expect(result.data.qualityScore).toBe(85);
+    }
+  });
+
+  it('rejects qualityScore > 100', () => {
+    const result = NodeSchema.safeParse({
+      id: 'saas_tool:x',
+      type: 'saas_tool',
+      name: 'X',
+      discoveredVia: 'manual',
+      confidence: 1,
+      qualityScore: 150,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('allows missing domain/subDomain/qualityScore', () => {
+    const result = NodeSchema.safeParse({
+      id: 'host:server1',
+      type: 'host',
+      name: 'server1',
+      discoveredVia: 'ping',
+      confidence: 0.8,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.domain).toBeUndefined();
+      expect(result.data.qualityScore).toBeUndefined();
+    }
+  });
+});
+
 describe('defaultConfig', () => {
   it('returns valid defaults', () => {
     const config = defaultConfig();
