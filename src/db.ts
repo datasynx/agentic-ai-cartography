@@ -3,8 +3,13 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
   CartographyConfig, DiscoveryNode, DiscoveryEdge,
-  NodeRow, EdgeRow, SessionRow, SOP, HexConnection, ConnectionRow,
+  NodeRow, EdgeRow, SessionRow, SOP, Connection,
 } from './types.js';
+
+export interface ConnectionRow extends Connection {
+  sessionId: string;
+  createdAt: string;
+}
 
 // ── DB Row Types ──
 
@@ -506,7 +511,7 @@ export class CartographyDB {
 
   // ── Connections (user-created hex map links) ─────────────────────────────
 
-  upsertConnection(sessionId: string, conn: Omit<HexConnection, 'id'>): string {
+  upsertConnection(sessionId: string, conn: Omit<Connection, 'id'>): string {
     // Idempotent: same source+target+type = same connection
     const existing = this.db.prepare(
       'SELECT id FROM connections WHERE session_id = ? AND source_asset_id = ? AND target_asset_id = ?'
