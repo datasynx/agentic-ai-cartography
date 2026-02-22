@@ -2,6 +2,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CartographyDB } from './db.js';
 import type { NodeRow, EdgeRow, SOP } from './types.js';
+import { buildMapData } from './mapper.js';
+import { shadeVariant } from './cluster.js';
+import { hexToPixel } from './hex.js';
 
 // ── Layer assignment ─────────────────────────────────────────────────────────
 
@@ -1004,13 +1007,651 @@ function toggle(i) {
 </html>`;
 }
 
+// ── Cartography Map Export ─────────────────────────────────────────────────────
+
+export function exportCartographyMap(
+  nodes: NodeRow[],
+  edges: EdgeRow[],
+  options?: { theme?: 'light' | 'dark' },
+): string {
+  const mapData = buildMapData(nodes, edges, options);
+  const { assets, clusters, connections, meta } = mapData;
+  const isEmpty = assets.length === 0;
+  const HEX_SIZE = 24;
+
+  const dataJson = JSON.stringify({
+    assets: assets.map(a => ({
+      id: a.id, name: a.name, domain: a.domain, subDomain: a.subDomain ?? null,
+      qualityScore: a.qualityScore ?? null, metadata: a.metadata,
+      q: a.position.q, r: a.position.r,
+    })),
+    clusters: clusters.map(c => ({
+      id: c.id, label: c.label, domain: c.domain, color: c.color,
+      assetIds: c.assetIds, centroid: c.centroid,
+    })),
+    connections: connections.map(c => ({
+      id: c.id, sourceAssetId: c.sourceAssetId, targetAssetId: c.targetAssetId,
+      type: c.type ?? 'connection',
+    })),
+  });
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Data Cartography Map</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body{display:flex;flex-direction:column;background:${meta.theme === 'dark' ? '#0f172a' : '#f8fafc'};color:${meta.theme === 'dark' ? '#e2e8f0' : '#1e293b'}}
+#topbar{
+  height:48px;display:flex;align-items:center;gap:16px;padding:0 20px;
+  background:${meta.theme === 'dark' ? '#1e293b' : '#fff'};border-bottom:1px solid ${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};z-index:10;flex-shrink:0;
+}
+#topbar h1{font-size:15px;font-weight:600;letter-spacing:-0.01em}
+#search-box{
+  display:flex;align-items:center;gap:8px;background:${meta.theme === 'dark' ? '#334155' : '#f1f5f9'};
+  border-radius:8px;padding:5px 10px;margin-left:auto;
+}
+#search-box input{
+  border:none;background:transparent;font-size:13px;outline:none;width:180px;color:inherit;
+}
+#search-box input::placeholder{color:#94a3b8}
+#main{flex:1;display:flex;overflow:hidden;position:relative}
+#canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:grab}
+#canvas-wrap.dragging{cursor:grabbing}
+#canvas-wrap.connecting{cursor:crosshair}
+canvas{display:block;width:100%;height:100%}
+/* Detail panel */
+#detail-panel{
+  width:280px;background:${meta.theme === 'dark' ? '#1e293b' : '#fff'};border-left:1px solid ${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};
+  display:flex;flex-direction:column;transform:translateX(100%);
+  transition:transform .2s ease;z-index:5;flex-shrink:0;overflow-y:auto;
+}
+#detail-panel.open{transform:translateX(0)}
+#detail-panel .panel-header{
+  padding:16px;border-bottom:1px solid ${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};display:flex;align-items:center;gap:10px;
+}
+#detail-panel .panel-header h3{font-size:14px;font-weight:600;flex:1;word-break:break-word}
+#detail-panel .close-btn{
+  width:24px;height:24px;border:none;background:transparent;cursor:pointer;
+  color:#94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:16px;
+}
+#detail-panel .close-btn:hover{background:${meta.theme === 'dark' ? '#334155' : '#f1f5f9'}}
+#detail-panel .panel-body{padding:12px 16px;display:flex;flex-direction:column;gap:12px}
+#detail-panel .meta-row{display:flex;flex-direction:column;gap:3px}
+#detail-panel .meta-label{font-size:11px;font-weight:500;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
+#detail-panel .meta-value{font-size:13px;word-break:break-all}
+#detail-panel .quality-bar{height:6px;border-radius:3px;background:${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};margin-top:4px}
+#detail-panel .quality-fill{height:6px;border-radius:3px;transition:width .3s}
+/* Bottom-left toolbar */
+#toolbar-left{
+  position:absolute;bottom:20px;left:20px;display:flex;gap:8px;z-index:10;
+}
+.tb-btn{
+  width:40px;height:40px;border-radius:10px;border:1px solid ${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};
+  background:${meta.theme === 'dark' ? '#1e293b' : '#fff'};box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  transition:all .15s;color:inherit;
+}
+.tb-btn:hover{border-color:#94a3b8}
+.tb-btn.active{background:${meta.theme === 'dark' ? '#1e3a5f' : '#eff6ff'};border-color:#3b82f6}
+/* Bottom-right toolbar */
+#toolbar-right{
+  position:absolute;bottom:20px;right:20px;display:flex;flex-direction:column;
+  align-items:flex-end;gap:8px;z-index:10;
+}
+#zoom-controls{display:flex;align-items:center;gap:6px}
+.zoom-btn{
+  width:34px;height:34px;border-radius:8px;border:1px solid ${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};
+  background:${meta.theme === 'dark' ? '#1e293b' : '#fff'};cursor:pointer;
+  font-size:18px;color:inherit;display:flex;align-items:center;justify-content:center;
+}
+.zoom-btn:hover{background:${meta.theme === 'dark' ? '#334155' : '#f1f5f9'}}
+#zoom-pct{font-size:12px;font-weight:500;color:#64748b;min-width:38px;text-align:center}
+#detail-selector{display:flex;flex-direction:column;gap:4px}
+.detail-btn{
+  width:34px;height:34px;border-radius:8px;border:1px solid ${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};
+  background:${meta.theme === 'dark' ? '#1e293b' : '#fff'};cursor:pointer;
+  font-size:12px;font-weight:600;color:#64748b;display:flex;align-items:center;justify-content:center;
+}
+.detail-btn:hover{background:${meta.theme === 'dark' ? '#334155' : '#f1f5f9'}}
+.detail-btn.active{background:${meta.theme === 'dark' ? '#1e3a5f' : '#eff6ff'};border-color:#3b82f6;color:#2563eb}
+#connect-btn{
+  width:40px;height:40px;border-radius:10px;border:1px solid ${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};
+  background:${meta.theme === 'dark' ? '#1e293b' : '#fff'};cursor:pointer;
+  font-size:18px;display:flex;align-items:center;justify-content:center;color:inherit;
+}
+#connect-btn.active{background:#fef3c7;border-color:#f59e0b}
+/* Tooltip */
+#tooltip{
+  position:fixed;background:#1e293b;color:#fff;border-radius:8px;
+  padding:8px 12px;font-size:12px;pointer-events:none;z-index:100;
+  display:none;max-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.15);
+}
+#tooltip .tt-name{font-weight:600;margin-bottom:2px}
+#tooltip .tt-domain{color:#94a3b8;font-size:11px}
+#tooltip .tt-quality{font-size:11px;margin-top:2px}
+/* Empty state */
+#empty-state{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;color:#94a3b8;
+}
+#empty-state p{font-size:14px}
+/* Theme toggle */
+#theme-btn{
+  width:40px;height:40px;border-radius:10px;border:1px solid ${meta.theme === 'dark' ? '#334155' : '#e2e8f0'};
+  background:${meta.theme === 'dark' ? '#1e293b' : '#fff'};cursor:pointer;
+  font-size:18px;display:flex;align-items:center;justify-content:center;color:inherit;
+}
+/* Dark mode overrides (toggled via JS) */
+body.dark{background:#0f172a;color:#e2e8f0}
+body.dark #topbar{background:#1e293b;border-color:#334155}
+body.dark #search-box{background:#334155}
+body.dark #detail-panel{background:#1e293b;border-color:#334155}
+body.dark .tb-btn,body.dark .zoom-btn,body.dark .detail-btn,body.dark #connect-btn,body.dark #theme-btn{
+  background:#1e293b;border-color:#334155;color:#e2e8f0;
+}
+/* Light mode overrides */
+body.light{background:#f8fafc;color:#1e293b}
+body.light #topbar{background:#fff;border-color:#e2e8f0}
+/* Connection hint */
+#connect-hint{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  background:#fef3c7;border:1px solid #f59e0b;color:#92400e;
+  padding:6px 14px;border-radius:20px;font-size:12px;font-weight:500;
+  display:none;z-index:20;pointer-events:none;
+}
+/* Screen reader only */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+</style>
+</head>
+<body class="${meta.theme}">
+<!-- Top bar -->
+<div id="topbar">
+  <h1>Data Cartography Map</h1>
+  <div id="search-box">
+    <span style="color:#94a3b8;font-size:14px">&#8981;</span>
+    <input id="search-input" type="text" placeholder="Search assets..." aria-label="Search data assets"/>
+  </div>
+  <button id="theme-btn" title="Toggle dark/light mode" aria-label="Toggle theme">${meta.theme === 'dark' ? '&#9788;' : '&#9790;'}</button>
+</div>
+<!-- SR summary -->
+<div class="sr-only" role="status" aria-live="polite" id="sr-summary">
+  Data cartography map with ${assets.length} assets in ${clusters.length} clusters.
+</div>
+<!-- Main area -->
+<div id="main">
+  <div id="canvas-wrap" role="application" aria-label="Data cartography hex map" tabindex="0">
+    <canvas id="hexmap" aria-hidden="true"></canvas>
+    ${isEmpty ? '<div id="empty-state"><p style="font-size:48px">&#128506;</p><p>No data assets available</p><p style="font-size:12px">Run <code>datasynx-cartography discover</code> to populate the map</p></div>' : ''}
+  </div>
+  <div id="detail-panel" role="complementary" aria-label="Asset details">
+    <div class="panel-header">
+      <h3 id="dp-name">&mdash;</h3>
+      <button class="close-btn" id="dp-close" aria-label="Close panel">&#10005;</button>
+    </div>
+    <div class="panel-body" id="dp-body"></div>
+  </div>
+</div>
+<!-- Bottom-left toolbar -->
+<div id="toolbar-left">
+  <button class="tb-btn active" id="btn-labels" title="Show labels" aria-pressed="true" aria-label="Toggle labels">&#127991;</button>
+  <button class="tb-btn" id="btn-quality" title="Quality layer" aria-pressed="false" aria-label="Toggle quality layer">&#128065;</button>
+</div>
+<!-- Bottom-right toolbar -->
+<div id="toolbar-right">
+  <div id="zoom-controls">
+    <button class="zoom-btn" id="zoom-out" aria-label="Zoom out">&minus;</button>
+    <span id="zoom-pct">100%</span>
+    <button class="zoom-btn" id="zoom-in" aria-label="Zoom in">+</button>
+  </div>
+  <div id="detail-selector">
+    <button class="detail-btn" id="dl-1" aria-label="Detail level 1">1</button>
+    <button class="detail-btn active" id="dl-2" aria-label="Detail level 2">2</button>
+    <button class="detail-btn" id="dl-3" aria-label="Detail level 3">3</button>
+    <button class="detail-btn" id="dl-4" aria-label="Detail level 4">4</button>
+  </div>
+  <button id="connect-btn" title="Connection tool" aria-label="Toggle connection tool">&#128279;</button>
+</div>
+<!-- Connection hint -->
+<div id="connect-hint">Click two assets to create a connection</div>
+<!-- Tooltip -->
+<div id="tooltip" role="tooltip">
+  <div class="tt-name" id="tt-name"></div>
+  <div class="tt-domain" id="tt-domain"></div>
+  <div class="tt-quality" id="tt-quality"></div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ── Data ─────────────────────────────────────────────────────────────────────
+const MAP = ${dataJson};
+const HEX_SIZE = ${HEX_SIZE};
+const IS_EMPTY = ${isEmpty};
+
+// Build asset index
+const assetIndex = new Map();
+const clusterByAsset = new Map();
+for (const c of MAP.clusters) {
+  for (const aid of c.assetIds) {
+    clusterByAsset.set(aid, c);
+  }
+}
+for (const a of MAP.assets) {
+  assetIndex.set(a.id, a);
+}
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('hexmap');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+let W = 0, H = 0;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+window.addEventListener('resize', resize);
+
+// ── Viewport ──────────────────────────────────────────────────────────────────
+let vx = 0, vy = 0, scale = 1;
+let detailLevel = 2, showLabels = true, showQuality = false;
+let isDark = document.body.classList.contains('dark');
+let connectMode = false, connectFirst = null;
+let hoveredAssetId = null, selectedAssetId = null;
+let searchQuery = '';
+let localConnections = [...MAP.connections];
+
+// Flat-top hex math
+function htp_x(q, r) { return HEX_SIZE * (3/2 * q); }
+function htp_y(q, r) { return HEX_SIZE * (Math.sqrt(3)/2 * q + Math.sqrt(3) * r); }
+function w2s(wx, wy) { return { x: wx*scale+vx, y: wy*scale+vy }; }
+function s2w(sx, sy) { return { x: (sx-vx)/scale, y: (sy-vy)/scale }; }
+
+function fitToView() {
+  if (IS_EMPTY || MAP.assets.length === 0) { vx = 0; vy = 0; scale = 1; return; }
+  let mnx=Infinity,mny=Infinity,mxx=-Infinity,mxy=-Infinity;
+  for (const a of MAP.assets) {
+    const px=htp_x(a.q,a.r), py=htp_y(a.q,a.r);
+    if(px<mnx)mnx=px;if(py<mny)mny=py;if(px>mxx)mxx=px;if(py>mxy)mxy=py;
+  }
+  const pw=mxx-mnx+HEX_SIZE*4, ph=mxy-mny+HEX_SIZE*4;
+  scale = Math.min(W/pw, H/ph, 2) * 0.85;
+  vx = W/2 - ((mnx+mxx)/2)*scale;
+  vy = H/2 - ((mny+mxy)/2)*scale;
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+function hexPath(cx, cy, r) {
+  ctx.beginPath();
+  for (let i=0;i<6;i++) {
+    const angle = Math.PI/180*(60*i);
+    const x=cx+r*Math.cos(angle), y=cy+r*Math.sin(angle);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+}
+
+function shadeV(hex, amt) {
+  if(!hex||hex.length<7)return hex;
+  const n=parseInt(hex.replace('#',''),16);
+  const r=Math.min(255,(n>>16)+amt), g=Math.min(255,((n>>8)&0xff)+amt), b=Math.min(255,(n&0xff)+amt);
+  return '#'+r.toString(16).padStart(2,'0')+g.toString(16).padStart(2,'0')+b.toString(16).padStart(2,'0');
+}
+
+function draw() {
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = isDark ? '#0f172a' : '#f8fafc';
+  ctx.fillRect(0,0,W,H);
+  if (IS_EMPTY) return;
+
+  const size = HEX_SIZE * scale;
+  const matchedIds = getSearchMatches();
+  const hasSearch = searchQuery.length > 0;
+
+  // Draw connections
+  ctx.save();
+  ctx.strokeStyle = isDark ? 'rgba(148,163,184,0.35)' : 'rgba(100,116,139,0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,4]);
+  for (const conn of localConnections) {
+    const src = assetIndex.get(conn.sourceAssetId);
+    const tgt = assetIndex.get(conn.targetAssetId);
+    if (!src||!tgt) continue;
+    const sp=w2s(htp_x(src.q,src.r),htp_y(src.q,src.r));
+    const tp=w2s(htp_x(tgt.q,tgt.r),htp_y(tgt.q,tgt.r));
+    ctx.beginPath();ctx.moveTo(sp.x,sp.y);ctx.lineTo(tp.x,tp.y);ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Draw hexagons per cluster
+  for (const cluster of MAP.clusters) {
+    const baseColor = cluster.color;
+    const clusterAssets = cluster.assetIds.map(id=>assetIndex.get(id)).filter(Boolean);
+    const isClusterMatch = !hasSearch || clusterAssets.some(a => matchedIds.has(a.id));
+    const clusterDim = hasSearch && !isClusterMatch;
+
+    for (let ai=0; ai<clusterAssets.length; ai++) {
+      const asset = clusterAssets[ai];
+      const wx=htp_x(asset.q,asset.r), wy=htp_y(asset.q,asset.r);
+      const s=w2s(wx,wy);
+      const cx=s.x, cy=s.y;
+
+      // Frustum cull
+      if(cx+size<0||cx-size>W||cy+size<0||cy-size>H) continue;
+
+      // Shade variation
+      const shade = ai%3===0?18:ai%3===1?8:0;
+      let fillColor = shadeV(baseColor, shade);
+
+      // Quality overlay
+      if (showQuality && asset.qualityScore !== null && asset.qualityScore !== undefined) {
+        const q = asset.qualityScore;
+        if (q < 40) fillColor = '#ef4444';
+        else if (q < 70) fillColor = '#f97316';
+      }
+
+      const alpha = clusterDim ? 0.18 : 1;
+      const isHovered = asset.id === hoveredAssetId;
+      const isSelected = asset.id === selectedAssetId;
+      const isConnectFirst = asset.id === connectFirst;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      hexPath(cx, cy, size*0.92);
+
+      if (isDark && (isHovered||isSelected||isConnectFirst)) {
+        ctx.shadowColor = fillColor;
+        ctx.shadowBlur = isSelected ? 16 : 8;
+      }
+
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+
+      if (isSelected||isConnectFirst) {
+        ctx.strokeStyle = isConnectFirst ? '#f59e0b' : '#fff';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else if (isHovered) {
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.2)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Quality dot
+      if (showQuality && asset.qualityScore!==null && asset.qualityScore!==undefined && size>8) {
+        const q = asset.qualityScore;
+        if (q < 70) {
+          ctx.beginPath();
+          ctx.arc(cx+size*0.4, cy-size*0.4, Math.max(3,size*0.14), 0, Math.PI*2);
+          ctx.fillStyle = q<40?'#ef4444':'#f97316';
+          ctx.fill();
+        }
+      }
+
+      // Asset labels (detail 4, or 3 at high zoom)
+      const showAssetLabel = showLabels && !clusterDim &&
+        ((detailLevel>=4)||(detailLevel===3 && scale>=0.8));
+      if (showAssetLabel && size>14) {
+        const label = asset.name.length>12 ? asset.name.substring(0,11)+'...' : asset.name;
+        ctx.save();
+        ctx.font = Math.max(8,Math.min(11,size*0.38))+'px -apple-system,sans-serif';
+        ctx.fillStyle = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.9)';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(label, cx, cy);
+        ctx.restore();
+      }
+    }
+  }
+
+  // Cluster labels (pill badges)
+  if (showLabels && detailLevel>=1) {
+    for (const cluster of MAP.clusters) {
+      if (cluster.assetIds.length===0) continue;
+      if (hasSearch && !cluster.assetIds.some(id=>matchedIds.has(id))) continue;
+      const s=w2s(cluster.centroid.x, cluster.centroid.y);
+      drawPill(s.x, s.y-size*1.2, cluster.label, cluster.color, 14);
+    }
+  }
+
+  // Sub-domain labels (detail 2+)
+  if (showLabels && detailLevel>=2) {
+    const subGroups = new Map();
+    for (const a of MAP.assets) {
+      if (!a.subDomain) continue;
+      const key = a.domain+'|'+a.subDomain;
+      if (!subGroups.has(key)) subGroups.set(key, []);
+      subGroups.get(key).push(a);
+    }
+    for (const [, group] of subGroups) {
+      let sx=0,sy=0;
+      for (const a of group) { sx+=htp_x(a.q,a.r); sy+=htp_y(a.q,a.r); }
+      const cx=sx/group.length, cy=sy/group.length;
+      const s = w2s(cx, cy);
+      drawPill(s.x, s.y+size*1.5, group[0].subDomain, '#64748b', 11);
+    }
+  }
+}
+
+function drawPill(x, y, text, color, fontSize) {
+  if(!text) return;
+  ctx.save();
+  ctx.font = '600 '+fontSize+'px -apple-system,sans-serif';
+  const tw=ctx.measureText(text).width;
+  const ph=fontSize+8, pw=tw+20;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x-pw/2, y-ph/2, pw, ph, ph/2);
+  else { ctx.rect(x-pw/2, y-ph/2, pw, ph); }
+  ctx.fillStyle = isDark ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.92)';
+  ctx.shadowColor='rgba(0,0,0,0.15)'; ctx.shadowBlur=6;
+  ctx.fill(); ctx.shadowBlur=0;
+  ctx.fillStyle = isDark ? '#e2e8f0' : '#0f172a';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+// ── Hit testing ───────────────────────────────────────────────────────────────
+function getAssetAt(sx, sy) {
+  const w=s2w(sx,sy);
+  for (const a of MAP.assets) {
+    const wx=htp_x(a.q,a.r), wy=htp_y(a.q,a.r);
+    const dx=Math.abs(w.x-wx), dy=Math.abs(w.y-wy);
+    if (dx>HEX_SIZE||dy>HEX_SIZE) continue;
+    if (dx*dx+dy*dy < HEX_SIZE*HEX_SIZE) return a;
+  }
+  return null;
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+function getSearchMatches() {
+  if(!searchQuery) return new Set();
+  const q=searchQuery.toLowerCase();
+  const m=new Set();
+  for(const a of MAP.assets){
+    if(a.name.toLowerCase().includes(q)||(a.domain&&a.domain.toLowerCase().includes(q))||
+       (a.subDomain&&a.subDomain.toLowerCase().includes(q))) m.add(a.id);
+  }
+  return m;
+}
+
+// ── Pan & Zoom ────────────────────────────────────────────────────────────────
+let dragging=false, lastMX=0, lastMY=0;
+
+wrap.addEventListener('mousedown', e=>{
+  if(e.button!==0)return;
+  dragging=true; lastMX=e.clientX; lastMY=e.clientY;
+  wrap.classList.add('dragging');
+});
+window.addEventListener('mouseup', ()=>{dragging=false;wrap.classList.remove('dragging');});
+window.addEventListener('mousemove', e=>{
+  if(dragging){
+    vx+=e.clientX-lastMX; vy+=e.clientY-lastMY;
+    lastMX=e.clientX; lastMY=e.clientY; draw(); return;
+  }
+  const rect=wrap.getBoundingClientRect();
+  const sx=e.clientX-rect.left, sy=e.clientY-rect.top;
+  const asset=getAssetAt(sx,sy);
+  const newId=asset?asset.id:null;
+  if(newId!==hoveredAssetId){hoveredAssetId=newId;draw();}
+  const tt=document.getElementById('tooltip');
+  if(asset){
+    document.getElementById('tt-name').textContent=asset.name;
+    document.getElementById('tt-domain').textContent=asset.domain+(asset.subDomain?' > '+asset.subDomain:'');
+    document.getElementById('tt-quality').textContent=asset.qualityScore!==null?'Quality: '+asset.qualityScore+'/100':'';
+    tt.style.display='block';tt.style.left=(e.clientX+12)+'px';tt.style.top=(e.clientY-8)+'px';
+  } else { tt.style.display='none'; }
+});
+
+wrap.addEventListener('click', e=>{
+  const rect=wrap.getBoundingClientRect();
+  const sx=e.clientX-rect.left, sy=e.clientY-rect.top;
+  const asset=getAssetAt(sx,sy);
+  if(connectMode){
+    if(!asset) return;
+    if(!connectFirst){connectFirst=asset.id;draw();}
+    else if(connectFirst!==asset.id){
+      localConnections.push({id:crypto.randomUUID(),sourceAssetId:connectFirst,targetAssetId:asset.id,type:'connection'});
+      connectFirst=null;draw();
+    }
+    return;
+  }
+  if(asset){selectedAssetId=asset.id;showDetailPanel(asset);}
+  else{selectedAssetId=null;document.getElementById('detail-panel').classList.remove('open');}
+  draw();
+});
+
+// Touch
+let lastTouches=[];
+wrap.addEventListener('touchstart',e=>{lastTouches=[...e.touches];},{passive:true});
+wrap.addEventListener('touchmove',e=>{
+  if(e.touches.length===1){
+    vx+=e.touches[0].clientX-lastTouches[0].clientX;
+    vy+=e.touches[0].clientY-lastTouches[0].clientY;draw();
+  } else if(e.touches.length===2){
+    const d0=Math.hypot(lastTouches[0].clientX-lastTouches[1].clientX,lastTouches[0].clientY-lastTouches[1].clientY);
+    const d1=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+    const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
+    applyZoom(d1/d0,mx,my);
+  }
+  lastTouches=[...e.touches];
+},{passive:true});
+
+wrap.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const rect=wrap.getBoundingClientRect();
+  applyZoom(e.deltaY<0?1.12:1/1.12,e.clientX-rect.left,e.clientY-rect.top);
+},{passive:false});
+
+function applyZoom(factor,sx,sy){
+  const ns=Math.max(0.05,Math.min(8,scale*factor));
+  const wx=(sx-vx)/scale,wy=(sy-vy)/scale;
+  scale=ns;vx=sx-wx*scale;vy=sy-wy*scale;
+  document.getElementById('zoom-pct').textContent=Math.round(scale*100)+'%';draw();
+}
+document.getElementById('zoom-in').addEventListener('click',()=>applyZoom(1.25,W/2,H/2));
+document.getElementById('zoom-out').addEventListener('click',()=>applyZoom(1/1.25,W/2,H/2));
+
+// Keyboard
+wrap.addEventListener('keydown',e=>{
+  const step=40;
+  if(e.key==='ArrowLeft'){vx+=step;draw();}
+  else if(e.key==='ArrowRight'){vx-=step;draw();}
+  else if(e.key==='ArrowUp'){vy+=step;draw();}
+  else if(e.key==='ArrowDown'){vy-=step;draw();}
+  else if(e.key==='+'||e.key==='=')applyZoom(1.2,W/2,H/2);
+  else if(e.key==='-')applyZoom(1/1.2,W/2,H/2);
+  else if(e.key==='Escape'){
+    selectedAssetId=null;document.getElementById('detail-panel').classList.remove('open');
+    if(connectMode)toggleConnect();draw();
+  }
+});
+
+// ── Detail Panel ──────────────────────────────────────────────────────────────
+function showDetailPanel(asset) {
+  document.getElementById('dp-name').textContent=asset.name;
+  const body=document.getElementById('dp-body');
+  const rows=[['Domain',asset.domain],['Sub-domain',asset.subDomain],
+    ['Quality Score',asset.qualityScore!==null?renderQuality(asset.qualityScore):null],
+    ...Object.entries(asset.metadata||{}).slice(0,8).map(([k,v])=>[k,String(v)])
+  ].filter(([,v])=>v!==null&&v!==undefined&&v!=='');
+  body.innerHTML=rows.map(([l,v])=>'<div class="meta-row"><div class="meta-label">'+esc(String(l))+'</div><div class="meta-value">'+v+'</div></div>').join('');
+  const related=localConnections.filter(c=>c.sourceAssetId===asset.id||c.targetAssetId===asset.id);
+  if(related.length>0){
+    body.innerHTML+='<div class="meta-row"><div class="meta-label">Connections ('+related.length+')</div><div>'+
+      related.map(c=>{const oid=c.sourceAssetId===asset.id?c.targetAssetId:c.sourceAssetId;
+        const o=assetIndex.get(oid);return '<div class="meta-value" style="margin-top:4px;font-size:12px">'+(o?esc(o.name):oid)+'</div>';}).join('')+'</div></div>';
+  }
+  document.getElementById('detail-panel').classList.add('open');
+}
+function renderQuality(s){
+  const c=s>=70?'#22c55e':s>=40?'#f97316':'#ef4444';
+  return s+'/100 <div class="quality-bar"><div class="quality-fill" style="width:'+s+'%;background:'+c+'"></div></div>';
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+document.getElementById('dp-close').addEventListener('click',()=>{
+  document.getElementById('detail-panel').classList.remove('open');selectedAssetId=null;draw();
+});
+
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+[1,2,3,4].forEach(n=>{
+  document.getElementById('dl-'+n).addEventListener('click',()=>{
+    detailLevel=n;document.querySelectorAll('.detail-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('dl-'+n).classList.add('active');draw();
+  });
+});
+document.getElementById('btn-labels').addEventListener('click',()=>{
+  showLabels=!showLabels;document.getElementById('btn-labels').classList.toggle('active',showLabels);draw();
+});
+document.getElementById('btn-quality').addEventListener('click',()=>{
+  showQuality=!showQuality;document.getElementById('btn-quality').classList.toggle('active',showQuality);draw();
+});
+function toggleConnect(){
+  connectMode=!connectMode;connectFirst=null;
+  document.getElementById('connect-btn').classList.toggle('active',connectMode);
+  wrap.classList.toggle('connecting',connectMode);
+  document.getElementById('connect-hint').style.display=connectMode?'block':'none';draw();
+}
+document.getElementById('connect-btn').addEventListener('click',toggleConnect);
+document.getElementById('theme-btn').addEventListener('click',()=>{
+  isDark=!isDark;
+  document.body.classList.toggle('dark',isDark);document.body.classList.toggle('light',!isDark);
+  document.getElementById('theme-btn').innerHTML=isDark?'&#9788;':'&#9790;';draw();
+});
+document.getElementById('search-input').addEventListener('input',e=>{searchQuery=e.target.value.trim();draw();});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+resize(); fitToView();
+document.getElementById('zoom-pct').textContent=Math.round(scale*100)+'%';
+draw();
+})();
+</script>
+</body>
+</html>`;
+}
+
 // ── exportAll ─────────────────────────────────────────────────────────────────
 
 export function exportAll(
   db: CartographyDB,
   sessionId: string,
   outputDir: string,
-  formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'sops'],
+  formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'map', 'sops'],
 ): void {
   mkdirSync(outputDir, { recursive: true });
   mkdirSync(join(outputDir, 'sops'), { recursive: true });
@@ -1038,6 +1679,11 @@ export function exportAll(
   if (formats.includes('html')) {
     writeFileSync(join(outputDir, 'topology.html'), exportHTML(nodes, edges));
     process.stderr.write('✓ topology.html\n');
+  }
+
+  if (formats.includes('map')) {
+    writeFileSync(join(outputDir, 'cartography-map.html'), exportCartographyMap(nodes, edges));
+    process.stderr.write('✓ cartography-map.html\n');
   }
 
   if (formats.includes('sops')) {

@@ -4,10 +4,11 @@ import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
 import { runDiscovery } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
-import { exportAll } from './exporter.js';
-import { readFileSync, existsSync } from 'fs';
+import { exportAll, exportCartographyMap } from './exporter.js';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
+import { execSync } from 'child_process';
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
 const bold    = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -268,9 +269,13 @@ function main(): void {
       // ── Diagram links ───────────────────────────────────────────────────────
       const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
       const htmlPath = resolve(config.outputDir, 'topology.html');
+      const mapPath = resolve(config.outputDir, 'cartography-map.html');
       const topoPath = resolve(config.outputDir, 'topology.mermaid');
 
       w('\n');
+      if (existsSync(mapPath)) {
+        w(`  ${green('→')}  ${osc8(`file://${mapPath}`, bold('Open cartography-map.html'))}  ${dim('← Hex Map')}\n`);
+      }
       if (existsSync(htmlPath)) {
         w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('Open topology.html'))}\n`);
       }
@@ -344,7 +349,7 @@ function main(): void {
     .command('export [session-id]')
     .description('Generate all output files')
     .option('-o, --output <dir>', 'Output directory', './datasynx-output')
-    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,sops')
+    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,map,sops')
     .action((sessionId: string | undefined, opts) => {
       const config = defaultConfig({ outputDir: opts.output });
       const db = new CartographyDB(config.dbPath);
@@ -360,11 +365,56 @@ function main(): void {
         return;
       }
 
-      const formats = opts.format ?? ['mermaid', 'json', 'yaml', 'html', 'sops'];
+      const formats = opts.format ?? ['mermaid', 'json', 'yaml', 'html', 'map', 'sops'];
       exportAll(db, session.id, opts.output, formats);
       process.stderr.write(`✓ Exported to: ${opts.output}\n`);
 
       db.close();
+    });
+
+  // ── map command ─────────────────────────────────────────────────────────────
+  program
+    .command('map [session-id]')
+    .description('Open the interactive Data Cartography hex map in your browser')
+    .option('-o, --output <dir>', 'Output directory', './datasynx-output')
+    .option('--theme <theme>', 'Theme: light or dark', 'light')
+    .action((sessionId: string | undefined, opts) => {
+      const config = defaultConfig({ outputDir: opts.output });
+      const db = new CartographyDB(config.dbPath);
+
+      const session = sessionId
+        ? db.getSession(sessionId)
+        : db.getLatestSession();
+
+      if (!session) {
+        process.stderr.write('No session found. Run discover first.\n');
+        db.close();
+        process.exitCode = 1;
+        return;
+      }
+
+      const nodes = db.getNodes(session.id);
+      const edges = db.getEdges(session.id);
+      const outDir = resolve(opts.output);
+      mkdirSync(outDir, { recursive: true });
+      const outPath = resolve(outDir, 'cartography-map.html');
+
+      writeFileSync(outPath, exportCartographyMap(nodes, edges, { theme: opts.theme }));
+      db.close();
+
+      const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
+      const fileUrl = `file://${outPath}`;
+      process.stderr.write(`\n  ${green('OK')}  ${osc8(fileUrl, bold('Open cartography-map.html'))}\n`);
+      process.stderr.write(`     ${dim(fileUrl)}\n\n`);
+
+      try {
+        const cmd = process.platform === 'darwin'
+          ? `open "${outPath}"`
+          : process.platform === 'win32'
+            ? `start "" "${outPath}"`
+            : `xdg-open "${outPath}"`;
+        execSync(cmd, { stdio: 'ignore' });
+      } catch { /* user can open manually */ }
     });
 
   program
@@ -651,6 +701,7 @@ ${infraSummary.substring(0, 12000)}`;
       out(dim('        topology.mermaid      Infrastructure topology (graph TB)\n'));
       out(dim('        dependencies.mermaid  Service dependencies (graph LR)\n'));
       out(dim('        topology.html         Interactive D3.js force graph\n'));
+      out(dim('        cartography-map.html  Hex grid data cartography map\n'));
       out(dim('        sops/                 Generated SOPs as Markdown\n'));
       out(dim('        workflows/            Workflow flowcharts as Mermaid\n'));
       out('\n');

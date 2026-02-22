@@ -45,6 +45,9 @@ export async function createCartographyTools(
       confidence: z.number().min(0).max(1),
       metadata: z.record(z.unknown()).optional(),
       tags: z.array(z.string()).optional(),
+      domain: z.string().optional().describe('Business domain, e.g. "Marketing", "Finance"'),
+      subDomain: z.string().optional().describe('Sub-domain, e.g. "Forecast client orders"'),
+      qualityScore: z.number().min(0).max(100).optional().describe('Data quality score 0–100'),
     }, async (args) => {
       const node = {
         id: stripSensitive(args['id'] as string),
@@ -54,6 +57,9 @@ export async function createCartographyTools(
         confidence: args['confidence'] as number,
         metadata: (args['metadata'] as Record<string, unknown>) ?? {},
         tags: (args['tags'] as string[]) ?? [],
+        domain: args['domain'] as string | undefined,
+        subDomain: args['subDomain'] as string | undefined,
+        qualityScore: args['qualityScore'] as number | undefined,
       };
       db.upsertNode(sessionId, node);
       return { content: [{ type: 'text', text: `✓ Node: ${node.id}` }] };

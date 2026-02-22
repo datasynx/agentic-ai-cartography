@@ -140,4 +140,65 @@ describe('CartographyDB', () => {
     const latestDiscover = db.getLatestSession('discover');
     expect(latestDiscover?.mode).toBe('discover');
   });
+
+  it('stores and retrieves domain/subDomain/qualityScore on nodes', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+
+    db.upsertNode(sessionId, {
+      id: 'saas_tool:hubspot',
+      type: 'saas_tool',
+      name: 'HubSpot',
+      discoveredVia: 'manual',
+      confidence: 1,
+      metadata: {},
+      tags: [],
+      domain: 'Marketing',
+      subDomain: 'Client Lifetime Value',
+      qualityScore: 82,
+    });
+
+    const nodes = db.getNodes(sessionId);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.domain).toBe('Marketing');
+    expect(nodes[0]?.subDomain).toBe('Client Lifetime Value');
+    expect(nodes[0]?.qualityScore).toBe(82);
+  });
+
+  it('creates and retrieves connections', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+
+    const id = db.upsertConnection(sessionId, {
+      sourceAssetId: 'node-a',
+      targetAssetId: 'node-b',
+      type: 'lineage',
+    });
+    expect(id).toBeTruthy();
+
+    const conns = db.getConnections(sessionId);
+    expect(conns).toHaveLength(1);
+    expect(conns[0]?.sourceAssetId).toBe('node-a');
+    expect(conns[0]?.targetAssetId).toBe('node-b');
+    expect(conns[0]?.type).toBe('lineage');
+  });
+
+  it('deduplicates connections', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+
+    const id1 = db.upsertConnection(sessionId, { sourceAssetId: 'a', targetAssetId: 'b' });
+    const id2 = db.upsertConnection(sessionId, { sourceAssetId: 'a', targetAssetId: 'b' });
+    expect(id1).toBe(id2);
+    expect(db.getConnections(sessionId)).toHaveLength(1);
+  });
+
+  it('deletes a connection', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+
+    const id = db.upsertConnection(sessionId, { sourceAssetId: 'x', targetAssetId: 'y' });
+    db.deleteConnection(sessionId, id);
+    expect(db.getConnections(sessionId)).toHaveLength(0);
+  });
 });

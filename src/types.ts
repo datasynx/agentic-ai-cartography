@@ -27,6 +27,9 @@ export const NodeSchema = z.object({
   confidence: z.number().min(0).max(1).default(0.5),
   metadata: z.record(z.unknown()).default({}),
   tags: z.array(z.string()).default([]),
+  domain: z.string().optional().describe('Business domain, e.g. "Marketing", "Finance"'),
+  subDomain: z.string().optional().describe('Sub-domain, e.g. "Forecast client orders"'),
+  qualityScore: z.number().min(0).max(100).optional().describe('Data quality score 0–100'),
 });
 export type DiscoveryNode = z.infer<typeof NodeSchema>;
 
@@ -58,6 +61,69 @@ export const SOPSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 export type SOP = z.infer<typeof SOPSchema>;
+
+// ── Cartography Map Types ────────────────
+
+export const DataAssetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  domain: z.string(),
+  subDomain: z.string().optional(),
+  qualityScore: z.number().min(0).max(100).optional(),
+  metadata: z.record(z.unknown()).default({}),
+  position: z.object({ q: z.number(), r: z.number() }),
+});
+export type DataAsset = z.infer<typeof DataAssetSchema>;
+
+export const ClusterSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  domain: z.string(),
+  color: z.string(),
+  assetIds: z.array(z.string()),
+  centroid: z.object({ x: z.number(), y: z.number() }),
+});
+export type Cluster = z.infer<typeof ClusterSchema>;
+
+export const ConnectionSchema = z.object({
+  id: z.string(),
+  sourceAssetId: z.string(),
+  targetAssetId: z.string(),
+  type: z.string().optional(),
+});
+export type Connection = z.infer<typeof ConnectionSchema>;
+
+export interface CartographyMapData {
+  assets: DataAsset[];
+  clusters: Cluster[];
+  connections: Connection[];
+  meta: { exportedAt: string; theme: 'light' | 'dark' };
+}
+
+/** Navy → medium blue → periwinkle → teal/cyan palette */
+export const DOMAIN_COLORS: Record<string, string> = {
+  'Quality Control': '#1a2744',
+  'Supply Chain': '#1e3a6e',
+  'Marketing': '#6a7fb5',
+  'Finance': '#3a8a8a',
+  'HR': '#2a5a9a',
+  'Logistics': '#0e7490',
+  'Sales': '#1d4ed8',
+  'Engineering': '#4338ca',
+  'Operations': '#0891b2',
+  'Data Layer': '#1e3352',
+  'Web / API': '#1a3a1a',
+  'Messaging': '#2a1a3a',
+  'Infrastructure': '#0f2a40',
+  'Other': '#374151',
+};
+
+/** Ordered palette for dynamic domain assignment */
+export const DOMAIN_PALETTE = [
+  '#1a2e5a', '#1e3a8a', '#1d4ed8', '#2563eb', '#3b82f6',
+  '#6366f1', '#818cf8', '#7c9fc3', '#0e7490', '#0891b2',
+  '#06b6d4', '#22d3ee', '#0d9488', '#14b8a6', '#2dd4bf', '#5eead4',
+] as const;
 
 // ── DB Row Types ─────────────────────────
 
