@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   hexToPixel, pixelToHex, hexRound, hexCorners,
-  hexNeighbors, hexDistance, hexRing, hexDisk, hexSpiral,
-  hexBoundingBox, pointInHex,
+  hexNeighbors, hexDistance, hexRing, hexSpiral,
 } from '../src/hex.js';
 
 describe('hexToPixel / pixelToHex roundtrip', () => {
@@ -16,16 +15,14 @@ describe('hexToPixel / pixelToHex roundtrip', () => {
     for (const [q, r] of [[1, 0], [0, 1], [2, -1], [-3, 2]]) {
       const { x, y } = hexToPixel(q, r, 20);
       const back = pixelToHex(x, y, 20);
-      // Use + 0 to coerce -0 → 0 for comparison
-      expect(back.q + 0).toBe(q);
-      expect(back.r + 0).toBe(r);
+      expect(back.q).toBe(q);
+      expect(back.r).toBe(r);
     }
   });
 });
 
 describe('hexRound', () => {
   it('rounds to nearest hex', () => {
-    // q=0, r=0, s=0 is origin; nearest to (0.1, 0.1) is still origin
     expect(hexRound(0.1, 0.1)).toEqual({ q: 0, r: 0 });
     expect(hexRound(0.9, 0.1)).toEqual({ q: 1, r: 0 });
   });
@@ -100,20 +97,6 @@ describe('hexRing', () => {
   });
 });
 
-describe('hexDisk', () => {
-  it('disk of radius 0 has 1 hex', () => {
-    expect(hexDisk({ q: 0, r: 0 }, 0)).toHaveLength(1);
-  });
-
-  it('disk of radius 1 has 7 hexes', () => {
-    expect(hexDisk({ q: 0, r: 0 }, 1)).toHaveLength(7);
-  });
-
-  it('disk of radius 2 has 19 hexes', () => {
-    expect(hexDisk({ q: 0, r: 0 }, 2)).toHaveLength(19);
-  });
-});
-
 describe('hexSpiral', () => {
   it('returns exactly count positions', () => {
     expect(hexSpiral({ q: 0, r: 0 }, 1)).toHaveLength(1);
@@ -125,28 +108,10 @@ describe('hexSpiral', () => {
     const result = hexSpiral({ q: 2, r: -1 }, 5);
     expect(result[0]).toEqual({ q: 2, r: -1 });
   });
-});
 
-describe('hexBoundingBox', () => {
-  it('empty coords returns zeros', () => {
-    const bb = hexBoundingBox([], 20);
-    expect(bb.width).toBe(0);
-    expect(bb.height).toBe(0);
-  });
-
-  it('single hex has positive dimensions', () => {
-    const bb = hexBoundingBox([{ q: 0, r: 0 }], 20);
-    expect(bb.width).toBeGreaterThan(0);
-    expect(bb.height).toBeGreaterThan(0);
-  });
-});
-
-describe('pointInHex', () => {
-  it('center point is inside', () => {
-    expect(pointInHex(0, 0, 0, 0, 20)).toBe(true);
-  });
-
-  it('far point is outside', () => {
-    expect(pointInHex(100, 100, 0, 0, 20)).toBe(false);
+  it('no duplicates', () => {
+    const result = hexSpiral({ q: 0, r: 0 }, 19);
+    const keys = result.map(p => `${p.q},${p.r}`);
+    expect(new Set(keys).size).toBe(19);
   });
 });

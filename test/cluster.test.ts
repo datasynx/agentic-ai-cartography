@@ -1,41 +1,49 @@
 import { describe, it, expect } from 'vitest';
-import { domainColor, shadeVariant, buildClusterLayout } from '../src/cluster.js';
-import type { NodeRow } from '../src/types.js';
+import {
+  assignColor, assignColors, shadeVariant,
+  groupByDomain, layoutClusters, computeCentroid, computeClusterBounds,
+} from '../src/cluster.js';
+import type { DataAsset } from '../src/types.js';
 
-function makeNode(id: string, domain?: string, subDomain?: string, qualityScore?: number): NodeRow {
+function makeAsset(id: string, domain: string, subDomain?: string, qualityScore?: number): DataAsset {
   return {
     id,
-    sessionId: 'test',
-    type: 'saas_tool',
     name: id,
-    discoveredVia: 'test',
-    discoveredAt: new Date().toISOString(),
-    depth: 0,
-    confidence: 1,
-    metadata: {},
-    tags: [],
     domain,
     subDomain,
     qualityScore,
+    metadata: {},
+    position: { q: 0, r: 0 },
   };
 }
 
-describe('domainColor', () => {
+describe('assignColor', () => {
   it('returns a valid hex color string', () => {
-    const color = domainColor('Marketing', ['Marketing', 'Finance']);
+    const color = assignColor('Marketing', ['Marketing', 'Finance']);
     expect(color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
   it('assigns different colors to different domains', () => {
     const domains = ['Marketing', 'Finance', 'HR', 'Logistics'];
-    const colors = domains.map(d => domainColor(d, domains));
+    const colors = domains.map(d => assignColor(d, domains));
     const unique = new Set(colors);
     expect(unique.size).toBe(domains.length);
   });
 
-  it('is deterministic', () => {
-    const domains = ['Sales', 'Finance'];
-    expect(domainColor('Sales', domains)).toBe(domainColor('Sales', domains));
+  it('uses predefined DOMAIN_COLORS if available', () => {
+    const color = assignColor('Marketing', ['Marketing']);
+    expect(color).toBe('#6a7fb5');
+  });
+});
+
+describe('assignColors', () => {
+  it('returns a color for every domain', () => {
+    const domains = ['A', 'B', 'C'];
+    const result = assignColors(domains);
+    expect(Object.keys(result)).toHaveLength(3);
+    for (const d of domains) {
+      expect(result[d]).toMatch(/^#[0-9a-f]{6}$/i);
+    }
   });
 });
 
@@ -58,80 +66,98 @@ describe('shadeVariant', () => {
   });
 });
 
-describe('buildClusterLayout', () => {
-  it('returns empty layout for no nodes', () => {
-    const layout = buildClusterLayout([]);
-    expect(layout.clusters).toHaveLength(0);
+describe('groupByDomain', () => {
+  it('groups assets by domain', () => {
+    const assets = [makeAsset('a1', 'Marketing'), makeAsset('a2', 'Marketing'), makeAsset('b1', 'Finance')];
+    const groups = groupByDomain(assets);
+    expect(groups.get('Marketing')?.length).toBe(2);
+    expect(groups.get('Finance')?.length).toBe(1);
   });
 
-  it('groups nodes by domain', () => {
-    const nodes = [
-      makeNode('a1', 'Marketing'),
-      makeNode('a2', 'Marketing'),
-      makeNode('b1', 'Finance'),
+  it('empty domain defaults to Other', () => {
+    const assets = [makeAsset('x1', '')];
+    const groups = groupByDomain(assets);
+    expect(groups.has('Other')).toBe(true);
+  });
+});
+
+describe('layoutClusters', () => {
+  it('returns empty layout for no assets', () => {
+    const { clusters, assets } = layoutClusters(new Map(), 24);
+    expect(clusters).toHaveLength(0);
+    expect(assets).toHaveLength(0);
+  });
+
+  it('groups into clusters with positions', () => {
+    const assets = [
+      makeAsset('a1', 'Marketing'),
+      makeAsset('a2', 'Marketing'),
+      makeAsset('b1', 'Finance'),
     ];
-    const layout = buildClusterLayout(nodes);
-    expect(layout.clusters).toHaveLength(2);
-    const marketing = layout.clusters.find(c => c.domain === 'Marketing');
-    expect(marketing?.assets).toHaveLength(2);
-    const finance = layout.clusters.find(c => c.domain === 'Finance');
-    expect(finance?.assets).toHaveLength(1);
-  });
+    const groups = groupByDomain(assets);
+    const { clusters, assets: positioned } = layoutClusters(groups, 24);
 
-  it('nodes without domain go into "Other" cluster', () => {
-    const nodes = [makeNode('x1'), makeNode('x2')];
-    const layout = buildClusterLayout(nodes);
-    const other = layout.clusters.find(c => c.domain === 'Other');
-    expect(other).toBeDefined();
-    expect(other?.assets).toHaveLength(2);
-  });
+    expect(clusters).toHaveLength(2);
+    expect(positioned).toHaveLength(3);
 
-  it('each asset has a position', () => {
-    const nodes = Array.from({ length: 10 }, (_, i) => makeNode(`n${i}`, 'HR'));
-    const layout = buildClusterLayout(nodes);
-    for (const cluster of layout.clusters) {
-      for (const asset of cluster.assets) {
-        expect(typeof asset.position.q).toBe('number');
-        expect(typeof asset.position.r).toBe('number');
-      }
+    // Each asset should have a position
+    for (const a of positioned) {
+      expect(typeof a.position.q).toBe('number');
+      expect(typeof a.position.r).toBe('number');
     }
   });
 
   it('clusters have valid centroids', () => {
-    const nodes = [makeNode('m1', 'Marketing'), makeNode('m2', 'Marketing')];
-    const layout = buildClusterLayout(nodes);
-    const c = layout.clusters[0];
+    const assets = [makeAsset('m1', 'Marketing'), makeAsset('m2', 'Marketing')];
+    const groups = groupByDomain(assets);
+    const { clusters } = layoutClusters(groups, 24);
+    const c = clusters[0];
     expect(typeof c.centroid.x).toBe('number');
     expect(typeof c.centroid.y).toBe('number');
     expect(isFinite(c.centroid.x)).toBe(true);
   });
 
   it('clusters have colors', () => {
-    const nodes = [makeNode('f1', 'Finance')];
-    const layout = buildClusterLayout(nodes);
-    expect(layout.clusters[0].color).toMatch(/^#[0-9a-f]{6}$/i);
+    const assets = [makeAsset('f1', 'Finance')];
+    const groups = groupByDomain(assets);
+    const { clusters } = layoutClusters(groups, 24);
+    expect(clusters[0].color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
-  it('sub-clusters are grouped by subDomain', () => {
-    const nodes = [
-      makeNode('a', 'Supply Chain', 'Forecast client orders'),
-      makeNode('b', 'Supply Chain', 'Forecast client orders'),
-      makeNode('c', 'Supply Chain', 'Production Planning'),
-    ];
-    const layout = buildClusterLayout(nodes);
-    const clusterId = layout.clusters[0].id;
-    const subs = layout.subClusters.get(clusterId);
-    expect(subs).toHaveLength(2);
-    const forecast = subs?.find(s => s.subDomain === 'Forecast client orders');
-    expect(forecast?.assetIds).toHaveLength(2);
-  });
-
-  it('large dataset positions all assets', () => {
-    const nodes = Array.from({ length: 100 }, (_, i) =>
-      makeNode(`n${i}`, ['Marketing', 'Finance', 'HR', 'Logistics'][i % 4])
+  it('positions all assets in large dataset', () => {
+    const assets = Array.from({ length: 50 }, (_, i) =>
+      makeAsset(`n${i}`, ['Marketing', 'Finance', 'HR', 'Logistics'][i % 4])
     );
-    const layout = buildClusterLayout(nodes);
-    const totalAssets = layout.clusters.reduce((s, c) => s + c.assets.length, 0);
-    expect(totalAssets).toBe(100);
+    const groups = groupByDomain(assets);
+    const { assets: positioned } = layoutClusters(groups, 24);
+    expect(positioned).toHaveLength(50);
+  });
+});
+
+describe('computeCentroid', () => {
+  it('returns origin for empty', () => {
+    expect(computeCentroid([], 24)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('returns the pixel center', () => {
+    const centroid = computeCentroid([{ q: 0, r: 0 }], 24);
+    expect(centroid.x).toBeCloseTo(0);
+    expect(centroid.y).toBeCloseTo(0);
+  });
+});
+
+describe('computeClusterBounds', () => {
+  it('returns zeros for empty', () => {
+    expect(computeClusterBounds([], 24)).toEqual({ minX: 0, minY: 0, maxX: 0, maxY: 0 });
+  });
+
+  it('returns bounding box for assets', () => {
+    const assets = [
+      makeAsset('a', 'X'), makeAsset('b', 'X'),
+    ];
+    assets[0].position = { q: 0, r: 0 };
+    assets[1].position = { q: 2, r: 0 };
+    const bounds = computeClusterBounds(assets, 24);
+    expect(bounds.maxX).toBeGreaterThan(bounds.minX);
   });
 });

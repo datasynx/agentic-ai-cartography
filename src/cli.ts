@@ -4,8 +4,8 @@ import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
 import { runDiscovery } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
-import { exportAll, exportHexMap } from './exporter.js';
-import { readFileSync, existsSync, writeFileSync } from 'fs';
+import { exportAll, exportCartographyMap } from './exporter.js';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
 import { execSync } from 'child_process';
@@ -269,14 +269,12 @@ function main(): void {
       // ── Diagram links ───────────────────────────────────────────────────────
       const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
       const htmlPath = resolve(config.outputDir, 'topology.html');
-      const hexmapPath = resolve(config.outputDir, 'hexmap.html');
+      const mapPath = resolve(config.outputDir, 'cartography-map.html');
       const topoPath = resolve(config.outputDir, 'topology.mermaid');
 
       w('\n');
-      if (existsSync(hexmapPath)) {
-        const fileUrl = `file://${hexmapPath}`;
-        w(`  ${green('→')}  ${osc8(fileUrl, bold('Open hexmap.html'))}  ${dim('← Data Cartography Map')}\n`);
-        w(`     ${dim(fileUrl)}\n`);
+      if (existsSync(mapPath)) {
+        w(`  ${green('→')}  ${osc8(`file://${mapPath}`, bold('Open cartography-map.html'))}  ${dim('← Hex Map')}\n`);
       }
       if (existsSync(htmlPath)) {
         w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('Open topology.html'))}\n`);
@@ -351,7 +349,7 @@ function main(): void {
     .command('export [session-id]')
     .description('Generate all output files')
     .option('-o, --output <dir>', 'Output directory', './datasynx-output')
-    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,hexmap,sops')
+    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,map,sops')
     .action((sessionId: string | undefined, opts) => {
       const config = defaultConfig({ outputDir: opts.output });
       const db = new CartographyDB(config.dbPath);
@@ -367,7 +365,7 @@ function main(): void {
         return;
       }
 
-      const formats = opts.format ?? ['mermaid', 'json', 'yaml', 'html', 'hexmap', 'sops'];
+      const formats = opts.format ?? ['mermaid', 'json', 'yaml', 'html', 'map', 'sops'];
       exportAll(db, session.id, opts.output, formats);
       process.stderr.write(`✓ Exported to: ${opts.output}\n`);
 
@@ -379,6 +377,7 @@ function main(): void {
     .command('map [session-id]')
     .description('Open the interactive Data Cartography hex map in your browser')
     .option('-o, --output <dir>', 'Output directory', './datasynx-output')
+    .option('--theme <theme>', 'Theme: light or dark', 'light')
     .action((sessionId: string | undefined, opts) => {
       const config = defaultConfig({ outputDir: opts.output });
       const db = new CartographyDB(config.dbPath);
@@ -388,24 +387,24 @@ function main(): void {
         : db.getLatestSession();
 
       if (!session) {
-        process.stderr.write('❌ No session found. Run discover first.\n');
+        process.stderr.write('No session found. Run discover first.\n');
         db.close();
         process.exitCode = 1;
         return;
       }
 
       const nodes = db.getNodes(session.id);
-      const connections = db.getConnections(session.id);
+      const edges = db.getEdges(session.id);
       const outDir = resolve(opts.output);
-      const outPath = resolve(outDir, 'hexmap.html');
+      mkdirSync(outDir, { recursive: true });
+      const outPath = resolve(outDir, 'cartography-map.html');
 
-      import('node:fs').then(({ mkdirSync }) => mkdirSync(outDir, { recursive: true })).catch(() => {});
-      writeFileSync(outPath, exportHexMap(nodes, connections));
+      writeFileSync(outPath, exportCartographyMap(nodes, edges, { theme: opts.theme }));
       db.close();
 
       const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
       const fileUrl = `file://${outPath}`;
-      process.stderr.write(`\n  ${green('→')}  ${osc8(fileUrl, bold('Open hexmap.html'))}\n`);
+      process.stderr.write(`\n  ${green('OK')}  ${osc8(fileUrl, bold('Open cartography-map.html'))}\n`);
       process.stderr.write(`     ${dim(fileUrl)}\n\n`);
 
       try {
@@ -415,7 +414,7 @@ function main(): void {
             ? `start "" "${outPath}"`
             : `xdg-open "${outPath}"`;
         execSync(cmd, { stdio: 'ignore' });
-      } catch { /* ignore — user can open manually */ }
+      } catch { /* user can open manually */ }
     });
 
   program
@@ -702,6 +701,7 @@ ${infraSummary.substring(0, 12000)}`;
       out(dim('        topology.mermaid      Infrastructure topology (graph TB)\n'));
       out(dim('        dependencies.mermaid  Service dependencies (graph LR)\n'));
       out(dim('        topology.html         Interactive D3.js force graph\n'));
+      out(dim('        cartography-map.html  Hex grid data cartography map\n'));
       out(dim('        sops/                 Generated SOPs as Markdown\n'));
       out(dim('        workflows/            Workflow flowcharts as Mermaid\n'));
       out('\n');
@@ -840,9 +840,6 @@ ${infraSummary.substring(0, 12000)}`;
           const port = entry['port'] as number | undefined;
           const tags = (entry['tags'] as string[] | undefined) ?? [];
           const metadata = (entry['metadata'] as Record<string, unknown> | undefined) ?? {};
-          const domain = entry['domain'] as string | undefined;
-          const subDomain = entry['subDomain'] as string | undefined;
-          const qualityScore = entry['qualityScore'] as number | undefined;
 
           if (!type || !name) {
             w(yellow(`  ⚠  Skipped (no type/name): ${JSON.stringify(entry)}\n`));
@@ -861,9 +858,6 @@ ${infraSummary.substring(0, 12000)}`;
             confidence: 1.0,
             metadata: { ...metadata, ...(host ? { host } : {}), ...(port ? { port } : {}) },
             tags,
-            domain,
-            subDomain,
-            qualityScore,
           });
           out(`  ${green('+')}  ${cyan(id)}  ${dim('(' + type + ')')}\n`);
           saved++;
@@ -923,16 +917,10 @@ ${infraSummary.substring(0, 12000)}`;
         const hostRaw = (await ask(`  ${cyan('Host / IP')} ${dim('[optional, Enter=skip]')}: `)).trim();
         const portRaw = (await ask(`  ${cyan('Port')} ${dim('[optional]')}: `)).trim();
         const tagsRaw = (await ask(`  ${cyan('Tags')} ${dim('[comma-separated, optional]')}: `)).trim();
-        const domainRaw = (await ask(`  ${cyan('Domain')} ${dim('[e.g. "Marketing", "Finance", optional]')}: `)).trim();
-        const subDomainRaw = (await ask(`  ${cyan('Sub-domain')} ${dim('[e.g. "Forecast client orders", optional]')}: `)).trim();
-        const qualityRaw = (await ask(`  ${cyan('Quality score')} ${dim('[0–100, optional]')}: `)).trim();
 
         const host = hostRaw || undefined;
         const port = portRaw ? parseInt(portRaw, 10) : undefined;
         const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
-        const domain = domainRaw || undefined;
-        const subDomain = subDomainRaw || undefined;
-        const qualityScore = qualityRaw ? Math.max(0, Math.min(100, parseFloat(qualityRaw))) : undefined;
 
         const id = host
           ? `${nodeType}:${host}${port ? ':' + port : ''}`
@@ -946,9 +934,6 @@ ${infraSummary.substring(0, 12000)}`;
           confidence: 1.0,
           metadata: { ...(host ? { host } : {}), ...(port ? { port } : {}) },
           tags,
-          domain,
-          subDomain,
-          qualityScore,
         });
         out(`  ${green('+')}  ${cyan(id)}\n`);
         saved++;

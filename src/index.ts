@@ -8,18 +8,22 @@ export {
   exportJSON,
   exportBackstageYAML,
   exportHTML,
-  exportHexMap,
+  exportCartographyMap,
   exportSOPMarkdown,
   exportSOPDashboard,
   generateTopologyMermaid,
   generateDependencyMermaid,
   generateWorkflowMermaid,
 } from './exporter.js';
-export { buildClusterLayout, domainColor, shadeVariant } from './cluster.js';
 export {
   hexToPixel, pixelToHex, hexCorners, hexNeighbors,
-  hexDistance, hexRing, hexDisk, hexSpiral, hexBoundingBox, pointInHex,
+  hexDistance, hexRing, hexSpiral,
 } from './hex.js';
+export {
+  groupByDomain, layoutClusters, assignColors,
+  computeCentroid, computeClusterBounds, shadeVariant,
+} from './cluster.js';
+export { nodesToAssets, edgesToConnections, buildMapData } from './mapper.js';
 export { defaultConfig } from './types.js';
 export { checkPrerequisites } from './preflight.js';
 export { CartographyDB as default } from './db.js';

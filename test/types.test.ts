@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NodeSchema, EdgeSchema, defaultConfig } from '../src/types.js';
+import { NodeSchema, EdgeSchema, DataAssetSchema, defaultConfig } from '../src/types.js';
 
 describe('NodeSchema', () => {
   it('validates a valid node', () => {
@@ -45,6 +45,67 @@ describe('NodeSchema', () => {
       confidence: 1.5,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('NodeSchema hex fields', () => {
+  it('accepts domain, subDomain, qualityScore', () => {
+    const result = NodeSchema.safeParse({
+      id: 'saas_tool:hubspot',
+      type: 'saas_tool',
+      name: 'HubSpot',
+      discoveredVia: 'manual',
+      confidence: 1,
+      domain: 'Marketing',
+      subDomain: 'Client Lifetime Value',
+      qualityScore: 85,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.domain).toBe('Marketing');
+      expect(result.data.subDomain).toBe('Client Lifetime Value');
+      expect(result.data.qualityScore).toBe(85);
+    }
+  });
+
+  it('rejects qualityScore > 100', () => {
+    const result = NodeSchema.safeParse({
+      id: 'saas_tool:x',
+      type: 'saas_tool',
+      name: 'X',
+      discoveredVia: 'manual',
+      confidence: 1,
+      qualityScore: 150,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('allows missing domain/subDomain/qualityScore', () => {
+    const result = NodeSchema.safeParse({
+      id: 'host:server1',
+      type: 'host',
+      name: 'server1',
+      discoveredVia: 'ping',
+      confidence: 0.8,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.domain).toBeUndefined();
+      expect(result.data.qualityScore).toBeUndefined();
+    }
+  });
+});
+
+describe('DataAssetSchema', () => {
+  it('validates a data asset', () => {
+    const result = DataAssetSchema.safeParse({
+      id: 'asset-1',
+      name: 'Test Asset',
+      domain: 'Marketing',
+      qualityScore: 75,
+      position: { q: 0, r: 0 },
+    });
+    expect(result.success).toBe(true);
   });
 });
 

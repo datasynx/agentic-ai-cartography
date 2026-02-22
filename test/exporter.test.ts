@@ -5,6 +5,7 @@ import {
   generateWorkflowMermaid,
   exportSOPMarkdown,
   exportBackstageYAML,
+  exportCartographyMap,
 } from '../src/exporter.js';
 import type { NodeRow, EdgeRow, SOP } from '../src/types.js';
 
@@ -134,5 +135,52 @@ describe('exportBackstageYAML', () => {
   it('includes org as owner when provided', () => {
     const result = exportBackstageYAML(mockNodes, mockEdges, 'my-org');
     expect(result).toContain('owner: my-org');
+  });
+});
+
+describe('exportCartographyMap', () => {
+  it('generates valid HTML with canvas', () => {
+    const result = exportCartographyMap(mockNodes, mockEdges);
+    expect(result).toContain('<!DOCTYPE html>');
+    expect(result).toContain('<canvas');
+    expect(result).toContain('Data Cartography Map');
+  });
+
+  it('embeds asset data as JSON', () => {
+    const result = exportCartographyMap(mockNodes, mockEdges);
+    expect(result).toContain('"assets"');
+    expect(result).toContain('"clusters"');
+    expect(result).toContain('"connections"');
+  });
+
+  it('contains UI controls', () => {
+    const result = exportCartographyMap(mockNodes, mockEdges);
+    expect(result).toContain('search-input');
+    expect(result).toContain('zoom-in');
+    expect(result).toContain('zoom-out');
+    expect(result).toContain('detail-panel');
+    expect(result).toContain('connect-btn');
+  });
+
+  it('handles empty input', () => {
+    const result = exportCartographyMap([], []);
+    expect(result).toContain('No data assets available');
+  });
+
+  it('supports dark theme', () => {
+    const result = exportCartographyMap(mockNodes, mockEdges, { theme: 'dark' });
+    expect(result).toContain('class="dark"');
+  });
+
+  it('supports light theme', () => {
+    const result = exportCartographyMap(mockNodes, mockEdges, { theme: 'light' });
+    expect(result).toContain('class="light"');
+  });
+
+  it('includes accessibility attributes', () => {
+    const result = exportCartographyMap(mockNodes, mockEdges);
+    expect(result).toContain('aria-label');
+    expect(result).toContain('role="tooltip"');
+    expect(result).toContain('sr-only');
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Hex Grid Engine — pointy-top axial coordinate system.
+ * Hex Grid Engine — flat-top axial coordinate system.
  * Reference: https://www.redblobgames.com/grids/hexagons/
  */
 
@@ -15,35 +15,23 @@ export interface PixelCoord {
   y: number;
 }
 
-export interface BoundingBox {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-  width: number;
-  height: number;
-}
-
 // ── Geometry ─────────────────────────────────────────────────────────────────
 
 /**
- * Convert axial hex coordinates to pixel coordinates (pointy-top).
- * @param q  - column axis
- * @param r  - row axis
- * @param size - hex circumradius (center to corner)
+ * Convert axial hex coordinates to pixel coordinates (flat-top).
  */
 export function hexToPixel(q: number, r: number, size: number): PixelCoord {
-  const x = size * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r);
-  const y = size * (3 / 2 * r);
+  const x = size * (3 / 2 * q);
+  const y = size * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r);
   return { x, y };
 }
 
 /**
- * Convert pixel coordinates to nearest axial hex (pointy-top).
+ * Convert pixel coordinates to nearest axial hex (flat-top).
  */
 export function pixelToHex(x: number, y: number, size: number): AxialCoord {
-  const q = (Math.sqrt(3) / 3 * x - 1 / 3 * y) / size;
-  const r = (2 / 3 * y) / size;
+  const q = (2 / 3 * x) / size;
+  const r = (-1 / 3 * x + Math.sqrt(3) / 3 * y) / size;
   return hexRound(q, r);
 }
 
@@ -63,16 +51,17 @@ export function hexRound(q: number, r: number): AxialCoord {
   } else if (dr > ds) {
     rr = -rq - rs;
   }
-  return { q: rq, r: rr };
+  // Normalize -0 to 0
+  return { q: rq || 0, r: rr || 0 };
 }
 
 /**
- * Return the 6 pixel corners of a pointy-top hexagon.
+ * Return the 6 pixel corners of a flat-top hexagon.
  */
 export function hexCorners(cx: number, cy: number, size: number): PixelCoord[] {
   const corners: PixelCoord[] = [];
   for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 180) * (60 * i - 30); // pointy-top: start at -30°
+    const angle = (Math.PI / 180) * (60 * i); // flat-top: start at 0°
     corners.push({
       x: cx + size * Math.cos(angle),
       y: cy + size * Math.sin(angle),
@@ -97,10 +86,10 @@ export function hexDistance(a: AxialCoord, b: AxialCoord): number {
 }
 
 /**
- * Generate all hex coordinates within a given ring radius around the origin.
+ * Generate all hex coordinates on a given ring around center.
  */
 export function hexRing(center: AxialCoord, radius: number): AxialCoord[] {
-  if (radius === 0) return [{ ...center }];
+  if (radius === 0) return [{ q: center.q, r: center.r }];
   const results: AxialCoord[] = [];
   let hex = {
     q: center.q + HEX_DIRECTIONS[4].q * radius,
@@ -119,63 +108,19 @@ export function hexRing(center: AxialCoord, radius: number): AxialCoord[] {
 }
 
 /**
- * Generate all hexes within `radius` rings (filled disk).
- */
-export function hexDisk(center: AxialCoord, radius: number): AxialCoord[] {
-  const results: AxialCoord[] = [];
-  for (let r = 0; r <= radius; r++) {
-    results.push(...hexRing(center, r));
-  }
-  return results;
-}
-
-/**
  * Generate a spiral sequence of hex positions (ring 0, ring 1, ring 2, …).
- * Useful for packing N assets into an organic cluster shape.
+ * Returns exactly `count` positions.
  */
 export function hexSpiral(center: AxialCoord, count: number): AxialCoord[] {
   const positions: AxialCoord[] = [];
   let ring = 0;
   while (positions.length < count) {
-    const ring_positions = hexRing(center, ring);
-    for (const pos of ring_positions) {
+    const ringPositions = hexRing(center, ring);
+    for (const pos of ringPositions) {
       if (positions.length >= count) break;
       positions.push(pos);
     }
     ring++;
   }
   return positions;
-}
-
-// ── Bounding Box ─────────────────────────────────────────────────────────────
-
-/**
- * Compute the pixel bounding box for a set of hex positions.
- */
-export function hexBoundingBox(coords: AxialCoord[], size: number): BoundingBox {
-  if (coords.length === 0) {
-    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
-  }
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const { q, r } of coords) {
-    const { x, y } = hexToPixel(q, r, size);
-    const halfW = Math.sqrt(3) / 2 * size;
-    const halfH = size;
-    if (x - halfW < minX) minX = x - halfW;
-    if (y - halfH < minY) minY = y - halfH;
-    if (x + halfW > maxX) maxX = x + halfW;
-    if (y + halfH > maxY) maxY = y + halfH;
-  }
-  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
-}
-
-/**
- * Check if a pixel point is inside a hex (pointy-top) at the given center.
- */
-export function pointInHex(px: number, py: number, cx: number, cy: number, size: number): boolean {
-  const dx = Math.abs(px - cx);
-  const dy = Math.abs(py - cy);
-  const w = Math.sqrt(3) / 2 * size;
-  if (dx > w || dy > size) return false;
-  return w * size - size * dx - (w / 2) * dy >= 0;
 }
