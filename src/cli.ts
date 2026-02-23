@@ -270,9 +270,13 @@ function main(): void {
       const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
       const htmlPath = resolve(config.outputDir, 'topology.html');
       const mapPath = resolve(config.outputDir, 'cartography-map.html');
+      const discoveryPath = resolve(config.outputDir, 'discovery.html');
       const topoPath = resolve(config.outputDir, 'topology.mermaid');
 
       w('\n');
+      if (existsSync(discoveryPath)) {
+        w(`  ${green('→')}  ${osc8(`file://${discoveryPath}`, bold('Open discovery.html'))}  ${dim('← Enterprise Discovery Frontend')}\n`);
+      }
       if (existsSync(mapPath)) {
         w(`  ${green('→')}  ${osc8(`file://${mapPath}`, bold('Open cartography-map.html'))}  ${dim('← Hex Map')}\n`);
       }
@@ -700,6 +704,7 @@ ${infraSummary.substring(0, 12000)}`;
       out(dim('        catalog-info.yaml     Backstage service catalog\n'));
       out(dim('        topology.mermaid      Infrastructure topology (graph TB)\n'));
       out(dim('        dependencies.mermaid  Service dependencies (graph LR)\n'));
+      out(dim('        discovery.html         Enterprise discovery frontend (Map + Topology)\n'));
       out(dim('        topology.html         Interactive D3.js force graph\n'));
       out(dim('        cartography-map.html  Hex grid data cartography map\n'));
       out(dim('        sops/                 Generated SOPs as Markdown\n'));

@@ -1645,13 +1645,1108 @@ draw();
 </html>`;
 }
 
+// ── Discovery App (Combined Enterprise Frontend) ──────────────────────────────
+
+export function exportDiscoveryApp(
+  nodes: NodeRow[],
+  edges: EdgeRow[],
+  options?: { theme?: 'light' | 'dark' },
+): string {
+  const theme = options?.theme ?? 'dark';
+
+  // ── Topology D3 data ──────────────────────────────────────────────────────
+  const graphData = JSON.stringify({
+    nodes: nodes.map(n => ({
+      id: n.id, name: n.name, type: n.type, layer: nodeLayer(n.type),
+      confidence: n.confidence, discoveredVia: n.discoveredVia,
+      discoveredAt: n.discoveredAt, tags: n.tags, metadata: n.metadata,
+    })),
+    links: edges.map(e => ({
+      source: e.sourceId, target: e.targetId,
+      relationship: e.relationship, confidence: e.confidence, evidence: e.evidence,
+    })),
+  });
+
+  // ── Hex map data ──────────────────────────────────────────────────────────
+  const { assets, clusters, connections } = buildMapData(nodes, edges, { theme });
+  const isEmpty = assets.length === 0;
+  const HEX_SIZE = 24;
+  const mapJson = JSON.stringify({
+    assets: assets.map(a => ({
+      id: a.id, name: a.name, domain: a.domain, subDomain: a.subDomain ?? null,
+      qualityScore: a.qualityScore ?? null, metadata: a.metadata,
+      q: a.position.q, r: a.position.r,
+    })),
+    clusters: clusters.map(c => ({
+      id: c.id, label: c.label, domain: c.domain, color: c.color,
+      assetIds: c.assetIds, centroid: c.centroid,
+    })),
+    connections: connections.map(c => ({
+      id: c.id, sourceAssetId: c.sourceAssetId, targetAssetId: c.targetAssetId,
+      type: c.type ?? 'connection',
+    })),
+  });
+
+  const nodeCount = nodes.length;
+  const edgeCount = edges.length;
+  const assetCount = assets.length;
+  const clusterCount = clusters.length;
+
+  return `<!DOCTYPE html>
+<html lang="en" data-theme="${theme}">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Cartography \u2014 Datasynx Discovery</title>
+<script src="https://d3js.org/d3.v7.min.js"><\/script>
+<style>
+/* ── CSS Custom Properties ──────────────────────────────────────────────── */
+:root{
+  --bg-base:#0f172a;--bg-surface:#1e293b;--bg-elevated:#273148;
+  --border:#334155;--border-dim:#1e293b;
+  --text:#e2e8f0;--text-muted:#94a3b8;--text-dim:#475569;
+  --accent:#3b82f6;--accent-hover:#2563eb;--accent-dim:rgba(59,130,246,.12);
+}
+[data-theme="light"]{
+  --bg-base:#f8fafc;--bg-surface:#ffffff;--bg-elevated:#f1f5f9;
+  --border:#e2e8f0;--border-dim:#f1f5f9;
+  --text:#0f172a;--text-muted:#64748b;--text-dim:#94a3b8;
+  --accent:#2563eb;--accent-hover:#1d4ed8;--accent-dim:rgba(37,99,235,.08);
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif}
+body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--text)}
+
+/* ── Topbar ─────────────────────────────────────────────────────────────── */
+#topbar{
+  height:56px;display:flex;align-items:center;gap:16px;padding:0 20px;
+  background:var(--bg-surface);border-bottom:1px solid var(--border);z-index:100;flex-shrink:0;
+}
+.tb-left{display:flex;align-items:center;gap:10px}
+.brand-logo{flex-shrink:0}
+.brand-name{font-size:15px;font-weight:700;color:var(--accent);letter-spacing:-.02em}
+.brand-product{font-size:14px;font-weight:500;color:var(--text-muted);margin-left:2px}
+.brand-sep{width:1px;height:24px;background:var(--border);margin:0 6px}
+.tb-center{display:flex;align-items:center;gap:2px;margin-left:auto;
+  background:var(--bg-elevated);border-radius:8px;padding:3px}
+.tab-btn{
+  padding:6px 16px;border:none;border-radius:6px;font-size:13px;font-weight:500;
+  cursor:pointer;color:var(--text-muted);background:transparent;font-family:inherit;
+  transition:all .15s;
+}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{background:var(--accent);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.tb-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.tb-search{
+  display:flex;align-items:center;gap:6px;background:var(--bg-elevated);
+  border:1px solid var(--border);border-radius:8px;padding:5px 10px;
+}
+.tb-search input{
+  border:none;background:transparent;font-size:13px;outline:none;width:160px;
+  color:var(--text);font-family:inherit;
+}
+.tb-search input::placeholder{color:var(--text-dim)}
+.tb-search svg{flex-shrink:0;color:var(--text-dim)}
+.icon-btn{
+  width:36px;height:36px;border-radius:8px;border:1px solid var(--border);
+  background:var(--bg-surface);cursor:pointer;display:flex;align-items:center;
+  justify-content:center;color:var(--text-muted);text-decoration:none;transition:all .15s;font-size:16px;
+}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.tb-stats{font-size:11px;color:var(--text-dim);white-space:nowrap}
+
+/* ── Views ──────────────────────────────────────────────────────────────── */
+.view{flex:1;display:none;overflow:hidden;position:relative}
+.view.active{display:flex}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAP VIEW
+   ═══════════════════════════════════════════════════════════════════════════ */
+#map-wrap{flex:1;position:relative;overflow:hidden;cursor:grab}
+#map-wrap.dragging{cursor:grabbing}
+#map-wrap.connecting{cursor:crosshair}
+#map-wrap canvas{display:block;width:100%;height:100%}
+#map-detail{
+  width:280px;background:var(--bg-surface);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;transform:translateX(100%);
+  transition:transform .2s ease;z-index:5;flex-shrink:0;overflow-y:auto;
+}
+#map-detail.open{transform:translateX(0)}
+#map-detail .panel-header{
+  padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;
+}
+#map-detail .panel-header h3{font-size:14px;font-weight:600;flex:1;word-break:break-word}
+.close-btn{
+  width:24px;height:24px;border:none;background:transparent;cursor:pointer;
+  color:var(--text-muted);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:16px;
+}
+.close-btn:hover{background:var(--bg-elevated)}
+.panel-body{padding:12px 16px;display:flex;flex-direction:column;gap:12px}
+.meta-row{display:flex;flex-direction:column;gap:3px}
+.meta-label{font-size:11px;font-weight:500;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em}
+.meta-value{font-size:13px;word-break:break-all}
+.quality-bar{height:6px;border-radius:3px;background:var(--bg-elevated);margin-top:4px}
+.quality-fill{height:6px;border-radius:3px;transition:width .3s}
+
+/* Map toolbars */
+#map-tb-left{position:absolute;bottom:20px;left:20px;display:flex;gap:8px;z-index:10}
+#map-tb-right{position:absolute;bottom:20px;right:20px;display:flex;flex-direction:column;align-items:flex-end;gap:8px;z-index:10}
+.tb-tool{
+  width:40px;height:40px;border-radius:10px;border:1px solid var(--border);
+  background:var(--bg-surface);box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  transition:all .15s;color:var(--text);
+}
+.tb-tool:hover{border-color:var(--text-muted)}
+.tb-tool.active{background:var(--accent-dim);border-color:var(--accent)}
+.map-zoom{display:flex;align-items:center;gap:6px}
+.zoom-btn{
+  width:34px;height:34px;border-radius:8px;border:1px solid var(--border);
+  background:var(--bg-surface);cursor:pointer;font-size:18px;color:var(--text);
+  display:flex;align-items:center;justify-content:center;
+}
+.zoom-btn:hover{background:var(--bg-elevated)}
+#map-zoom-pct{font-size:12px;font-weight:500;color:var(--text-dim);min-width:38px;text-align:center}
+.detail-btns{display:flex;flex-direction:column;gap:4px}
+.dl-btn{
+  width:34px;height:34px;border-radius:8px;border:1px solid var(--border);
+  background:var(--bg-surface);cursor:pointer;font-size:12px;font-weight:600;
+  color:var(--text-dim);display:flex;align-items:center;justify-content:center;
+}
+.dl-btn:hover{background:var(--bg-elevated)}
+.dl-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+#map-connect-hint{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  background:#fef3c7;border:1px solid #f59e0b;color:#92400e;
+  padding:6px 14px;border-radius:20px;font-size:12px;font-weight:500;
+  display:none;z-index:20;pointer-events:none;
+}
+#map-tooltip{
+  position:fixed;background:var(--bg-surface);color:var(--text);border-radius:8px;
+  padding:8px 12px;font-size:12px;pointer-events:none;z-index:200;
+  display:none;max-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.25);border:1px solid var(--border);
+}
+#map-tooltip .tt-name{font-weight:600;margin-bottom:2px}
+#map-tooltip .tt-domain{color:var(--text-muted);font-size:11px}
+#map-tooltip .tt-quality{font-size:11px;margin-top:2px}
+#map-empty{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;color:var(--text-muted);
+}
+#map-empty p{font-size:14px}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOPOLOGY VIEW
+   ═══════════════════════════════════════════════════════════════════════════ */
+#topo-panel{
+  width:220px;min-width:220px;height:100%;overflow:hidden;
+  background:var(--bg-surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+}
+#topo-panel-header{
+  padding:10px 12px 8px;border-bottom:1px solid var(--border);
+  font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px;
+}
+#topo-search{
+  width:calc(100% - 16px);margin:8px;padding:5px 8px;
+  background:var(--bg-elevated);border:1px solid var(--border);border-radius:5px;
+  color:var(--text);font-size:11px;font-family:inherit;outline:none;
+}
+#topo-search:focus{border-color:var(--accent)}
+#topo-list{flex:1;overflow-y:auto;padding-bottom:8px}
+.topo-item{
+  padding:5px 12px;cursor:pointer;font-size:11px;
+  display:flex;align-items:center;gap:6px;border-left:2px solid transparent;
+}
+.topo-item:hover{background:var(--bg-elevated)}
+.topo-item.active{background:var(--accent-dim);border-left-color:var(--accent)}
+.topo-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+.topo-name{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.topo-type{color:var(--text-dim);font-size:9px;flex-shrink:0}
+
+#topo-graph{flex:1;height:100%;position:relative}
+#topo-graph svg{width:100%;height:100%}
+.hull{opacity:.12;stroke-width:1.5;stroke-opacity:.25}
+.hull-label{font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;fill-opacity:.5;pointer-events:none}
+.link{stroke-opacity:.4}
+.link-label{font-size:8px;fill:var(--text-dim);pointer-events:none;opacity:0}
+.node-hex{stroke-width:1.8;cursor:pointer;transition:opacity .15s}
+.node-hex:hover{filter:brightness(1.3);stroke-width:3}
+.node-hex.selected{stroke-width:3.5;filter:brightness(1.5)}
+.node-label{font-size:10px;fill:var(--text);pointer-events:none;opacity:0}
+
+#topo-sidebar{
+  width:300px;min-width:300px;height:100%;overflow-y:auto;
+  background:var(--bg-surface);border-left:1px solid var(--border);
+  padding:16px;font-size:12px;line-height:1.6;
+}
+#topo-sidebar h2{margin:0 0 8px;font-size:14px;color:var(--accent)}
+#topo-sidebar .meta-table{width:100%;border-collapse:collapse}
+#topo-sidebar .meta-table td{padding:3px 6px;border-bottom:1px solid var(--border-dim);vertical-align:top}
+#topo-sidebar .meta-table td:first-child{color:var(--text-dim);white-space:nowrap;width:90px}
+#topo-sidebar .tag{display:inline-block;background:var(--bg-elevated);border-radius:3px;padding:1px 5px;margin:1px;font-size:10px}
+#topo-sidebar .conf-bar{height:5px;border-radius:3px;background:var(--bg-elevated);margin-top:3px}
+#topo-sidebar .conf-fill{height:100%;border-radius:3px}
+#topo-sidebar .edges-list{margin-top:12px}
+#topo-sidebar .edge-item{padding:4px 0;border-bottom:1px solid var(--border-dim);color:var(--text-dim);font-size:11px}
+#topo-sidebar .edge-item span{color:var(--text)}
+.hint{color:var(--text-dim);font-size:11px;margin-top:8px}
+
+#topo-hud{
+  position:absolute;top:10px;left:10px;background:rgba(15,23,42,.88);
+  padding:10px 14px;border-radius:8px;font-size:12px;border:1px solid var(--border);pointer-events:none;
+}
+#topo-hud strong{color:var(--accent)}
+#topo-hud .stats{color:var(--text-dim)}
+#topo-hud .zoom-level{color:var(--text-dim);font-size:10px;margin-top:2px}
+
+#topo-toolbar{position:absolute;top:10px;right:10px;display:flex;flex-wrap:wrap;gap:4px;pointer-events:auto;align-items:center}
+.filter-btn{
+  background:rgba(15,23,42,.85);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);padding:4px 10px;font-size:11px;cursor:pointer;
+  font-family:inherit;display:flex;align-items:center;gap:5px;
+}
+.filter-btn:hover{border-color:var(--text-dim)}
+.filter-btn.off{opacity:.35}
+.filter-dot{width:8px;height:8px;border-radius:2px;display:inline-block}
+.export-btn{
+  background:rgba(15,23,42,.85);border:1px solid var(--border);border-radius:6px;
+  color:var(--accent);padding:4px 12px;font-size:11px;cursor:pointer;font-family:inherit;
+}
+.export-btn:hover{border-color:var(--accent);background:var(--accent-dim)}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TOPBAR
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<header id="topbar">
+  <div class="tb-left">
+    <svg class="brand-logo" width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <path d="M16 1.5L29.5 8.75V23.25L16 30.5L2.5 23.25V8.75L16 1.5Z" fill="#0F2347" stroke="#2563EB" stroke-width="1.2"/>
+      <circle cx="10" cy="16" r="2.8" fill="#60A5FA"/><circle cx="22" cy="10.5" r="2.2" fill="#38BDF8"/>
+      <circle cx="22" cy="21.5" r="2.2" fill="#38BDF8"/>
+      <line x1="12.5" y1="14.8" x2="19.8" y2="11.2" stroke="#93C5FD" stroke-width="1.2"/>
+      <line x1="12.5" y1="17.2" x2="19.8" y2="20.8" stroke="#93C5FD" stroke-width="1.2"/>
+      <line x1="22" y1="12.7" x2="22" y2="19.3" stroke="#93C5FD" stroke-width="1" stroke-dasharray="2 1.5"/>
+    </svg>
+    <span class="brand-name">datasynx</span>
+    <span class="brand-sep"></span>
+    <span class="brand-product">Cartography</span>
+  </div>
+  <div class="tb-center">
+    <button class="tab-btn active" id="tab-map-btn" data-tab="map">Map</button>
+    <button class="tab-btn" id="tab-topo-btn" data-tab="topo">Topology</button>
+  </div>
+  <div class="tb-right">
+    <span class="tb-stats">${nodeCount} nodes &middot; ${edgeCount} edges</span>
+    <div class="tb-search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input id="global-search" type="text" placeholder="Search..." autocomplete="off" spellcheck="false"/>
+    </div>
+    <a href="https://www.linkedin.com/company/datasynx-ai/" target="_blank" rel="noopener noreferrer"
+       class="icon-btn" title="Datasynx on LinkedIn" aria-label="LinkedIn">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+      </svg>
+    </a>
+    <button id="theme-btn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
+      ${theme === 'dark' ? '&#9788;' : '&#9790;'}
+    </button>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     MAP VIEW
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="view-map" class="view active">
+  <div id="map-wrap" tabindex="0" aria-label="Data cartography hex map">
+    <canvas id="hexmap" aria-hidden="true"></canvas>
+    ${isEmpty ? '<div id="map-empty"><p style="font-size:48px">&#128506;</p><p>No data assets discovered yet</p><p style="font-size:12px">Run <code>datasynx-cartography discover</code> to populate the map</p></div>' : ''}
+  </div>
+  <div id="map-detail">
+    <div class="panel-header">
+      <h3 id="md-name">&mdash;</h3>
+      <button class="close-btn" id="md-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="panel-body" id="md-body"></div>
+  </div>
+  <div id="map-tb-left">
+    <button class="tb-tool active" id="btn-labels" title="Toggle labels">&#127991;</button>
+    <button class="tb-tool" id="btn-quality" title="Quality layer">&#128065;</button>
+    <button class="tb-tool" id="btn-connect" title="Connection tool">&#128279;</button>
+  </div>
+  <div id="map-tb-right">
+    <div class="map-zoom">
+      <button class="zoom-btn" id="mz-out">&minus;</button>
+      <span id="map-zoom-pct">100%</span>
+      <button class="zoom-btn" id="mz-in">+</button>
+    </div>
+    <div class="detail-btns">
+      <button class="dl-btn" data-dl="1">1</button>
+      <button class="dl-btn active" data-dl="2">2</button>
+      <button class="dl-btn" data-dl="3">3</button>
+      <button class="dl-btn" data-dl="4">4</button>
+    </div>
+  </div>
+  <div id="map-connect-hint">Click two assets to create a connection</div>
+  <div id="map-tooltip"><div class="tt-name" id="mtt-name"></div><div class="tt-domain" id="mtt-domain"></div><div class="tt-quality" id="mtt-quality"></div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TOPOLOGY VIEW
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="view-topo" class="view">
+  <div id="topo-panel">
+    <div id="topo-panel-header">Nodes (${nodeCount})</div>
+    <input id="topo-search" type="text" placeholder="Search nodes\u2026" autocomplete="off" spellcheck="false"/>
+    <div id="topo-list"></div>
+  </div>
+  <div id="topo-graph">
+    <div id="topo-hud">
+      <strong>Topology</strong>&nbsp;
+      <span class="stats">${nodeCount} nodes &middot; ${edgeCount} edges</span><br/>
+      <span class="zoom-level">Scroll = zoom &middot; Drag = pan &middot; Click = details</span>
+    </div>
+    <div id="topo-toolbar"></div>
+    <svg></svg>
+  </div>
+  <div id="topo-sidebar">
+    <h2>Infrastructure Map</h2>
+    <p class="hint">Click a node to view details.</p>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHARED STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+let isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+let currentTab = 'map';
+let topoInited = false;
+
+// ── Theme toggle ─────────────────────────────────────────────────────────────
+document.getElementById('theme-btn').addEventListener('click', function() {
+  isDark = !isDark;
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  this.innerHTML = isDark ? '\\u2606' : '\\u263E';
+  if (typeof drawMap === 'function') drawMap();
+});
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var tab = this.getAttribute('data-tab');
+    if (tab === currentTab) return;
+    currentTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    this.classList.add('active');
+    document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
+    document.getElementById('view-' + tab).classList.add('active');
+    if (tab === 'topo' && !topoInited) { initTopology(); topoInited = true; }
+    if (tab === 'map' && typeof drawMap === 'function') { resizeMap(); }
+  });
+});
+
+// ── Global search ────────────────────────────────────────────────────────────
+document.getElementById('global-search').addEventListener('input', function(e) {
+  var q = e.target.value.trim();
+  if (typeof setMapSearch === 'function') setMapSearch(q);
+  if (typeof setTopoSearch === 'function') setTopoSearch(q);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAP VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+var MAP = ${mapJson};
+var MAP_HEX = ${HEX_SIZE};
+var MAP_EMPTY = ${isEmpty};
+
+var mapAssetIndex = new Map();
+var mapClusterByAsset = new Map();
+for (var ci = 0; ci < MAP.clusters.length; ci++) {
+  var c = MAP.clusters[ci];
+  for (var ai = 0; ai < c.assetIds.length; ai++) mapClusterByAsset.set(c.assetIds[ai], c);
+}
+for (var ni = 0; ni < MAP.assets.length; ni++) mapAssetIndex.set(MAP.assets[ni].id, MAP.assets[ni]);
+
+var mapCanvas = document.getElementById('hexmap');
+var mapCtx = mapCanvas.getContext('2d');
+var mapWrap = document.getElementById('map-wrap');
+var mW = 0, mH = 0;
+var mvx = 0, mvy = 0, mScale = 1;
+var mDetailLevel = 2, mShowLabels = true, mShowQuality = false;
+var mConnectMode = false, mConnectFirst = null;
+var mHoveredId = null, mSelectedId = null;
+var mSearchQuery = '';
+var mLocalConns = MAP.connections.slice();
+
+function setMapSearch(q) { mSearchQuery = q; drawMap(); }
+
+function resizeMap() {
+  var dpr = window.devicePixelRatio || 1;
+  mW = mapWrap.clientWidth; mH = mapWrap.clientHeight;
+  mapCanvas.width = mW * dpr; mapCanvas.height = mH * dpr;
+  mapCanvas.style.width = mW + 'px'; mapCanvas.style.height = mH + 'px';
+  mapCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawMap();
+}
+window.addEventListener('resize', function() { if (currentTab === 'map') resizeMap(); });
+
+function mHtp_x(q, r) { return MAP_HEX * (1.5 * q); }
+function mHtp_y(q, r) { return MAP_HEX * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r); }
+function mW2s(wx, wy) { return { x: wx * mScale + mvx, y: wy * mScale + mvy }; }
+function mS2w(sx, sy) { return { x: (sx - mvx) / mScale, y: (sy - mvy) / mScale }; }
+
+function mapFitToView() {
+  if (MAP_EMPTY || MAP.assets.length === 0) { mvx = 0; mvy = 0; mScale = 1; return; }
+  var mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+  for (var i = 0; i < MAP.assets.length; i++) {
+    var a = MAP.assets[i], px = mHtp_x(a.q, a.r), py = mHtp_y(a.q, a.r);
+    if (px < mnx) mnx = px; if (py < mny) mny = py; if (px > mxx) mxx = px; if (py > mxy) mxy = py;
+  }
+  var pw = mxx - mnx + MAP_HEX * 4, ph = mxy - mny + MAP_HEX * 4;
+  mScale = Math.min(mW / pw, mH / ph, 2) * 0.85;
+  mvx = mW / 2 - ((mnx + mxx) / 2) * mScale;
+  mvy = mH / 2 - ((mny + mxy) / 2) * mScale;
+}
+
+function mHexPath(cx, cy, r) {
+  mapCtx.beginPath();
+  for (var i = 0; i < 6; i++) {
+    var angle = Math.PI / 180 * (60 * i);
+    var x = cx + r * Math.cos(angle), y = cy + r * Math.sin(angle);
+    i === 0 ? mapCtx.moveTo(x, y) : mapCtx.lineTo(x, y);
+  }
+  mapCtx.closePath();
+}
+
+function mShadeV(hex, amt) {
+  if (!hex || hex.length < 7) return hex;
+  var n = parseInt(hex.replace('#', ''), 16);
+  var r = Math.min(255, (n >> 16) + amt), g = Math.min(255, ((n >> 8) & 0xff) + amt), b = Math.min(255, (n & 0xff) + amt);
+  return '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
+}
+
+function mGetSearchMatches() {
+  if (!mSearchQuery) return new Set();
+  var q = mSearchQuery.toLowerCase(), m = new Set();
+  for (var i = 0; i < MAP.assets.length; i++) {
+    var a = MAP.assets[i];
+    if (a.name.toLowerCase().includes(q) || (a.domain && a.domain.toLowerCase().includes(q)) ||
+        (a.subDomain && a.subDomain.toLowerCase().includes(q))) m.add(a.id);
+  }
+  return m;
+}
+
+function mDrawPill(x, y, text, color, fontSize) {
+  if (!text) return;
+  mapCtx.save();
+  mapCtx.font = '600 ' + fontSize + 'px -apple-system,sans-serif';
+  var tw = mapCtx.measureText(text).width;
+  var ph = fontSize + 8, pw = tw + 20;
+  mapCtx.beginPath();
+  if (mapCtx.roundRect) mapCtx.roundRect(x - pw / 2, y - ph / 2, pw, ph, ph / 2);
+  else mapCtx.rect(x - pw / 2, y - ph / 2, pw, ph);
+  mapCtx.fillStyle = isDark ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.92)';
+  mapCtx.shadowColor = 'rgba(0,0,0,0.15)'; mapCtx.shadowBlur = 6;
+  mapCtx.fill(); mapCtx.shadowBlur = 0;
+  mapCtx.fillStyle = isDark ? '#e2e8f0' : '#0f172a';
+  mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle';
+  mapCtx.fillText(text, x, y);
+  mapCtx.restore();
+}
+
+function drawMap() {
+  mapCtx.clearRect(0, 0, mW, mH);
+  var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim();
+  mapCtx.fillStyle = bg || (isDark ? '#0f172a' : '#f8fafc');
+  mapCtx.fillRect(0, 0, mW, mH);
+  if (MAP_EMPTY) return;
+
+  var size = MAP_HEX * mScale;
+  var matchedIds = mGetSearchMatches();
+  var hasSearch = mSearchQuery.length > 0;
+
+  // Connections
+  mapCtx.save();
+  mapCtx.strokeStyle = isDark ? 'rgba(148,163,184,0.35)' : 'rgba(100,116,139,0.25)';
+  mapCtx.lineWidth = 1.5; mapCtx.setLineDash([4, 4]);
+  for (var ci = 0; ci < mLocalConns.length; ci++) {
+    var conn = mLocalConns[ci];
+    var src = mapAssetIndex.get(conn.sourceAssetId), tgt = mapAssetIndex.get(conn.targetAssetId);
+    if (!src || !tgt) continue;
+    var sp = mW2s(mHtp_x(src.q, src.r), mHtp_y(src.q, src.r));
+    var tp = mW2s(mHtp_x(tgt.q, tgt.r), mHtp_y(tgt.q, tgt.r));
+    mapCtx.beginPath(); mapCtx.moveTo(sp.x, sp.y); mapCtx.lineTo(tp.x, tp.y); mapCtx.stroke();
+  }
+  mapCtx.setLineDash([]); mapCtx.restore();
+
+  // Hexagons per cluster
+  for (var cli = 0; cli < MAP.clusters.length; cli++) {
+    var cluster = MAP.clusters[cli];
+    var baseColor = cluster.color;
+    var clusterAssets = cluster.assetIds.map(function(id) { return mapAssetIndex.get(id); }).filter(Boolean);
+    var isClusterMatch = !hasSearch || clusterAssets.some(function(a) { return matchedIds.has(a.id); });
+    var clusterDim = hasSearch && !isClusterMatch;
+
+    for (var ai = 0; ai < clusterAssets.length; ai++) {
+      var asset = clusterAssets[ai];
+      var wx = mHtp_x(asset.q, asset.r), wy = mHtp_y(asset.q, asset.r);
+      var s = mW2s(wx, wy), cx = s.x, cy = s.y;
+      if (cx + size < 0 || cx - size > mW || cy + size < 0 || cy - size > mH) continue;
+
+      var shade = ai % 3 === 0 ? 18 : ai % 3 === 1 ? 8 : 0;
+      var fillColor = mShadeV(baseColor, shade);
+      if (mShowQuality && asset.qualityScore !== null && asset.qualityScore !== undefined) {
+        if (asset.qualityScore < 40) fillColor = '#ef4444';
+        else if (asset.qualityScore < 70) fillColor = '#f97316';
+      }
+
+      var alpha = clusterDim ? 0.18 : 1;
+      var isHov = asset.id === mHoveredId, isSel = asset.id === mSelectedId, isCF = asset.id === mConnectFirst;
+
+      mapCtx.save(); mapCtx.globalAlpha = alpha;
+      mHexPath(cx, cy, size * 0.92);
+      if (isDark && (isHov || isSel || isCF)) { mapCtx.shadowColor = fillColor; mapCtx.shadowBlur = isSel ? 16 : 8; }
+      mapCtx.fillStyle = fillColor; mapCtx.fill();
+      if (isSel || isCF) { mapCtx.strokeStyle = isCF ? '#f59e0b' : '#fff'; mapCtx.lineWidth = 2.5; mapCtx.stroke(); }
+      else if (isHov) { mapCtx.strokeStyle = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.2)'; mapCtx.lineWidth = 1.5; mapCtx.stroke(); }
+      else { mapCtx.strokeStyle = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.4)'; mapCtx.lineWidth = 1; mapCtx.stroke(); }
+      mapCtx.restore();
+
+      if (mShowQuality && asset.qualityScore !== null && asset.qualityScore !== undefined && size > 8 && asset.qualityScore < 70) {
+        mapCtx.beginPath(); mapCtx.arc(cx + size * 0.4, cy - size * 0.4, Math.max(3, size * 0.14), 0, Math.PI * 2);
+        mapCtx.fillStyle = asset.qualityScore < 40 ? '#ef4444' : '#f97316'; mapCtx.fill();
+      }
+
+      var showAssetLabel = mShowLabels && !clusterDim && ((mDetailLevel >= 4) || (mDetailLevel === 3 && mScale >= 0.8));
+      if (showAssetLabel && size > 14) {
+        var label = asset.name.length > 12 ? asset.name.substring(0, 11) + '...' : asset.name;
+        mapCtx.save();
+        mapCtx.font = Math.max(8, Math.min(11, size * 0.38)) + 'px -apple-system,sans-serif';
+        mapCtx.fillStyle = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.9)';
+        mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle';
+        mapCtx.fillText(label, cx, cy); mapCtx.restore();
+      }
+    }
+  }
+
+  // Cluster labels
+  if (mShowLabels && mDetailLevel >= 1) {
+    for (var cli2 = 0; cli2 < MAP.clusters.length; cli2++) {
+      var cl = MAP.clusters[cli2];
+      if (cl.assetIds.length === 0) continue;
+      if (hasSearch && !cl.assetIds.some(function(id) { return matchedIds.has(id); })) continue;
+      var sc = mW2s(cl.centroid.x, cl.centroid.y);
+      mDrawPill(sc.x, sc.y - size * 1.2, cl.label, cl.color, 14);
+    }
+  }
+
+  // Sub-domain labels
+  if (mShowLabels && mDetailLevel >= 2) {
+    var subGroups = new Map();
+    for (var si = 0; si < MAP.assets.length; si++) {
+      var sa = MAP.assets[si];
+      if (!sa.subDomain) continue;
+      var key = sa.domain + '|' + sa.subDomain;
+      if (!subGroups.has(key)) subGroups.set(key, []);
+      subGroups.get(key).push(sa);
+    }
+    subGroups.forEach(function(group) {
+      var sx = 0, sy = 0;
+      for (var gi = 0; gi < group.length; gi++) { sx += mHtp_x(group[gi].q, group[gi].r); sy += mHtp_y(group[gi].q, group[gi].r); }
+      var cxs = sx / group.length, cys = sy / group.length;
+      var spt = mW2s(cxs, cys);
+      mDrawPill(spt.x, spt.y + size * 1.5, group[0].subDomain, '#64748b', 11);
+    });
+  }
+}
+
+// ── Map hit test ─────────────────────────────────────────────────────────────
+function mGetAssetAt(sx, sy) {
+  var w = mS2w(sx, sy);
+  for (var i = 0; i < MAP.assets.length; i++) {
+    var a = MAP.assets[i], wx = mHtp_x(a.q, a.r), wy = mHtp_y(a.q, a.r);
+    var dx = Math.abs(w.x - wx), dy = Math.abs(w.y - wy);
+    if (dx > MAP_HEX || dy > MAP_HEX) continue;
+    if (dx * dx + dy * dy < MAP_HEX * MAP_HEX) return a;
+  }
+  return null;
+}
+
+// ── Map pan / zoom ───────────────────────────────────────────────────────────
+var mDragging = false, mLastMX = 0, mLastMY = 0;
+mapWrap.addEventListener('mousedown', function(e) {
+  if (e.button !== 0) return;
+  mDragging = true; mLastMX = e.clientX; mLastMY = e.clientY;
+  mapWrap.classList.add('dragging');
+});
+window.addEventListener('mouseup', function() { mDragging = false; mapWrap.classList.remove('dragging'); });
+window.addEventListener('mousemove', function(e) {
+  if (currentTab !== 'map') return;
+  if (mDragging) {
+    mvx += e.clientX - mLastMX; mvy += e.clientY - mLastMY;
+    mLastMX = e.clientX; mLastMY = e.clientY; drawMap(); return;
+  }
+  var rect = mapWrap.getBoundingClientRect();
+  var sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  var asset = mGetAssetAt(sx, sy);
+  var newId = asset ? asset.id : null;
+  if (newId !== mHoveredId) { mHoveredId = newId; drawMap(); }
+  var tt = document.getElementById('map-tooltip');
+  if (asset) {
+    document.getElementById('mtt-name').textContent = asset.name;
+    document.getElementById('mtt-domain').textContent = asset.domain + (asset.subDomain ? ' > ' + asset.subDomain : '');
+    document.getElementById('mtt-quality').textContent = asset.qualityScore !== null ? 'Quality: ' + asset.qualityScore + '/100' : '';
+    tt.style.display = 'block'; tt.style.left = (e.clientX + 12) + 'px'; tt.style.top = (e.clientY - 8) + 'px';
+  } else { tt.style.display = 'none'; }
+});
+
+mapWrap.addEventListener('click', function(e) {
+  var rect = mapWrap.getBoundingClientRect();
+  var sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  var asset = mGetAssetAt(sx, sy);
+  if (mConnectMode) {
+    if (!asset) return;
+    if (!mConnectFirst) { mConnectFirst = asset.id; drawMap(); }
+    else if (mConnectFirst !== asset.id) {
+      mLocalConns.push({ id: crypto.randomUUID(), sourceAssetId: mConnectFirst, targetAssetId: asset.id, type: 'connection' });
+      mConnectFirst = null; drawMap();
+    }
+    return;
+  }
+  if (asset) { mSelectedId = asset.id; mShowDetail(asset); }
+  else { mSelectedId = null; document.getElementById('map-detail').classList.remove('open'); }
+  drawMap();
+});
+
+mapWrap.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  var rect = mapWrap.getBoundingClientRect();
+  mApplyZoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top);
+}, { passive: false });
+
+function mApplyZoom(factor, sx, sy) {
+  var ns = Math.max(0.05, Math.min(8, mScale * factor));
+  var wx = (sx - mvx) / mScale, wy = (sy - mvy) / mScale;
+  mScale = ns; mvx = sx - wx * mScale; mvy = sy - wy * mScale;
+  document.getElementById('map-zoom-pct').textContent = Math.round(mScale * 100) + '%';
+  drawMap();
+}
+
+document.getElementById('mz-in').addEventListener('click', function() { mApplyZoom(1.25, mW / 2, mH / 2); });
+document.getElementById('mz-out').addEventListener('click', function() { mApplyZoom(1 / 1.25, mW / 2, mH / 2); });
+
+// ── Map detail panel ─────────────────────────────────────────────────────────
+function mEsc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function mRenderQ(s) {
+  var c = s >= 70 ? '#22c55e' : s >= 40 ? '#f97316' : '#ef4444';
+  return s + '/100 <div class="quality-bar"><div class="quality-fill" style="width:' + s + '%;background:' + c + '"></div></div>';
+}
+function mShowDetail(asset) {
+  document.getElementById('md-name').textContent = asset.name;
+  var body = document.getElementById('md-body');
+  var rows = [['Domain', asset.domain], ['Sub-domain', asset.subDomain],
+    ['Quality', asset.qualityScore !== null ? mRenderQ(asset.qualityScore) : null]
+  ].concat(Object.entries(asset.metadata || {}).slice(0, 8).map(function(kv) { return [kv[0], String(kv[1])]; }))
+   .filter(function(r) { return r[1] !== null && r[1] !== undefined && r[1] !== ''; });
+  body.innerHTML = rows.map(function(r) {
+    return '<div class="meta-row"><div class="meta-label">' + mEsc(String(r[0])) + '</div><div class="meta-value">' + r[1] + '</div></div>';
+  }).join('');
+  var related = mLocalConns.filter(function(cn) { return cn.sourceAssetId === asset.id || cn.targetAssetId === asset.id; });
+  if (related.length > 0) {
+    body.innerHTML += '<div class="meta-row"><div class="meta-label">Connections (' + related.length + ')</div><div>' +
+      related.map(function(cn) {
+        var oid = cn.sourceAssetId === asset.id ? cn.targetAssetId : cn.sourceAssetId;
+        var o = mapAssetIndex.get(oid);
+        return '<div class="meta-value" style="margin-top:4px;font-size:12px">' + (o ? mEsc(o.name) : oid) + '</div>';
+      }).join('') + '</div></div>';
+  }
+  document.getElementById('map-detail').classList.add('open');
+}
+document.getElementById('md-close').addEventListener('click', function() {
+  document.getElementById('map-detail').classList.remove('open'); mSelectedId = null; drawMap();
+});
+
+// ── Map toolbar ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.dl-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    mDetailLevel = parseInt(this.getAttribute('data-dl'));
+    document.querySelectorAll('.dl-btn').forEach(function(b) { b.classList.remove('active'); });
+    this.classList.add('active'); drawMap();
+  });
+});
+document.getElementById('btn-labels').addEventListener('click', function() {
+  mShowLabels = !mShowLabels; this.classList.toggle('active', mShowLabels); drawMap();
+});
+document.getElementById('btn-quality').addEventListener('click', function() {
+  mShowQuality = !mShowQuality; this.classList.toggle('active', mShowQuality); drawMap();
+});
+document.getElementById('btn-connect').addEventListener('click', function() {
+  mConnectMode = !mConnectMode; mConnectFirst = null;
+  this.classList.toggle('active', mConnectMode);
+  mapWrap.classList.toggle('connecting', mConnectMode);
+  document.getElementById('map-connect-hint').style.display = mConnectMode ? 'block' : 'none'; drawMap();
+});
+
+// Map keyboard
+mapWrap.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowLeft') { mvx += 40; drawMap(); }
+  else if (e.key === 'ArrowRight') { mvx -= 40; drawMap(); }
+  else if (e.key === 'ArrowUp') { mvy += 40; drawMap(); }
+  else if (e.key === 'ArrowDown') { mvy -= 40; drawMap(); }
+  else if (e.key === '+' || e.key === '=') mApplyZoom(1.2, mW / 2, mH / 2);
+  else if (e.key === '-') mApplyZoom(1 / 1.2, mW / 2, mH / 2);
+  else if (e.key === 'Escape') {
+    mSelectedId = null; document.getElementById('map-detail').classList.remove('open');
+    if (mConnectMode) { mConnectMode = false; mConnectFirst = null; mapWrap.classList.remove('connecting'); document.getElementById('map-connect-hint').style.display = 'none'; document.getElementById('btn-connect').classList.remove('active'); }
+    drawMap();
+  }
+});
+
+// Map init
+resizeMap(); mapFitToView();
+document.getElementById('map-zoom-pct').textContent = Math.round(mScale * 100) + '%';
+drawMap();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TOPOLOGY VIEW (lazy init)
+// ═══════════════════════════════════════════════════════════════════════════════
+var TOPO = ${graphData};
+
+var TYPE_COLORS = {
+  host:'#4a9eff',database_server:'#ff6b6b',database:'#ff8c42',
+  web_service:'#6bcb77',api_endpoint:'#4d96ff',cache_server:'#ffd93d',
+  message_broker:'#c77dff',queue:'#e0aaff',topic:'#9d4edd',
+  container:'#48cae4',pod:'#00b4d8',k8s_cluster:'#0077b6',
+  config_file:'#adb5bd',saas_tool:'#c084fc',table:'#f97316',unknown:'#6c757d'
+};
+var LAYER_COLORS = { saas:'#c084fc',web:'#6bcb77',data:'#ff6b6b',messaging:'#c77dff',infra:'#4a9eff',config:'#adb5bd',other:'#6c757d' };
+var LAYER_NAMES = { saas:'SaaS Tools',web:'Web / API',data:'Data Layer',messaging:'Messaging',infra:'Infrastructure',config:'Config',other:'Other' };
+
+var topoSelectedId = null;
+
+function setTopoSearch(q) {
+  var el = document.getElementById('topo-search');
+  if (el) { el.value = q; buildTopoList(q); }
+}
+
+function buildTopoList(filter) {
+  var listEl = document.getElementById('topo-list');
+  var q = (filter || '').toLowerCase();
+  listEl.innerHTML = '';
+  var sorted = TOPO.nodes.slice().sort(function(a, b) { return a.name.localeCompare(b.name); });
+  for (var i = 0; i < sorted.length; i++) {
+    var d = sorted[i];
+    if (q && !d.name.toLowerCase().includes(q) && !d.type.includes(q) && !d.id.toLowerCase().includes(q)) continue;
+    var item = document.createElement('div');
+    item.className = 'topo-item' + (d.id === topoSelectedId ? ' active' : '');
+    item.dataset.id = d.id;
+    var color = TYPE_COLORS[d.type] || '#aaa';
+    item.innerHTML = '<span class="topo-dot" style="background:' + color + '"></span>' +
+      '<span class="topo-name" title="' + d.id + '">' + d.name + '</span>' +
+      '<span class="topo-type">' + d.type.replace(/_/g, ' ') + '</span>';
+    (function(dd) { item.onclick = function() { selectTopoNode(dd); focusTopoNode(dd); }; })(d);
+    listEl.appendChild(item);
+  }
+}
+
+document.getElementById('topo-search').addEventListener('input', function(e) { buildTopoList(e.target.value); });
+
+var topoSidebar = document.getElementById('topo-sidebar');
+
+function selectTopoNode(d) {
+  topoSelectedId = d.id;
+  buildTopoList(document.getElementById('topo-search').value);
+  showTopoNode(d);
+  if (typeof d3 !== 'undefined') d3.selectAll('.node-hex').classed('selected', function(nd) { return nd.id === d.id; });
+}
+
+function showTopoNode(d) {
+  var c = TYPE_COLORS[d.type] || '#aaa';
+  var confPct = Math.round(d.confidence * 100);
+  var tags = (d.tags || []).map(function(t) { return '<span class="tag">' + t + '</span>'; }).join('');
+  var metaRows = Object.entries(d.metadata || {})
+    .filter(function(kv) { return kv[1] !== null && kv[1] !== undefined && String(kv[1]).length > 0; })
+    .map(function(kv) { return '<tr><td>' + kv[0] + '</td><td>' + JSON.stringify(kv[1]) + '</td></tr>'; }).join('');
+  var related = TOPO.links.filter(function(l) {
+    return (l.source.id || l.source) === d.id || (l.target.id || l.target) === d.id;
+  });
+  var edgeItems = related.map(function(l) {
+    var isOut = (l.source.id || l.source) === d.id;
+    var other = isOut ? (l.target.id || l.target) : (l.source.id || l.source);
+    return '<div class="edge-item">' + (isOut ? '\\u2192' : '\\u2190') + ' <span>' + other + '</span> <small>[' + l.relationship + ']</small></div>';
+  }).join('');
+
+  topoSidebar.innerHTML =
+    '<h2>' + d.name + '</h2>' +
+    '<table class="meta-table">' +
+    '<tr><td>ID</td><td style="font-size:10px;word-break:break-all">' + d.id + '</td></tr>' +
+    '<tr><td>Type</td><td><span style="color:' + c + '">' + d.type + '</span></td></tr>' +
+    '<tr><td>Layer</td><td>' + d.layer + '</td></tr>' +
+    '<tr><td>Confidence</td><td>' + confPct + '% <div class="conf-bar"><div class="conf-fill" style="width:' + confPct + '%;background:' + c + '"></div></div></td></tr>' +
+    '<tr><td>Via</td><td>' + (d.discoveredVia || '\\u2014') + '</td></tr>' +
+    '<tr><td>Timestamp</td><td>' + (d.discoveredAt ? d.discoveredAt.substring(0, 19).replace('T', ' ') : '\\u2014') + '</td></tr>' +
+    (tags ? '<tr><td>Tags</td><td>' + tags + '</td></tr>' : '') +
+    metaRows + '</table>' +
+    (related.length > 0 ? '<div class="edges-list"><strong>Connections (' + related.length + '):</strong>' + edgeItems + '</div>' : '') +
+    '<div style="margin-top:14px"><button class="export-btn" style="width:100%" onclick="deleteTopoNode(\\'' + d.id.replace(/'/g, "\\\\'") + '\\')">Delete node</button></div>';
+}
+
+function deleteTopoNode(id) {
+  var idx = TOPO.nodes.findIndex(function(n) { return n.id === id; });
+  if (idx === -1) return;
+  TOPO.nodes.splice(idx, 1);
+  TOPO.links = TOPO.links.filter(function(l) {
+    return (l.source.id || l.source) !== id && (l.target.id || l.target) !== id;
+  });
+  topoSelectedId = null;
+  topoSidebar.innerHTML = '<h2>Infrastructure Map</h2><p class="hint">Node deleted.</p>';
+  if (typeof rebuildTopoGraph === 'function') rebuildTopoGraph();
+  buildTopoList(document.getElementById('topo-search').value);
+}
+
+function initTopology() {
+  if (typeof d3 === 'undefined') return;
+
+  var svgEl = d3.select('#topo-graph svg');
+  var graphDiv = document.getElementById('topo-graph');
+  var gW = function() { return graphDiv.clientWidth; };
+  var gH = function() { return graphDiv.clientHeight; };
+  var g = svgEl.append('g');
+
+  svgEl.append('defs').append('marker')
+    .attr('id', 'arrow').attr('viewBox', '0 0 10 6')
+    .attr('refX', 10).attr('refY', 3)
+    .attr('markerWidth', 8).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path').attr('d', 'M0,0 L10,3 L0,6 Z').attr('fill', '#555');
+
+  var currentZoom = 1;
+  var zoomBehavior = d3.zoom().scaleExtent([0.08, 6]).on('zoom', function(e) {
+    g.attr('transform', e.transform); currentZoom = e.transform.k; updateTopoLOD(currentZoom);
+  });
+  svgEl.call(zoomBehavior);
+
+  // Layer filters
+  var layers = Array.from(new Set(TOPO.nodes.map(function(d) { return d.layer; })));
+  var layerVisible = {};
+  layers.forEach(function(l) { layerVisible[l] = true; });
+
+  var toolbarEl = document.getElementById('topo-toolbar');
+  layers.forEach(function(layer) {
+    var btn = document.createElement('button');
+    btn.className = 'filter-btn';
+    btn.innerHTML = '<span class="filter-dot" style="background:' + (LAYER_COLORS[layer] || '#666') + '"></span>' + (LAYER_NAMES[layer] || layer);
+    btn.onclick = function() { layerVisible[layer] = !layerVisible[layer]; btn.classList.toggle('off', !layerVisible[layer]); updateTopoVisibility(); };
+    toolbarEl.appendChild(btn);
+  });
+
+  // JGF export button
+  var jgfBtn = document.createElement('button');
+  jgfBtn.className = 'export-btn'; jgfBtn.textContent = '\\u2193 JGF'; jgfBtn.title = 'Export JSON Graph Format';
+  jgfBtn.onclick = function() {
+    var jgf = { graph: { directed: true, type: 'cartography', label: 'Infrastructure Map',
+      metadata: { exportedAt: new Date().toISOString() },
+      nodes: Object.fromEntries(TOPO.nodes.map(function(n) { return [n.id, { label: n.name, metadata: { type: n.type, layer: n.layer, confidence: n.confidence, discoveredVia: n.discoveredVia, discoveredAt: n.discoveredAt, tags: n.tags } }]; })),
+      edges: TOPO.links.map(function(l) { return { source: l.source.id || l.source, target: l.target.id || l.target, relation: l.relationship, metadata: { confidence: l.confidence, evidence: l.evidence } }; })
+    }};
+    var blob = new Blob([JSON.stringify(jgf, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'cartography-graph.jgf.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+  toolbarEl.appendChild(jgfBtn);
+
+  // Hex helpers
+  var T_HEX = { saas_tool: 16, host: 18, database_server: 18, k8s_cluster: 20, default: 14 };
+  function tHexSize(d) { return T_HEX[d.type] || T_HEX.default; }
+  function tHexPath(size) {
+    var pts = [];
+    for (var i = 0; i < 6; i++) {
+      var angle = (Math.PI / 3) * i - Math.PI / 6;
+      pts.push([size * Math.cos(angle), size * Math.sin(angle)]);
+    }
+    return 'M' + pts.map(function(p) { return p.join(','); }).join('L') + 'Z';
+  }
+
+  // Cluster force
+  function clusterForce(alpha) {
+    var centroids = {}, counts = {};
+    TOPO.nodes.forEach(function(d) {
+      if (!centroids[d.layer]) { centroids[d.layer] = { x: 0, y: 0 }; counts[d.layer] = 0; }
+      centroids[d.layer].x += d.x || 0; centroids[d.layer].y += d.y || 0; counts[d.layer]++;
+    });
+    for (var l in centroids) { centroids[l].x /= counts[l]; centroids[l].y /= counts[l]; }
+    var strength = alpha * 0.15;
+    TOPO.nodes.forEach(function(d) {
+      var cn = centroids[d.layer];
+      if (cn) { d.vx += (cn.x - d.x) * strength; d.vy += (cn.y - d.y) * strength; }
+    });
+  }
+
+  // Hulls
+  var hullGroup = g.append('g').attr('class', 'hulls');
+  var hullPaths = {}, hullLabels = {};
+  layers.forEach(function(layer) {
+    hullPaths[layer] = hullGroup.append('path').attr('class', 'hull')
+      .attr('fill', LAYER_COLORS[layer] || '#666').attr('stroke', LAYER_COLORS[layer] || '#666');
+    hullLabels[layer] = hullGroup.append('text').attr('class', 'hull-label')
+      .attr('fill', LAYER_COLORS[layer] || '#666').text(LAYER_NAMES[layer] || layer);
+  });
+
+  function updateHulls() {
+    layers.forEach(function(layer) {
+      if (!layerVisible[layer]) { hullPaths[layer].attr('d', null); hullLabels[layer].attr('x', -9999); return; }
+      var pts = TOPO.nodes.filter(function(d) { return d.layer === layer && layerVisible[d.layer]; }).map(function(d) { return [d.x, d.y]; });
+      if (pts.length < 3) {
+        hullPaths[layer].attr('d', null);
+        if (pts.length > 0) hullLabels[layer].attr('x', pts[0][0]).attr('y', pts[0][1] - 30);
+        else hullLabels[layer].attr('x', -9999);
+        return;
+      }
+      var hull = d3.polygonHull(pts);
+      if (!hull) { hullPaths[layer].attr('d', null); return; }
+      var cx = d3.mean(hull, function(p) { return p[0]; });
+      var cy = d3.mean(hull, function(p) { return p[1]; });
+      var padded = hull.map(function(p) {
+        var dx = p[0] - cx, dy = p[1] - cy;
+        var len = Math.sqrt(dx * dx + dy * dy) || 1;
+        return [p[0] + dx / len * 40, p[1] + dy / len * 40];
+      });
+      hullPaths[layer].attr('d', 'M' + padded.join('L') + 'Z');
+      hullLabels[layer].attr('x', cx).attr('y', cy - d3.max(hull, function(p) { return Math.abs(p[1] - cy); }) - 30);
+    });
+  }
+
+  // Graph
+  var linkSel, linkLabelSel, nodeSel, nodeLabelSel, sim;
+  var linkGroup = g.append('g');
+  var nodeGroup = g.append('g');
+
+  function focusTopoNode(d) {
+    if (!d.x || !d.y) return;
+    var w = gW(), h = gH();
+    svgEl.transition().duration(500).call(
+      zoomBehavior.transform,
+      d3.zoomIdentity.translate(w / 2, h / 2).scale(Math.min(3, currentZoom < 1 ? 1.5 : currentZoom)).translate(-d.x, -d.y)
+    );
+  }
+  window.focusTopoNode = focusTopoNode;
+
+  function rebuildTopoGraph() {
+    if (sim) sim.stop();
+
+    linkSel = linkGroup.selectAll('line').data(TOPO.links, function(d) { return (d.source.id || d.source) + '>' + (d.target.id || d.target); });
+    linkSel.exit().remove();
+    var linkEnter = linkSel.enter().append('line').attr('class', 'link');
+    linkSel = linkEnter.merge(linkSel)
+      .attr('stroke', function(d) { return d.confidence < 0.6 ? '#2a2e35' : '#3d434b'; })
+      .attr('stroke-dasharray', function(d) { return d.confidence < 0.6 ? '4 3' : null; })
+      .attr('stroke-width', function(d) { return d.confidence < 0.6 ? 0.8 : 1.2; })
+      .attr('marker-end', 'url(#arrow)');
+    linkSel.select('title').remove();
+    linkSel.append('title').text(function(d) { return d.relationship + ' (' + Math.round(d.confidence * 100) + '%)\\n' + (d.evidence || ''); });
+
+    linkLabelSel = linkGroup.selectAll('text').data(TOPO.links, function(d) { return (d.source.id || d.source) + '>' + (d.target.id || d.target); });
+    linkLabelSel.exit().remove();
+    linkLabelSel = linkLabelSel.enter().append('text').attr('class', 'link-label').merge(linkLabelSel).text(function(d) { return d.relationship; });
+
+    nodeSel = nodeGroup.selectAll('g').data(TOPO.nodes, function(d) { return d.id; });
+    nodeSel.exit().remove();
+    var nodeEnter = nodeSel.enter().append('g')
+      .call(d3.drag()
+        .on('start', function(e, d) { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag', function(e, d) { d.fx = e.x; d.fy = e.y; })
+        .on('end', function(e, d) { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+      )
+      .on('click', function(e, d) { e.stopPropagation(); selectTopoNode(d); });
+    nodeEnter.append('path').attr('class', 'node-hex');
+    nodeEnter.append('title');
+    nodeEnter.append('text').attr('class', 'node-label').attr('text-anchor', 'middle');
+
+    nodeSel = nodeEnter.merge(nodeSel);
+    nodeSel.select('.node-hex')
+      .attr('d', function(d) { return tHexPath(tHexSize(d)); })
+      .attr('fill', function(d) { return TYPE_COLORS[d.type] || '#aaa'; })
+      .attr('stroke', function(d) { var c = d3.color(TYPE_COLORS[d.type] || '#aaa'); return c ? c.brighter(0.8).formatHex() : '#ccc'; })
+      .attr('fill-opacity', function(d) { return 0.6 + d.confidence * 0.4; })
+      .classed('selected', function(d) { return d.id === topoSelectedId; });
+    nodeSel.select('title').text(function(d) { return d.name + ' (' + d.type + ')\\nconf: ' + Math.round(d.confidence * 100) + '%'; });
+    nodeLabelSel = nodeSel.select('.node-label')
+      .attr('dy', function(d) { return tHexSize(d) + 13; })
+      .text(function(d) { return d.name.length > 20 ? d.name.substring(0, 18) + '\\u2026' : d.name; });
+
+    sim = d3.forceSimulation(TOPO.nodes)
+      .force('link', d3.forceLink(TOPO.links).id(function(d) { return d.id; }).distance(function(d) { return d.relationship === 'contains' ? 50 : 100; }).strength(0.4))
+      .force('charge', d3.forceManyBody().strength(-280))
+      .force('center', d3.forceCenter(gW() / 2, gH() / 2))
+      .force('collision', d3.forceCollide().radius(function(d) { return tHexSize(d) + 10; }))
+      .force('cluster', clusterForce)
+      .on('tick', function() {
+        updateHulls();
+        linkSel.attr('x1', function(d) { return d.source.x; }).attr('y1', function(d) { return d.source.y; })
+               .attr('x2', function(d) { return d.target.x; }).attr('y2', function(d) { return d.target.y; });
+        linkLabelSel.attr('x', function(d) { return (d.source.x + d.target.x) / 2; })
+                    .attr('y', function(d) { return (d.source.y + d.target.y) / 2 - 4; });
+        nodeSel.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
+      });
+  }
+  window.rebuildTopoGraph = rebuildTopoGraph;
+
+  function updateTopoLOD(k) {
+    if (nodeLabelSel) nodeLabelSel.style('opacity', k > 0.5 ? Math.min(1, (k - 0.5) * 2) : 0);
+    if (linkLabelSel) linkLabelSel.style('opacity', k > 1.2 ? Math.min(1, (k - 1.2) * 3) : 0);
+    d3.selectAll('.hull-label').style('font-size', k < 0.4 ? '18px' : '13px');
+  }
+
+  function updateTopoVisibility() {
+    if (!nodeSel) return;
+    nodeSel.style('display', function(d) { return layerVisible[d.layer] ? null : 'none'; });
+    linkSel.style('display', function(d) {
+      var s = TOPO.nodes.find(function(n) { return n.id === (d.source.id || d.source); });
+      var t = TOPO.nodes.find(function(n) { return n.id === (d.target.id || d.target); });
+      return (s && layerVisible[s.layer]) && (t && layerVisible[t.layer]) ? null : 'none';
+    });
+    linkLabelSel.style('display', function(d) {
+      var s = TOPO.nodes.find(function(n) { return n.id === (d.source.id || d.source); });
+      var t = TOPO.nodes.find(function(n) { return n.id === (d.target.id || d.target); });
+      return (s && layerVisible[s.layer]) && (t && layerVisible[t.layer]) ? null : 'none';
+    });
+  }
+
+  rebuildTopoGraph();
+  buildTopoList();
+  updateTopoLOD(1);
+
+  svgEl.on('click', function() {
+    topoSelectedId = null;
+    d3.selectAll('.node-hex').classed('selected', false);
+    buildTopoList(document.getElementById('topo-search').value);
+    topoSidebar.innerHTML = '<h2>Infrastructure Map</h2><p class="hint">Click a node to view details.</p>';
+  });
+}
+
+// Init topology node list (non-D3 part)
+buildTopoList();
+<\/script>
+</body>
+</html>`;
+}
+
 // ── exportAll ─────────────────────────────────────────────────────────────────
 
 export function exportAll(
   db: CartographyDB,
   sessionId: string,
   outputDir: string,
-  formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'map', 'sops'],
+  formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'map', 'discovery', 'sops'],
 ): void {
   mkdirSync(outputDir, { recursive: true });
   mkdirSync(join(outputDir, 'sops'), { recursive: true });
@@ -1684,6 +2779,11 @@ export function exportAll(
   if (formats.includes('map')) {
     writeFileSync(join(outputDir, 'cartography-map.html'), exportCartographyMap(nodes, edges));
     process.stderr.write('✓ cartography-map.html\n');
+  }
+
+  if (formats.includes('discovery')) {
+    writeFileSync(join(outputDir, 'discovery.html'), exportDiscoveryApp(nodes, edges));
+    process.stderr.write('✓ discovery.html\n');
   }
 
   if (formats.includes('sops')) {
