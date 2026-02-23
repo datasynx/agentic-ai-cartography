@@ -6,9 +6,8 @@ export type { DiscoveryEvent } from './agent.js';
 export {
   exportAll,
   exportJSON,
+  exportJGF,
   exportBackstageYAML,
-  exportHTML,
-  exportCartographyMap,
   exportSOPMarkdown,
   exportSOPDashboard,
   exportDiscoveryApp,
