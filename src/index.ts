@@ -11,6 +11,7 @@ export {
   exportCartographyMap,
   exportSOPMarkdown,
   exportSOPDashboard,
+  exportDiscoveryApp,
   generateTopologyMermaid,
   generateDependencyMermaid,
   generateWorkflowMermaid,
