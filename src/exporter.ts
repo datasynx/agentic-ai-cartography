@@ -1809,14 +1809,6 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
 }
 .zoom-btn:hover{background:var(--bg-elevated)}
 #map-zoom-pct{font-size:12px;font-weight:500;color:var(--text-dim);min-width:38px;text-align:center}
-.detail-btns{display:flex;flex-direction:column;gap:4px}
-.dl-btn{
-  width:34px;height:34px;border-radius:8px;border:1px solid var(--border);
-  background:var(--bg-surface);cursor:pointer;font-size:12px;font-weight:600;
-  color:var(--text-dim);display:flex;align-items:center;justify-content:center;
-}
-.dl-btn:hover{background:var(--bg-elevated)}
-.dl-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
 #map-connect-hint{
   position:absolute;top:12px;left:50%;transform:translateX(-50%);
   background:#fef3c7;border:1px solid #f59e0b;color:#92400e;
@@ -1986,12 +1978,6 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
       <button class="zoom-btn" id="mz-out">&minus;</button>
       <span id="map-zoom-pct">100%</span>
       <button class="zoom-btn" id="mz-in">+</button>
-    </div>
-    <div class="detail-btns">
-      <button class="dl-btn" data-dl="1">1</button>
-      <button class="dl-btn active" data-dl="2">2</button>
-      <button class="dl-btn" data-dl="3">3</button>
-      <button class="dl-btn" data-dl="4">4</button>
     </div>
   </div>
   <div id="map-connect-hint">Click two assets to create a connection</div>
@@ -2375,13 +2361,6 @@ document.getElementById('md-close').addEventListener('click', function() {
 });
 
 // ── Map toolbar ──────────────────────────────────────────────────────────────
-document.querySelectorAll('.dl-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    mDetailLevel = parseInt(this.getAttribute('data-dl'));
-    document.querySelectorAll('.dl-btn').forEach(function(b) { b.classList.remove('active'); });
-    this.classList.add('active'); drawMap();
-  });
-});
 document.getElementById('btn-labels').addEventListener('click', function() {
   mShowLabels = !mShowLabels; this.classList.toggle('active', mShowLabels); drawMap();
 });
