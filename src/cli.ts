@@ -4,11 +4,12 @@ import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
 import { runDiscovery } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
-import { exportAll, exportCartographyMap } from './exporter.js';
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { exportAll } from './exporter.js';
+import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
-import { execSync } from 'child_process';
+import { IS_WIN, IS_MAC, PLATFORM, commandExists, fileUrl } from './platform.js';
+
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
 const bold    = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -25,7 +26,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.2.3';
+  const VERSION = '0.7.0';
 
   program
     .name(CMD)
@@ -268,27 +269,11 @@ function main(): void {
 
       // ── Diagram links ───────────────────────────────────────────────────────
       const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
-      const htmlPath = resolve(config.outputDir, 'topology.html');
-      const mapPath = resolve(config.outputDir, 'cartography-map.html');
       const discoveryPath = resolve(config.outputDir, 'discovery.html');
-      const topoPath = resolve(config.outputDir, 'topology.mermaid');
 
       w('\n');
       if (existsSync(discoveryPath)) {
-        w(`  ${green('→')}  ${osc8(`file://${discoveryPath}`, bold('Open discovery.html'))}  ${dim('← Enterprise Discovery Frontend')}\n`);
-      }
-      if (existsSync(mapPath)) {
-        w(`  ${green('→')}  ${osc8(`file://${mapPath}`, bold('Open cartography-map.html'))}  ${dim('← Hex Map')}\n`);
-      }
-      if (existsSync(htmlPath)) {
-        w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('Open topology.html'))}\n`);
-      }
-      if (existsSync(topoPath)) {
-        try {
-          const code = readFileSync(topoPath, 'utf8');
-          const b64 = Buffer.from(JSON.stringify({ code, mermaid: { theme: 'dark' } })).toString('base64');
-          w(`  ${cyan('→')}  ${osc8(`https://mermaid.live/view#base64:${b64}`, bold('Open in mermaid.live'))}\n`);
-        } catch { /* ignore */ }
+        w(`  ${green('→')}  ${osc8(fileUrl(discoveryPath), bold('Open discovery.html'))}  ${dim('← Map + Topology')}\n`);
       }
       w('\n');
 
@@ -337,8 +322,8 @@ function main(): void {
 
           // Re-export with updated data
           exportAll(db, sessionId, config.outputDir);
-          if (existsSync(htmlPath)) {
-            w(`  ${green('→')}  ${osc8(`file://${htmlPath}`, bold('topology.html updated'))}\n`);
+          if (existsSync(discoveryPath)) {
+            w(`  ${green('→')}  ${osc8(`file://${discoveryPath}`, bold('discovery.html updated'))}\n`);
           }
           w('\n');
         }
@@ -374,51 +359,6 @@ function main(): void {
       process.stderr.write(`✓ Exported to: ${opts.output}\n`);
 
       db.close();
-    });
-
-  // ── map command ─────────────────────────────────────────────────────────────
-  program
-    .command('map [session-id]')
-    .description('Open the interactive Data Cartography hex map in your browser')
-    .option('-o, --output <dir>', 'Output directory', './datasynx-output')
-    .option('--theme <theme>', 'Theme: light or dark', 'light')
-    .action((sessionId: string | undefined, opts) => {
-      const config = defaultConfig({ outputDir: opts.output });
-      const db = new CartographyDB(config.dbPath);
-
-      const session = sessionId
-        ? db.getSession(sessionId)
-        : db.getLatestSession();
-
-      if (!session) {
-        process.stderr.write('No session found. Run discover first.\n');
-        db.close();
-        process.exitCode = 1;
-        return;
-      }
-
-      const nodes = db.getNodes(session.id);
-      const edges = db.getEdges(session.id);
-      const outDir = resolve(opts.output);
-      mkdirSync(outDir, { recursive: true });
-      const outPath = resolve(outDir, 'cartography-map.html');
-
-      writeFileSync(outPath, exportCartographyMap(nodes, edges, { theme: opts.theme }));
-      db.close();
-
-      const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
-      const fileUrl = `file://${outPath}`;
-      process.stderr.write(`\n  ${green('OK')}  ${osc8(fileUrl, bold('Open cartography-map.html'))}\n`);
-      process.stderr.write(`     ${dim(fileUrl)}\n\n`);
-
-      try {
-        const cmd = process.platform === 'darwin'
-          ? `open "${outPath}"`
-          : process.platform === 'win32'
-            ? `start "" "${outPath}"`
-            : `xdg-open "${outPath}"`;
-        execSync(cmd, { stdio: 'ignore' });
-      } catch { /* user can open manually */ }
     });
 
   program
@@ -674,10 +614,37 @@ ${infraSummary.substring(0, 12000)}`;
       const out = process.stdout.write.bind(process.stdout);
       const b = bold;
       const line = () => out(dim('─'.repeat(60)) + '\n');
+      const platformName = IS_WIN ? 'Windows' : IS_MAC ? 'macOS' : 'Linux';
 
       out('\n');
       out(b('  DATASYNX CARTOGRAPHY') + '  ' + dim('v' + VERSION) + '\n');
       out(dim('  AI-powered Infrastructure Cartography & SOP Generation\n'));
+      out(dim(`  Platform: ${platformName}\n`));
+      out('\n');
+      line();
+
+      // ── PLATFORM SUPPORT
+      out(b(cyan('  CROSS-PLATFORM SUPPORT\n')));
+      out('\n');
+      out(`  ${green('Linux')}     ss, ps, dpkg/snap/flatpak, find, /bin/sh\n`);
+      out(`  ${green('macOS')}     lsof, ps, /Applications, Homebrew, Spotlight, /bin/sh\n`);
+      out(`  ${green('Windows')}   Get-NetTCPConnection, Get-Process, Get-Service, Registry,\n`);
+      out(`            winget, choco, scoop, PowerShell\n`);
+      out('\n');
+      out(dim('  Network scanning:\n'));
+      out(dim('    Linux:   ss -tlnp\n'));
+      out(dim('    macOS:   lsof -iTCP -sTCP:LISTEN -n -P\n'));
+      out(dim('    Windows: Get-NetTCPConnection -State Listen\n'));
+      out('\n');
+      out(dim('  Installed apps:\n'));
+      out(dim('    Linux:   dpkg, rpm, snap, flatpak, .desktop files\n'));
+      out(dim('    macOS:   /Applications, brew list, Spotlight (mdfind)\n'));
+      out(dim('    Windows: winget list, Registry scan, choco, scoop\n'));
+      out('\n');
+      out(dim('  Browser bookmarks & history:\n'));
+      out(dim('    Linux:   ~/.config/google-chrome, Snap/Flatpak variants, ~/.mozilla\n'));
+      out(dim('    macOS:   ~/Library/Application Support/Google/Chrome, ~/Library/.../Firefox\n'));
+      out(dim('    Windows: %LOCALAPPDATA%\\Google\\Chrome\\User Data, %APPDATA%\\Mozilla\n'));
       out('\n');
       line();
 
@@ -686,7 +653,7 @@ ${infraSummary.substring(0, 12000)}`;
       out('\n');
       out(`  ${green('datasynx-cartography discover')}\n`);
       out(`    Scans your local infrastructure (Claude Sonnet).\n`);
-      out(`    Claude autonomously runs ss, ps, curl, docker inspect, kubectl get\n`);
+      out(`    Claude autonomously runs ${IS_WIN ? 'Get-NetTCPConnection, Get-Process' : IS_MAC ? 'lsof, ps' : 'ss, ps'}, curl, docker inspect, kubectl get\n`);
       out(`    and stores everything in SQLite.\n`);
       out('\n');
       out(dim('    Options:\n'));
@@ -705,8 +672,6 @@ ${infraSummary.substring(0, 12000)}`;
       out(dim('        topology.mermaid      Infrastructure topology (graph TB)\n'));
       out(dim('        dependencies.mermaid  Service dependencies (graph LR)\n'));
       out(dim('        discovery.html         Enterprise discovery frontend (Map + Topology)\n'));
-      out(dim('        topology.html         Interactive D3.js force graph\n'));
-      out(dim('        cartography-map.html  Hex grid data cartography map\n'));
       out(dim('        sops/                 Generated SOPs as Markdown\n'));
       out(dim('        workflows/            Workflow flowcharts as Mermaid\n'));
       out('\n');
@@ -737,14 +702,27 @@ ${infraSummary.substring(0, 12000)}`;
       out(b(cyan('  ARCHITECTURE\n')));
       out('\n');
       out(dim('  CLI (Commander)\n'));
-      out(dim('    └── Preflight: Claude CLI check + API key + interval validation\n'));
-      out(dim('        └── Agent Orchestrator (agent.ts)\n'));
-      out(dim('            └── runDiscovery()    → Claude Sonnet + Bash + MCP Tools\n'));
-      out(dim('                └── Custom MCP Tools (tools.ts)\n'));
-      out(dim('                    save_node, save_edge,\n'));
-      out(dim('                    scan_bookmarks, scan_browser_history,\n'));
-      out(dim('                    scan_installed_apps, scan_local_databases\n'));
-      out(dim('                    └── CartographyDB (SQLite WAL)\n'));
+      out(dim('    └── Preflight: Claude CLI check + API key\n'));
+      out(dim('        └── Platform Detection (platform.ts)\n'));
+      out(dim('            └── Shell: /bin/sh (Unix) | PowerShell (Windows)\n'));
+      out(dim('            └── Agent Orchestrator (agent.ts)\n'));
+      out(dim('                └── runDiscovery() → Claude Sonnet + Bash + MCP Tools\n'));
+      out(dim('                    └── Custom MCP Tools (tools.ts)\n'));
+      out(dim('                        save_node, save_edge,\n'));
+      out(dim('                        scan_bookmarks, scan_browser_history,\n'));
+      out(dim('                        scan_installed_apps, scan_local_databases\n'));
+      out(dim('                        scan_k8s, scan_aws, scan_gcp, scan_azure\n'));
+      out(dim('                        └── CartographyDB (SQLite WAL)\n'));
+      out('\n');
+      line();
+
+      // ── SAFETY
+      out(b(cyan('  SAFETY\n')));
+      out('\n');
+      out(dim('  PreToolUse hook blocks ALL destructive commands:\n'));
+      out(dim('    Unix:       rm, mv, dd, chmod, kill, docker rm/run, kubectl delete, >\n'));
+      out(dim('    PowerShell: Remove-Item, Stop-Process, Stop-Service, Out-File, etc.\n'));
+      out(dim('  Claude only reads — never writes, never deletes.\n'));
       out('\n');
       line();
 
@@ -756,7 +734,11 @@ ${infraSummary.substring(0, 12000)}`;
       out('  claude login\n');
       out('\n');
       out(dim('  # 2. API Key (if not using claude login)\n'));
-      out('  export ANTHROPIC_API_KEY=sk-ant-...\n');
+      if (IS_WIN) {
+        out('  $env:ANTHROPIC_API_KEY="sk-ant-..."\n');
+      } else {
+        out('  export ANTHROPIC_API_KEY=sk-ant-...\n');
+      }
       out('\n');
       out(dim('  # 3. Go\n'));
       out('  datasynx-cartography discover\n');
@@ -1036,14 +1018,21 @@ ${infraSummary.substring(0, 12000)}`;
         }
       }
 
-      // 6. Local discovery tools
-      const localTools: Array<[string, string]> = [
-        ['docker', 'docker --version'],
-        ['ss',     'ss --version'],
+      // 6. Local discovery tools (platform-aware)
+      const localTools: Array<[string, string, string]> = [
+        ['docker', 'docker --version', 'all'],
       ];
+      // Network scanning tool varies by platform
+      if (IS_WIN) {
+        localTools.push(['PowerShell (Get-NetTCPConnection)', 'powershell -Command "Get-NetTCPConnection -State Listen | Select-Object -First 1"', 'win32']);
+      } else if (IS_MAC) {
+        localTools.push(['lsof', 'lsof -v 2>&1 | head -1', 'darwin']);
+      } else {
+        localTools.push(['ss', 'ss --version', 'linux']);
+      }
       for (const [name, cmd] of localTools) {
         try {
-          execSync(cmd, { stdio: 'pipe' });
+          execSync(cmd, { stdio: 'pipe', timeout: 10_000 });
           ok(`${name}  ${dim('(discovery tool)')}`);
         } catch {
           warn(`${name} not found  ${dim('— discovery without ' + name + ' will be limited')}`);

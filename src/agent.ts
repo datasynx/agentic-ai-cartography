@@ -2,6 +2,7 @@ import type { CartographyDB } from './db.js';
 import { createCartographyTools } from './tools.js';
 import { safetyHook } from './safety.js';
 import type { CartographyConfig } from './types.js';
+import { IS_WIN, IS_MAC, PLATFORM } from './platform.js';
 
 // ── Discovery Event Types ────────────────────────────────────────────────────
 
@@ -31,7 +32,22 @@ export async function runDiscovery(
     ? `\n⚡ USER HINT (HIGH PRIORITY): The user wants to find these specific tools: "${hint}"\n  → Run scan_installed_apps(searchHint: "${hint}") IMMEDIATELY and save found tools as saas_tool nodes!\n`
     : '';
 
+  // Platform-specific instructions for the agent
+  const platformName = IS_WIN ? 'Windows' : IS_MAC ? 'macOS' : 'Linux';
+  const networkScanCmd = IS_WIN
+    ? 'Get-NetTCPConnection -State Listen (PowerShell) → identify all listening ports/processes'
+    : IS_MAC
+      ? 'lsof -iTCP -sTCP:LISTEN -n -P && ps aux → identify all listening ports/processes'
+      : 'ss -tlnp && ps aux → identify all listening ports/processes';
+  const readOnlyTools = IS_WIN
+    ? 'Get-NetTCPConnection, Get-Process, Get-Service, Get-ChildItem, curl, docker inspect, kubectl get'
+    : IS_MAC
+      ? 'lsof, ps, cat, head, curl -s, docker inspect, kubectl get'
+      : 'ss, ps, cat, head, curl -s, docker inspect, kubectl get';
+  const processCmd = IS_WIN ? 'Get-Process' : 'ps aux';
+
   const systemPrompt = `You are an infrastructure discovery agent. Map the complete system landscape — local services, SaaS tools, AND all installed apps/tools of the user.
+PLATFORM: ${platformName} (${PLATFORM})
 ${hintSection}
 ━━ MANDATORY SEQUENCE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 1 — Browser Bookmarks (ALWAYS FIRST):
@@ -62,7 +78,8 @@ STEP 4 — Local Databases & Infrastructure:
   • MongoDB running → save_node as database_server
   • Redis running → save_node as cache_server
   • SQLite files in app directories → save_node as database if clearly a business app DB
-  Then run: ss -tlnp && ps aux → identify all listening ports/processes
+  Then run: ${networkScanCmd}
+  Also run: ${processCmd} → identify running services
   Deepen each service: DB→schemas, API→endpoints, Queue→topics
 
 STEP 5 — Cloud & Kubernetes (if CLI available):
@@ -99,8 +116,20 @@ PORT MAPPING: 5432=postgres, 3306=mysql, 27017=mongodb, 6379=redis,
 9092=kafka, 5672=rabbitmq, 80/443/8080/3000=web_service,
 9090=prometheus, 8500=consul, 8200=vault, 2379=etcd
 
+PLATFORM-SPECIFIC NOTES (${platformName}):
+${IS_WIN ? `• Use PowerShell commands: Get-NetTCPConnection, Get-Process, Get-Service, Get-ChildItem
+• Do NOT use Unix commands (ss, ps aux, find, which, head, grep) — they won't work on Windows
+• Use $env:LOCALAPPDATA, $env:APPDATA for app data paths
+• Registry scan for installed programs is handled by scan_installed_apps` : IS_MAC ? `• Use lsof -iTCP -sTCP:LISTEN -n -P for port scanning (ss is NOT available on macOS)
+• Use ps aux for process listing
+• Applications are in /Applications and ~/Applications
+• Homebrew (brew) for package management` : `• Use ss -tlnp for port scanning
+• Use ps aux for process listing
+• Check dpkg, snap, flatpak for installed packages
+• Check Snap/Flatpak browser variants for bookmarks`}
+
 RULES:
-• Read-only only (ss, ps, cat, head, curl -s, docker inspect, kubectl get)
+• Read-only only (${readOnlyTools})
 • Node IDs: "type:host:port" or "type:name" — no paths, no credentials
 • saas_tool IDs: "saas_tool:github.com", "saas_tool:vscode", "saas_tool:cursor"
 • Installed-app IDs: "saas_tool:<appname>" e.g. "saas_tool:slack", "saas_tool:docker-desktop"

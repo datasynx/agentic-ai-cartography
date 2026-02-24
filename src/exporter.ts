@@ -1797,8 +1797,9 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
   width:40px;height:40px;border-radius:10px;border:1px solid var(--border);
   background:var(--bg-surface);box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;
   display:flex;align-items:center;justify-content:center;font-size:18px;
-  transition:all .15s;color:var(--text);
+  transition:all .15s;color:var(--text);font-family:-apple-system,sans-serif;
 }
+#btn-all-labels{font-size:14px;font-weight:700;letter-spacing:-.02em}
 .tb-tool:hover{border-color:var(--text-muted)}
 .tb-tool.active{background:var(--accent-dim);border-color:var(--accent)}
 .map-zoom{display:flex;align-items:center;gap:6px}
@@ -1970,6 +1971,7 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
   </div>
   <div id="map-tb-left">
     <button class="tb-tool active" id="btn-labels" title="Toggle labels">&#127991;</button>
+    <button class="tb-tool" id="btn-all-labels" title="Show all hex labels">Aa</button>
     <button class="tb-tool" id="btn-quality" title="Quality layer">&#128065;</button>
     <button class="tb-tool" id="btn-connect" title="Connection tool">&#128279;</button>
   </div>
@@ -2066,7 +2068,7 @@ var mapCtx = mapCanvas.getContext('2d');
 var mapWrap = document.getElementById('map-wrap');
 var mW = 0, mH = 0;
 var mvx = 0, mvy = 0, mScale = 1;
-var mDetailLevel = 2, mShowLabels = true, mShowQuality = false;
+var mDetailLevel = 2, mShowLabels = true, mShowQuality = false, mShowAllLabels = false;
 var mConnectMode = false, mConnectFirst = null;
 var mHoveredId = null, mSelectedId = null;
 var mSearchQuery = '';
@@ -2211,8 +2213,8 @@ function drawMap() {
         mapCtx.fillStyle = asset.qualityScore < 40 ? '#ef4444' : '#f97316'; mapCtx.fill();
       }
 
-      var showAssetLabel = mShowLabels && !clusterDim && ((mDetailLevel >= 4) || (mDetailLevel === 3 && mScale >= 0.8));
-      if (showAssetLabel && size > 14) {
+      var showAssetLabel = mShowLabels && !clusterDim && (mShowAllLabels || (mDetailLevel >= 4) || (mDetailLevel === 3 && mScale >= 0.8));
+      if (showAssetLabel && size > 6) {
         var label = asset.name.length > 12 ? asset.name.substring(0, 11) + '...' : asset.name;
         mapCtx.save();
         mapCtx.font = Math.max(8, Math.min(11, size * 0.38)) + 'px -apple-system,sans-serif';
@@ -2363,6 +2365,11 @@ document.getElementById('md-close').addEventListener('click', function() {
 // ── Map toolbar ──────────────────────────────────────────────────────────────
 document.getElementById('btn-labels').addEventListener('click', function() {
   mShowLabels = !mShowLabels; this.classList.toggle('active', mShowLabels); drawMap();
+});
+document.getElementById('btn-all-labels').addEventListener('click', function() {
+  mShowAllLabels = !mShowAllLabels; this.classList.toggle('active', mShowAllLabels);
+  if (mShowAllLabels && !mShowLabels) { mShowLabels = true; document.getElementById('btn-labels').classList.add('active'); }
+  drawMap();
 });
 document.getElementById('btn-quality').addEventListener('click', function() {
   mShowQuality = !mShowQuality; this.classList.toggle('active', mShowQuality); drawMap();
@@ -2719,6 +2726,33 @@ buildTopoList();
 </html>`;
 }
 
+// ── JGF Export ────────────────────────────────────────────────────────────────
+
+export function exportJGF(nodes: NodeRow[], edges: EdgeRow[]): string {
+  const jgf = {
+    graph: {
+      directed: true,
+      type: 'cartography',
+      label: 'Infrastructure Map',
+      metadata: { exportedAt: new Date().toISOString() },
+      nodes: Object.fromEntries(nodes.map(n => [n.id, {
+        label: n.name,
+        metadata: {
+          type: n.type, layer: nodeLayer(n.type),
+          confidence: n.confidence, discoveredVia: n.discoveredVia,
+          discoveredAt: n.discoveredAt, tags: n.tags, metadata: n.metadata,
+        },
+      }])),
+      edges: edges.map(e => ({
+        source: e.sourceId, target: e.targetId,
+        relation: e.relationship,
+        metadata: { confidence: e.confidence, evidence: e.evidence },
+      })),
+    },
+  };
+  return JSON.stringify(jgf, null, 2);
+}
+
 // ── exportAll ─────────────────────────────────────────────────────────────────
 
 export function exportAll(
@@ -2733,6 +2767,11 @@ export function exportAll(
 
   const nodes = db.getNodes(sessionId);
   const edges = db.getEdges(sessionId);
+
+  // Always export JGF to well-known path (overwritten each run)
+  const jgfPath = join(outputDir, 'cartography-graph.jgf.json');
+  writeFileSync(jgfPath, exportJGF(nodes, edges));
+  process.stderr.write('✓ cartography-graph.jgf.json\n');
 
   if (formats.includes('mermaid')) {
     writeFileSync(join(outputDir, 'topology.mermaid'), generateTopologyMermaid(nodes, edges));
@@ -2750,17 +2789,7 @@ export function exportAll(
     process.stderr.write('✓ catalog-info.yaml\n');
   }
 
-  if (formats.includes('html')) {
-    writeFileSync(join(outputDir, 'topology.html'), exportHTML(nodes, edges));
-    process.stderr.write('✓ topology.html\n');
-  }
-
-  if (formats.includes('map')) {
-    writeFileSync(join(outputDir, 'cartography-map.html'), exportCartographyMap(nodes, edges));
-    process.stderr.write('✓ cartography-map.html\n');
-  }
-
-  if (formats.includes('discovery')) {
+  if (formats.includes('html') || formats.includes('map') || formats.includes('discovery')) {
     writeFileSync(join(outputDir, 'discovery.html'), exportDiscoveryApp(nodes, edges));
     process.stderr.write('✓ discovery.html\n');
   }
