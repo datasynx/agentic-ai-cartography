@@ -253,3 +253,9 @@ await runDiscovery(config, db, sessionId, onEvent, onAskUser, 'hubspot windsurf'
 ## License
 
 MIT — © [Datasynx AI](https://www.linkedin.com/company/datasynx-ai/)
+
+---
+
+## Related Projects
+
+- [**agentic-ai-shadowing**](https://github.com/datasynx/agentic-ai-shadowing) — AI-powered agent session shadowing & replay

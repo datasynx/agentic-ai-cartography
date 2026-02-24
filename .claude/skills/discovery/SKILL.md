@@ -1,20 +1,20 @@
 # Discovery Skill
 
-Depth-First Infrastruktur-Crawling via Claude Agent SDK.
+Depth-First Infrastructure Crawling via Claude Agent SDK.
 
-## Strategie
+## Strategy
 
-1. `ss -tlnp` + `ps aux` → Überblick über lauschende Ports + laufende Prozesse
-2. Jeden Service tiefer erkunden:
-   - Datenbanken → Tabellen/Collections auflisten
-   - Web-Services → Endpoints via Logs/Config erkunden
-   - Queues → Topics/Bindings auflisten
-3. `save_node` + `save_edge` für jeden Fund
-4. `get_catalog` vor dem Speichern → keine Duplikate
-5. Config-Files folgen: `.env`, `docker-compose.yml`, `application.yml`
-6. Backtrack wenn Spur erschöpft
+1. `ss -tlnp` + `ps aux` → Overview of listening ports + running processes
+2. Explore each service deeper:
+   - Databases → list tables/collections
+   - Web services → explore endpoints via logs/config
+   - Queues → list topics/bindings
+3. `save_node` + `save_edge` for each finding
+4. `get_catalog` before saving → no duplicates
+5. Follow config files: `.env`, `docker-compose.yml`, `application.yml`
+6. Backtrack when trail is exhausted
 
-## Port-Mapping
+## Port Mapping
 
 | Port | Service |
 |------|---------|
@@ -30,10 +30,10 @@ Depth-First Infrastruktur-Crawling via Claude Agent SDK.
 | 8200 | vault |
 | 2379 | etcd |
 
-## Regeln
+## Rules
 
-- NUR read-only Commands: `ss`, `ps`, `cat`, `head`, `curl -s`, `docker inspect`, `kubectl get`
-- Targets NUR Host:Port — KEINE URLs, Pfade, Credentials
-- Node IDs: `{type}:{host}:{port}` oder `{type}:{name}`
-- Confidence: 0.9 direkt beobachtet, 0.7 aus Config, 0.5 Vermutung
-- KEINE Credentials speichern
+- ONLY read-only commands: `ss`, `ps`, `cat`, `head`, `curl -s`, `docker inspect`, `kubectl get`
+- Targets ONLY Host:Port — NO URLs, paths, credentials
+- Node IDs: `{type}:{host}:{port}` or `{type}:{name}`
+- Confidence: 0.9 directly observed, 0.7 from config, 0.5 inferred
+- NO credentials stored

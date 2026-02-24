@@ -1,5 +1,5 @@
 /**
- * Node-zu-Asset Mapping.
+ * Node-to-Asset Mapping.
  * Converts existing DiscoveryNode/Edge data into the CartographyMap data model.
  */
 

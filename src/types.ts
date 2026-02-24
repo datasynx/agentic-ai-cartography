@@ -20,7 +20,7 @@ export type EdgeRelationship = typeof EDGE_RELATIONSHIPS[number];
 // ── Zod Schemas ──────────────────────────
 
 export const NodeSchema = z.object({
-  id: z.string().describe('Format: "{type}:{host}:{port}" oder "{type}:{name}"'),
+  id: z.string().describe('Format: "{type}:{host}:{port}" or "{type}:{name}"'),
   type: z.enum(NODE_TYPES),
   name: z.string(),
   discoveredVia: z.string(),

@@ -48,7 +48,7 @@ describe('checkPrerequisites', () => {
     mockExistsSync.mockReturnValue(false);
     checkPrerequisites();
     const output = stderrSpy.mock.calls.map(c => c[0]).join('');
-    expect(output).toContain('Keine Authentifizierung');
+    expect(output).toContain('No authentication found');
   });
 
   it('succeeds with OAuth login (no API key)', () => {
@@ -59,7 +59,7 @@ describe('checkPrerequisites', () => {
     }));
     checkPrerequisites();
     const output = stderrSpy.mock.calls.map(c => c[0]).join('');
-    expect(output).toContain('Eingeloggt via claude login');
+    expect(output).toContain('Logged in via claude login');
   });
 
   it('handles malformed credentials file gracefully', () => {
@@ -69,7 +69,7 @@ describe('checkPrerequisites', () => {
     // No API key either — should warn about missing auth
     checkPrerequisites();
     const output = stderrSpy.mock.calls.map(c => c[0]).join('');
-    expect(output).toContain('Keine Authentifizierung');
+    expect(output).toContain('No authentication found');
   });
 
   it('handles empty accessToken', () => {
@@ -80,7 +80,7 @@ describe('checkPrerequisites', () => {
     }));
     checkPrerequisites();
     const output = stderrSpy.mock.calls.map(c => c[0]).join('');
-    expect(output).toContain('Keine Authentifizierung');
+    expect(output).toContain('No authentication found');
   });
 
   it('handles missing claudeAiOauth field', () => {
@@ -89,6 +89,6 @@ describe('checkPrerequisites', () => {
     mockReadFileSync.mockReturnValue(JSON.stringify({ someOtherField: true }));
     checkPrerequisites();
     const output = stderrSpy.mock.calls.map(c => c[0]).join('');
-    expect(output).toContain('Keine Authentifizierung');
+    expect(output).toContain('No authentication found');
   });
 });
