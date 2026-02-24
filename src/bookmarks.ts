@@ -1,6 +1,7 @@
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { existsSync, readFileSync, readdirSync, copyFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { HOME, IS_WIN, IS_MAC, browserBasePaths, firefoxBaseDirs } from './platform.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -151,9 +152,9 @@ async function readChromiumHistory(historyPath: string, source: string): Promise
 }
 
 // ── Platform paths ────────────────────────────────────────────────────────────
+// Uses centralized platform.ts for Linux/macOS/Windows browser base paths.
 
-const HOME = homedir();
-const IS_MAC = process.platform === 'darwin';
+const IS_LINUX = !IS_MAC && !IS_WIN;
 
 // Browser bookmark file paths (multiple profiles supported)
 function chromeLikePaths(base: string): string[] {
@@ -191,44 +192,25 @@ function chromeLikeHistoryPaths(base: string): string[] {
   return paths;
 }
 
-const CHROME_BASE = IS_MAC
-  ? `${HOME}/Library/Application Support/Google/Chrome`
-  : `${HOME}/.config/google-chrome`;
+// Get browser bases from centralized platform module
+const BROWSER_BASES = browserBasePaths();
 
-const CHROMIUM_BASE = IS_MAC
-  ? `${HOME}/Library/Application Support/Chromium`
-  : `${HOME}/.config/chromium`;
+const CHROME_BASE = BROWSER_BASES.chrome;
+const CHROMIUM_BASE = BROWSER_BASES.chromium;
+const EDGE_BASE = BROWSER_BASES.edge;
+const BRAVE_BASE = BROWSER_BASES.brave;
+const VIVALDI_BASE = BROWSER_BASES.vivaldi;
+const OPERA_BASE = BROWSER_BASES.opera;
 
 // Snap / Flatpak variants (Linux only)
-const CHROMIUM_SNAP_BASE = `${HOME}/snap/chromium/common/chromium`;
-const CHROMIUM_FLATPAK_BASE = `${HOME}/.var/app/org.chromium.Chromium/config/chromium`;
-const CHROME_FLATPAK_BASE = `${HOME}/.var/app/com.google.Chrome/config/google-chrome`;
-const BRAVE_FLATPAK_BASE = `${HOME}/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser`;
-const EDGE_FLATPAK_BASE = `${HOME}/.var/app/com.microsoft.Edge/config/microsoft-edge`;
-const FIREFOX_SNAP_BASE = `${HOME}/snap/firefox/common/.mozilla/firefox`;
-const FIREFOX_FLATPAK_BASE = `${HOME}/.var/app/org.mozilla.firefox/.mozilla/firefox`;
-
-const EDGE_BASE = IS_MAC
-  ? `${HOME}/Library/Application Support/Microsoft Edge`
-  : `${HOME}/.config/microsoft-edge`;
-
-const BRAVE_BASE = IS_MAC
-  ? `${HOME}/Library/Application Support/BraveSoftware/Brave-Browser`
-  : `${HOME}/.config/BraveSoftware/Brave-Browser`;
-
-const VIVALDI_BASE = IS_MAC
-  ? `${HOME}/Library/Application Support/Vivaldi`
-  : `${HOME}/.config/vivaldi`;
-
-const OPERA_BASE = IS_MAC
-  ? `${HOME}/Library/Application Support/com.operasoftware.Opera`
-  : `${HOME}/.config/opera`;
+const CHROMIUM_SNAP_BASE = join(HOME, 'snap', 'chromium', 'common', 'chromium');
+const CHROMIUM_FLATPAK_BASE = join(HOME, '.var', 'app', 'org.chromium.Chromium', 'config', 'chromium');
+const CHROME_FLATPAK_BASE = join(HOME, '.var', 'app', 'com.google.Chrome', 'config', 'google-chrome');
+const BRAVE_FLATPAK_BASE = join(HOME, '.var', 'app', 'com.brave.Browser', 'config', 'BraveSoftware', 'Brave-Browser');
+const EDGE_FLATPAK_BASE = join(HOME, '.var', 'app', 'com.microsoft.Edge', 'config', 'microsoft-edge');
 
 function firefoxProfileDirs(): string[] {
-  const bases = IS_MAC
-    ? [`${HOME}/Library/Application Support/Firefox/Profiles`]
-    : [`${HOME}/.mozilla/firefox`, FIREFOX_SNAP_BASE, FIREFOX_FLATPAK_BASE];
-
+  const bases = firefoxBaseDirs();
   const dirs: string[] = [];
   for (const base of bases) {
     if (!existsSync(base)) continue;
@@ -259,8 +241,8 @@ export async function scanAllBookmarks(): Promise<BookmarkHost[]> {
   for (const p of chromeLikePaths(VIVALDI_BASE))  all.push(...readChromeLike(p, 'vivaldi'));
   for (const p of chromeLikePaths(OPERA_BASE))    all.push(...readChromeLike(p, 'opera'));
 
-  // Snap / Flatpak paths (Linux)
-  if (!IS_MAC) {
+  // Snap / Flatpak paths (Linux only — not macOS, not Windows)
+  if (IS_LINUX) {
     for (const p of chromeLikePaths(CHROMIUM_SNAP_BASE))    all.push(...readChromeLike(p, 'chromium-snap'));
     for (const p of chromeLikePaths(CHROMIUM_FLATPAK_BASE)) all.push(...readChromeLike(p, 'chromium-flatpak'));
     for (const p of chromeLikePaths(CHROME_FLATPAK_BASE))   all.push(...readChromeLike(p, 'chrome-flatpak'));
@@ -293,8 +275,8 @@ export async function scanAllHistory(): Promise<HistoryHost[]> {
   for (const p of chromeLikeHistoryPaths(VIVALDI_BASE))  all.push(...await readChromiumHistory(p, 'vivaldi'));
   for (const p of chromeLikeHistoryPaths(OPERA_BASE))    all.push(...await readChromiumHistory(p, 'opera'));
 
-  // Snap / Flatpak paths (Linux)
-  if (!IS_MAC) {
+  // Snap / Flatpak paths (Linux only — not macOS, not Windows)
+  if (IS_LINUX) {
     for (const p of chromeLikeHistoryPaths(CHROMIUM_SNAP_BASE))    all.push(...await readChromiumHistory(p, 'chromium-snap'));
     for (const p of chromeLikeHistoryPaths(CHROMIUM_FLATPAK_BASE)) all.push(...await readChromiumHistory(p, 'chromium-flatpak'));
     for (const p of chromeLikeHistoryPaths(CHROME_FLATPAK_BASE))   all.push(...await readChromiumHistory(p, 'chrome-flatpak'));

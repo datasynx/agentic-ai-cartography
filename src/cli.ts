@@ -8,6 +8,7 @@ import { exportAll } from './exporter.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
+import { IS_WIN, IS_MAC, PLATFORM, commandExists, fileUrl } from './platform.js';
 
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
@@ -272,7 +273,7 @@ function main(): void {
 
       w('\n');
       if (existsSync(discoveryPath)) {
-        w(`  ${green('→')}  ${osc8(`file://${discoveryPath}`, bold('Open discovery.html'))}  ${dim('← Map + Topology')}\n`);
+        w(`  ${green('→')}  ${osc8(fileUrl(discoveryPath), bold('Open discovery.html'))}  ${dim('← Map + Topology')}\n`);
       }
       w('\n');
 
@@ -625,7 +626,7 @@ ${infraSummary.substring(0, 12000)}`;
       out('\n');
       out(`  ${green('datasynx-cartography discover')}\n`);
       out(`    Scans your local infrastructure (Claude Sonnet).\n`);
-      out(`    Claude autonomously runs ss, ps, curl, docker inspect, kubectl get\n`);
+      out(`    Claude autonomously runs ${IS_WIN ? 'Get-NetTCPConnection, Get-Process' : IS_MAC ? 'lsof, ps' : 'ss, ps'}, curl, docker inspect, kubectl get\n`);
       out(`    and stores everything in SQLite.\n`);
       out('\n');
       out(dim('    Options:\n'));
@@ -973,14 +974,21 @@ ${infraSummary.substring(0, 12000)}`;
         }
       }
 
-      // 6. Local discovery tools
-      const localTools: Array<[string, string]> = [
-        ['docker', 'docker --version'],
-        ['ss',     'ss --version'],
+      // 6. Local discovery tools (platform-aware)
+      const localTools: Array<[string, string, string]> = [
+        ['docker', 'docker --version', 'all'],
       ];
+      // Network scanning tool varies by platform
+      if (IS_WIN) {
+        localTools.push(['PowerShell (Get-NetTCPConnection)', 'powershell -Command "Get-NetTCPConnection -State Listen | Select-Object -First 1"', 'win32']);
+      } else if (IS_MAC) {
+        localTools.push(['lsof', 'lsof -v 2>&1 | head -1', 'darwin']);
+      } else {
+        localTools.push(['ss', 'ss --version', 'linux']);
+      }
       for (const [name, cmd] of localTools) {
         try {
-          execSync(cmd, { stdio: 'pipe' });
+          execSync(cmd, { stdio: 'pipe', timeout: 10_000 });
           ok(`${name}  ${dim('(discovery tool)')}`);
         } catch {
           warn(`${name} not found  ${dim('— discovery without ' + name + ' will be limited')}`);
