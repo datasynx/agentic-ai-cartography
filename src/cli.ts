@@ -26,7 +26,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.2.3';
+  const VERSION = '0.7.0';
 
   program
     .name(CMD)
