@@ -437,7 +437,7 @@ function main(): void {
   program
     .command('overview')
     .description('Overview of all cartography sessions + SOPs')
-    .option('--db <path>', 'DB-Pfad')
+    .option('--db <path>', 'DB path')
     .action((opts) => {
       const config = defaultConfig();
       const db = new CartographyDB((opts as { db?: string }).db ?? config.dbPath);
@@ -507,7 +507,7 @@ function main(): void {
   program
     .command('chat [session-id]')
     .description('Interactive chat about your mapped infrastructure')
-    .option('--db <path>', 'DB-Pfad')
+    .option('--db <path>', 'DB path')
     .option('--model <m>', 'Model', 'claude-sonnet-4-5-20250929')
     .action(async (sessionIdArg: string | undefined, opts) => {
       const config = defaultConfig();
@@ -963,7 +963,7 @@ ${infraSummary.substring(0, 12000)}`;
       if ((major ?? 0) >= 18) {
         ok(`Node.js ${nodeVer}`);
       } else {
-        err(`Node.js ${nodeVer} — benötigt >=18`);
+        err(`Node.js ${nodeVer} — requires >=18`);
         allGood = false;
       }
 
@@ -1078,7 +1078,7 @@ ${infraSummary.substring(0, 12000)}`;
   o(_d('  Built on Claude Agent SDK\n'));
   o('\n');
 
-  // ── Welcome Screen (no args → Befehlsübersicht) ─────────────────────────
+  // ── Welcome Screen (no args → command overview) ─────────────────────────
 
   if (process.argv.length <= 2) {
     o(_d('  ────────────────────────────────────────────────\n'));

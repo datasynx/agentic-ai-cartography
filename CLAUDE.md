@@ -1,7 +1,7 @@
 # Cartograph
 
 AI-powered Infrastructure Cartography & SOP Generation.
-Gebaut auf Claude Agent SDK — Claude IST der Agent.
+Built on Claude Agent SDK — Claude IS the agent.
 
 ## Tech Stack
 
@@ -11,8 +11,8 @@ Build: tsup | Test: vitest | Dev: tsx
 
 ## Coding Rules
 
-Named exports, 2-Space, kein `any`, ISO 8601 UTC, IDs: "{type}:{id}"
-Terminal auf stderr, process.exitCode statt exit(), .js Extensions
+Named exports, 2-Space, no `any`, ISO 8601 UTC, IDs: "{type}:{id}"
+Terminal to stderr, process.exitCode instead of exit(), .js Extensions
 
 ## Commands
 

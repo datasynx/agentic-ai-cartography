@@ -1,36 +1,36 @@
 # SOP Generation Skill
 
-Standard Operating Procedures aus beobachteten Workflows generieren.
+Generate Standard Operating Procedures from observed workflows.
 
-## Prozess
+## Process
 
-1. Abgeschlossene Tasks aus DB laden
-2. Tasks nach ähnlichen `involvedServices` + `steps` clustern
-3. Pro Cluster: Anthropic Messages API (kein Agent-Loop)
+1. Load completed tasks from DB
+2. Cluster tasks by similar `involvedServices` + `steps`
+3. Per cluster: Anthropic Messages API (no agent loop)
 4. Response → `db.insertSOP()`
 
-## SOP-Format
+## SOP Format
 
 ```markdown
-# <Titel>
-**Beschreibung:** <Was und warum>
-**Systeme:** <system1, system2, ...>
-**Dauer:** ~<N> Minuten
-**Häufigkeit:** <Xmal täglich/wöchentlich>
+# <Title>
+**Description:** <What and why>
+**Systems:** <system1, system2, ...>
+**Duration:** ~<N> minutes
+**Frequency:** <X times daily/weekly>
 **Confidence:** <0.0–1.0>
 
-## Schritte
+## Steps
 1. **<tool>** → `<target>`
    `<command>`
-   _<Erwartetes Ergebnis>_
+   _<Expected result>_
 
-## Variationen
-- <Szenario> → <Handlungsoption>
+## Variations
+- <Scenario> → <Action option>
 ```
 
-## Qualitätskriterien
+## Quality Criteria
 
-- Jeder Schritt hat ein klares Ziel und ein erwartetes Ergebnis
-- Variationen decken häufige Fehlerfälle ab
-- Keine Credentials oder sensitive Daten
-- Confidence ≥ 0.7 für produktionsreife SOPs
+- Each step has a clear goal and an expected result
+- Variations cover common failure cases
+- No credentials or sensitive data
+- Confidence >= 0.7 for production-ready SOPs
