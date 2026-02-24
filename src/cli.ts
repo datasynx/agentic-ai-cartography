@@ -614,10 +614,37 @@ ${infraSummary.substring(0, 12000)}`;
       const out = process.stdout.write.bind(process.stdout);
       const b = bold;
       const line = () => out(dim('─'.repeat(60)) + '\n');
+      const platformName = IS_WIN ? 'Windows' : IS_MAC ? 'macOS' : 'Linux';
 
       out('\n');
       out(b('  DATASYNX CARTOGRAPHY') + '  ' + dim('v' + VERSION) + '\n');
       out(dim('  AI-powered Infrastructure Cartography & SOP Generation\n'));
+      out(dim(`  Platform: ${platformName}\n`));
+      out('\n');
+      line();
+
+      // ── PLATFORM SUPPORT
+      out(b(cyan('  CROSS-PLATFORM SUPPORT\n')));
+      out('\n');
+      out(`  ${green('Linux')}     ss, ps, dpkg/snap/flatpak, find, /bin/sh\n`);
+      out(`  ${green('macOS')}     lsof, ps, /Applications, Homebrew, Spotlight, /bin/sh\n`);
+      out(`  ${green('Windows')}   Get-NetTCPConnection, Get-Process, Get-Service, Registry,\n`);
+      out(`            winget, choco, scoop, PowerShell\n`);
+      out('\n');
+      out(dim('  Network scanning:\n'));
+      out(dim('    Linux:   ss -tlnp\n'));
+      out(dim('    macOS:   lsof -iTCP -sTCP:LISTEN -n -P\n'));
+      out(dim('    Windows: Get-NetTCPConnection -State Listen\n'));
+      out('\n');
+      out(dim('  Installed apps:\n'));
+      out(dim('    Linux:   dpkg, rpm, snap, flatpak, .desktop files\n'));
+      out(dim('    macOS:   /Applications, brew list, Spotlight (mdfind)\n'));
+      out(dim('    Windows: winget list, Registry scan, choco, scoop\n'));
+      out('\n');
+      out(dim('  Browser bookmarks & history:\n'));
+      out(dim('    Linux:   ~/.config/google-chrome, Snap/Flatpak variants, ~/.mozilla\n'));
+      out(dim('    macOS:   ~/Library/Application Support/Google/Chrome, ~/Library/.../Firefox\n'));
+      out(dim('    Windows: %LOCALAPPDATA%\\Google\\Chrome\\User Data, %APPDATA%\\Mozilla\n'));
       out('\n');
       line();
 
@@ -675,14 +702,27 @@ ${infraSummary.substring(0, 12000)}`;
       out(b(cyan('  ARCHITECTURE\n')));
       out('\n');
       out(dim('  CLI (Commander)\n'));
-      out(dim('    └── Preflight: Claude CLI check + API key + interval validation\n'));
-      out(dim('        └── Agent Orchestrator (agent.ts)\n'));
-      out(dim('            └── runDiscovery()    → Claude Sonnet + Bash + MCP Tools\n'));
-      out(dim('                └── Custom MCP Tools (tools.ts)\n'));
-      out(dim('                    save_node, save_edge,\n'));
-      out(dim('                    scan_bookmarks, scan_browser_history,\n'));
-      out(dim('                    scan_installed_apps, scan_local_databases\n'));
-      out(dim('                    └── CartographyDB (SQLite WAL)\n'));
+      out(dim('    └── Preflight: Claude CLI check + API key\n'));
+      out(dim('        └── Platform Detection (platform.ts)\n'));
+      out(dim('            └── Shell: /bin/sh (Unix) | PowerShell (Windows)\n'));
+      out(dim('            └── Agent Orchestrator (agent.ts)\n'));
+      out(dim('                └── runDiscovery() → Claude Sonnet + Bash + MCP Tools\n'));
+      out(dim('                    └── Custom MCP Tools (tools.ts)\n'));
+      out(dim('                        save_node, save_edge,\n'));
+      out(dim('                        scan_bookmarks, scan_browser_history,\n'));
+      out(dim('                        scan_installed_apps, scan_local_databases\n'));
+      out(dim('                        scan_k8s, scan_aws, scan_gcp, scan_azure\n'));
+      out(dim('                        └── CartographyDB (SQLite WAL)\n'));
+      out('\n');
+      line();
+
+      // ── SAFETY
+      out(b(cyan('  SAFETY\n')));
+      out('\n');
+      out(dim('  PreToolUse hook blocks ALL destructive commands:\n'));
+      out(dim('    Unix:       rm, mv, dd, chmod, kill, docker rm/run, kubectl delete, >\n'));
+      out(dim('    PowerShell: Remove-Item, Stop-Process, Stop-Service, Out-File, etc.\n'));
+      out(dim('  Claude only reads — never writes, never deletes.\n'));
       out('\n');
       line();
 
@@ -694,7 +734,11 @@ ${infraSummary.substring(0, 12000)}`;
       out('  claude login\n');
       out('\n');
       out(dim('  # 2. API Key (if not using claude login)\n'));
-      out('  export ANTHROPIC_API_KEY=sk-ant-...\n');
+      if (IS_WIN) {
+        out('  $env:ANTHROPIC_API_KEY="sk-ant-..."\n');
+      } else {
+        out('  export ANTHROPIC_API_KEY=sk-ant-...\n');
+      }
       out('\n');
       out(dim('  # 3. Go\n'));
       out('  datasynx-cartography discover\n');
