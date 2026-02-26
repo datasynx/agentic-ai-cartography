@@ -25,7 +25,7 @@ export const NodeSchema = z.object({
   name: z.string(),
   discoveredVia: z.string(),
   confidence: z.number().min(0).max(1).default(0.5),
-  metadata: z.record(z.unknown()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
   tags: z.array(z.string()).default([]),
   domain: z.string().optional().describe('Business domain, e.g. "Marketing", "Finance"'),
   subDomain: z.string().optional().describe('Sub-domain, e.g. "Forecast client orders"'),
@@ -70,7 +70,7 @@ export const DataAssetSchema = z.object({
   domain: z.string(),
   subDomain: z.string().optional(),
   qualityScore: z.number().min(0).max(100).optional(),
-  metadata: z.record(z.unknown()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
   position: z.object({ q: z.number(), r: z.number() }),
 });
 export type DataAsset = z.infer<typeof DataAssetSchema>;

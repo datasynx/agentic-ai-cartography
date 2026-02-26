@@ -25,7 +25,7 @@ export async function runDiscovery(
   onAskUser?: AskUserFn,
   hint?: string,
 ): Promise<void> {
-  const { query } = await import('@anthropic-ai/claude-code');
+  const { query } = await import('@anthropic-ai/claude-agent-sdk');
   const tools = await createCartographyTools(db, sessionId, { onAskUser });
 
   const hintSection = hint
@@ -161,7 +161,7 @@ Use ask_user when you need context from the user.`;
     options: {
       model: config.agentModel,
       maxTurns: config.maxTurns,
-      customSystemPrompt: systemPrompt,
+      systemPrompt,
       mcpServers: { cartography: tools },
       allowedTools: [
         'Bash',

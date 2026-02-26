@@ -36,11 +36,7 @@ export async function createCartographyTools(
   opts: CartographyToolsOptions = {},
 ): Promise<McpServer> {
   // Dynamically import the SDK so missing package doesn't crash at load time
-  const sdk = await import('@anthropic-ai/claude-code');
-  const { tool, createSdkMcpServer } = sdk as {
-    tool: (name: string, description: string, schema: z.ZodRawShape, handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }> }>) => unknown;
-    createSdkMcpServer: (opts: { name: string; version: string; tools: unknown[] }) => McpServer;
-  };
+  const { tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
 
   const tools = [
     tool('save_node', 'Save an infrastructure node to the catalog', {
@@ -49,7 +45,7 @@ export async function createCartographyTools(
       name: z.string(),
       discoveredVia: z.string(),
       confidence: z.number().min(0).max(1),
-      metadata: z.record(z.unknown()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
       tags: z.array(z.string()).optional(),
       domain: z.string().optional().describe('Business domain, e.g. "Marketing", "Finance"'),
       subDomain: z.string().optional().describe('Sub-domain, e.g. "Forecast client orders"'),
