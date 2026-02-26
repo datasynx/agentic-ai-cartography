@@ -2527,4 +2527,14 @@ export function exportAll(
     writeFileSync(join(outputDir, 'discovery.html'), exportDiscoveryApp(nodes, edges));
   }
 
+  if (formats.includes('sops')) {
+    const sops = db.getSOPs(sessionId);
+    for (const sop of sops) {
+      const filename = sop.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.md';
+      writeFileSync(join(outputDir, 'sops', filename), exportSOPMarkdown(sop));
+
+      const wfFilename = `workflow-${sop.workflowId.substring(0, 8)}.mermaid`;
+      writeFileSync(join(outputDir, 'workflows', wfFilename), generateWorkflowMermaid(sop));
+    }
+  }
 }
