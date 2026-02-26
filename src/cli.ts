@@ -30,7 +30,7 @@ function main(): void {
 
   program
     .name(CMD)
-    .description('AI-powered Infrastructure Cartography & SOP Generation')
+    .description('AI-powered Infrastructure Discovery & Agentic AI Cartography')
     .version(VERSION);
 
   // ── DISCOVERY ──────────────────────────────────────────────────────────────
@@ -618,7 +618,7 @@ ${infraSummary.substring(0, 12000)}`;
 
       out('\n');
       out(b('  DATASYNX CARTOGRAPHY') + '  ' + dim('v' + VERSION) + '\n');
-      out(dim('  AI-powered Infrastructure Cartography & SOP Generation\n'));
+      out(dim('  AI-powered Infrastructure Discovery & Agentic AI Cartography\n'));
       out(dim(`  Platform: ${platformName}\n`));
       out('\n');
       line();
@@ -1074,7 +1074,7 @@ ${infraSummary.substring(0, 12000)}`;
   o(_c('                              |___/             ') + '\n');
   o('\n');
   o(_b('  Cartography') + '  ' + _d('v' + VERSION) + '\n');
-  o(_d('  AI-powered Infrastructure Discovery & SOP Generation\n'));
+  o(_d('  AI-powered Infrastructure Discovery & Agentic AI Cartography\n'));
   o(_d('  Built on Claude Agent SDK\n'));
   o('\n');
 

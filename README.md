@@ -2,7 +2,7 @@
 
 # 🗺️ Datasynx Cartography
 
-**AI-powered Infrastructure Cartography & SOP Generation**
+**AI-powered Infrastructure Discovery & Agentic AI Cartography**
 
 [![npm version](https://img.shields.io/npm/v/@datasynx/agentic-ai-cartography?style=flat-square&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
 [![npm downloads](https://img.shields.io/npm/dm/@datasynx/agentic-ai-cartography?style=flat-square&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
