@@ -1,6 +1,6 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "AI-powered infrastructure cartography CLI — built on Claude Agent SDK",
   "type": "module",
   "bin": {
@@ -27,7 +27,7 @@
     "postinstall": "node -e \"try{require('child_process').execSync('claude --version',{stdio:'pipe'})}catch{console.warn('\\n⚠ datasynx-cartography requires Claude CLI: npm i -g @anthropic-ai/claude-code\\n')}\""
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "keywords": [
     "infrastructure",
@@ -56,13 +56,13 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-code": "1.0.128",
-    "@anthropic-ai/sdk": "^0.74.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.59",
+    "@anthropic-ai/sdk": "^0.78.0",
     "better-sqlite3": "^12.6.0",
-    "commander": "^12.1.0",
-    "ora": "^8.2.0",
+    "commander": "^14.0.0",
+    "ora": "^9.3.0",
     "picocolors": "^1.1.1",
-    "zod": "^3.24.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

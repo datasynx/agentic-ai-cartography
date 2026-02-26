@@ -1,6 +1,6 @@
 // PreToolUse Safety Hook — enforces read-only policy on all Bash calls
 
-import type { HookCallback } from '@anthropic-ai/claude-code';
+import type { HookCallback } from '@anthropic-ai/claude-agent-sdk';
 
 // Word-boundary matched dangerous commands (Unix + Windows/PowerShell)
 const BLOCKED_CMDS =
@@ -10,7 +10,7 @@ const BLOCKED_REDIRECTS = />>|>[^>]|Out-File|Set-Content|Add-Content/;
 
 export type { HookCallback };
 
-export const safetyHook: HookCallback = async (input) => {
+export const safetyHook: HookCallback = async (input, _toolUseID, _options) => {
   // Only intercept PreToolUse events (other hook events don't have tool_name)
   if (!('tool_name' in input)) return {};
   if ((input as { tool_name: string }).tool_name !== 'Bash') return {};
