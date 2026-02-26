@@ -2771,27 +2771,22 @@ export function exportAll(
   // Always export JGF to well-known path (overwritten each run)
   const jgfPath = join(outputDir, 'cartography-graph.jgf.json');
   writeFileSync(jgfPath, exportJGF(nodes, edges));
-  process.stderr.write('✓ cartography-graph.jgf.json\n');
 
   if (formats.includes('mermaid')) {
     writeFileSync(join(outputDir, 'topology.mermaid'), generateTopologyMermaid(nodes, edges));
     writeFileSync(join(outputDir, 'dependencies.mermaid'), generateDependencyMermaid(nodes, edges));
-    process.stderr.write('✓ topology.mermaid, dependencies.mermaid\n');
   }
 
   if (formats.includes('json')) {
     writeFileSync(join(outputDir, 'catalog.json'), exportJSON(db, sessionId));
-    process.stderr.write('✓ catalog.json\n');
   }
 
   if (formats.includes('yaml')) {
     writeFileSync(join(outputDir, 'catalog-info.yaml'), exportBackstageYAML(nodes, edges));
-    process.stderr.write('✓ catalog-info.yaml\n');
   }
 
   if (formats.includes('html') || formats.includes('map') || formats.includes('discovery')) {
     writeFileSync(join(outputDir, 'discovery.html'), exportDiscoveryApp(nodes, edges));
-    process.stderr.write('✓ discovery.html\n');
   }
 
   if (formats.includes('sops')) {
@@ -2802,9 +2797,6 @@ export function exportAll(
 
       const wfFilename = `workflow-${sop.workflowId.substring(0, 8)}.mermaid`;
       writeFileSync(join(outputDir, 'workflows', wfFilename), generateWorkflowMermaid(sop));
-    }
-    if (sops.length > 0) {
-      process.stderr.write(`✓ ${sops.length} SOPs + workflow diagrams\n`);
     }
   }
 }

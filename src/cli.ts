@@ -8,7 +8,7 @@ import { exportAll } from './exporter.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
-import { IS_WIN, IS_MAC, PLATFORM, commandExists, fileUrl } from './platform.js';
+import { IS_WIN, IS_MAC, PLATFORM, commandExists } from './platform.js';
 
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
@@ -265,15 +265,12 @@ function main(): void {
       }
 
       // ── Export ─────────────────────────────────────────────────────────────
-      exportAll(db, sessionId, config.outputDir);
+      exportAll(db, sessionId, config.outputDir, ['discovery']);
 
-      // ── Diagram links ───────────────────────────────────────────────────────
-      const osc8 = (url: string, label: string) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
       const discoveryPath = resolve(config.outputDir, 'discovery.html');
-
       w('\n');
       if (existsSync(discoveryPath)) {
-        w(`  ${green('→')}  ${osc8(fileUrl(discoveryPath), bold('Open discovery.html'))}  ${dim('← Map + Topology')}\n`);
+        w(`  ${green('✓')}  ${bold('discovery.html')}  ${dim('← Enterprise Map')}\n`);
       }
       w('\n');
 
@@ -321,9 +318,9 @@ function main(): void {
           w('\n');
 
           // Re-export with updated data
-          exportAll(db, sessionId, config.outputDir);
+          exportAll(db, sessionId, config.outputDir, ['discovery']);
           if (existsSync(discoveryPath)) {
-            w(`  ${green('→')}  ${osc8(`file://${discoveryPath}`, bold('discovery.html updated'))}\n`);
+            w(`  ${green('✓')}  ${bold('discovery.html updated')}\n`);
           }
           w('\n');
         }
@@ -667,13 +664,7 @@ ${infraSummary.substring(0, 12000)}`;
       out('\n');
       out(dim('    Output:\n'));
       out(dim('      datasynx-output/\n'));
-      out(dim('        catalog.json          Machine-readable full dump\n'));
-      out(dim('        catalog-info.yaml     Backstage service catalog\n'));
-      out(dim('        topology.mermaid      Infrastructure topology (graph TB)\n'));
-      out(dim('        dependencies.mermaid  Service dependencies (graph LR)\n'));
-      out(dim('        discovery.html         Enterprise discovery frontend (Map + Topology)\n'));
-      out(dim('        sops/                 Generated SOPs as Markdown\n'));
-      out(dim('        workflows/            Workflow flowcharts as Mermaid\n'));
+      out(dim('        discovery.html         Enterprise Map\n'));
       out('\n');
       line();
 
