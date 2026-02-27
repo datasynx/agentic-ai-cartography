@@ -2,12 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   generateTopologyMermaid,
   generateDependencyMermaid,
-  generateWorkflowMermaid,
-  exportSOPMarkdown,
   exportBackstageYAML,
   exportCartographyMap,
 } from '../src/exporter.js';
-import type { NodeRow, EdgeRow, SOP } from '../src/types.js';
+import type { NodeRow, EdgeRow } from '../src/types.js';
 
 const mockNodes: NodeRow[] = [
   {
@@ -49,19 +47,6 @@ const mockEdges: EdgeRow[] = [
   },
 ];
 
-const mockSOP: SOP = {
-  title: 'Deploy Check',
-  description: 'Check deployment status',
-  steps: [
-    { order: 1, instruction: 'Check pods', tool: 'kubectl', target: 'k8s:cluster', notes: 'All should be Running' },
-    { order: 2, instruction: 'Check health', tool: 'curl', target: 'express:3000' },
-  ],
-  involvedSystems: ['kubernetes', 'express:3000'],
-  estimatedDuration: '~5 Minuten',
-  frequency: '3x täglich',
-  confidence: 0.85,
-};
-
 describe('generateTopologyMermaid', () => {
   it('starts with graph TB', () => {
     const result = generateTopologyMermaid(mockNodes, mockEdges);
@@ -90,37 +75,6 @@ describe('generateDependencyMermaid', () => {
     const result = generateDependencyMermaid(mockNodes, mockEdges);
     // reads_from is included in dep edges
     expect(result).toContain('reads');
-  });
-});
-
-describe('generateWorkflowMermaid', () => {
-  it('starts with flowchart TD', () => {
-    const result = generateWorkflowMermaid(mockSOP);
-    expect(result).toContain('flowchart TD');
-  });
-
-  it('includes step nodes', () => {
-    const result = generateWorkflowMermaid(mockSOP);
-    expect(result).toContain('S1');
-    expect(result).toContain('S2');
-  });
-});
-
-describe('exportSOPMarkdown', () => {
-  it('includes title', () => {
-    const result = exportSOPMarkdown(mockSOP);
-    expect(result).toContain('# Deploy Check');
-  });
-
-  it('includes confidence', () => {
-    const result = exportSOPMarkdown(mockSOP);
-    expect(result).toContain('0.85');
-  });
-
-  it('includes steps', () => {
-    const result = exportSOPMarkdown(mockSOP);
-    expect(result).toContain('Check pods');
-    expect(result).toContain('Check health');
   });
 });
 

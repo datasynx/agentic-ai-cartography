@@ -335,7 +335,7 @@ function main(): void {
     .command('export [session-id]')
     .description('Generate all output files')
     .option('-o, --output <dir>', 'Output directory', './datasynx-output')
-    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,map,sops')
+    .option('--format <fmt...>', 'Formats: mermaid,json,yaml,html,map')
     .action((sessionId: string | undefined, opts) => {
       const config = defaultConfig({ outputDir: opts.output });
       const db = new CartographyDB(config.dbPath);
@@ -351,7 +351,7 @@ function main(): void {
         return;
       }
 
-      const formats = opts.format ?? ['mermaid', 'json', 'yaml', 'html', 'map', 'sops'];
+      const formats = opts.format ?? ['mermaid', 'json', 'yaml', 'html', 'map'];
       exportAll(db, session.id, opts.output, formats);
       process.stderr.write(`✓ Exported to: ${opts.output}\n`);
 
@@ -433,7 +433,7 @@ function main(): void {
 
   program
     .command('overview')
-    .description('Overview of all cartography sessions + SOPs')
+    .description('Overview of all cartography sessions')
     .option('--db <path>', 'DB-Pfad')
     .action((opts) => {
       const config = defaultConfig();
@@ -454,26 +454,24 @@ function main(): void {
       }
 
       // Aggregate totals
-      let totalNodes = 0, totalEdges = 0, totalSops = 0;
+      let totalNodes = 0, totalEdges = 0;
       for (const s of sessions) {
         const st = db.getStats(s.id);
         totalNodes += st.nodes; totalEdges += st.edges;
-        totalSops += db.getSOPs(s.id).length;
       }
 
       w(`  ${b(String(sessions.length))} Sessions · ${b(String(totalNodes))} Nodes · `);
-      w(`${b(String(totalEdges))} Edges · ${b(String(totalSops))} SOPs\n\n`);
+      w(`${b(String(totalEdges))} Edges\n\n`);
 
       for (const session of sessions) {
         const stats = db.getStats(session.id);
         const nodes = db.getNodes(session.id);
-        const sops = db.getSOPs(session.id);
         const status = session.completedAt ? green('✓') : yellow('●');
         const age = session.startedAt.substring(0, 16).replace('T', ' ');
         const sid = cyan(session.id.substring(0, 8));
 
         w(`  ${status} ${sid}  ${b('[' + session.mode + ']')}  ${d(age)}\n`);
-        w(`    ${d('Nodes: ' + stats.nodes + '  Edges: ' + stats.edges + '  SOPs: ' + sops.length)}\n`);
+        w(`    ${d('Nodes: ' + stats.nodes + '  Edges: ' + stats.edges)}\n`);
 
         // Node type breakdown
         const byType = new Map<string, number>();
@@ -486,12 +484,6 @@ function main(): void {
         // Top nodes
         const topNodes = nodes.slice(0, 5).map(n => n.id).join(', ');
         if (topNodes) w(`    ${d('Nodes: ' + topNodes + (nodes.length > 5 ? ' …' : ''))}\n`);
-
-        // SOPs
-        for (const sop of sops.slice(0, 3)) {
-          w(`    ${green('►')} ${sop.title} ${d('(' + sop.estimatedDuration + ')')}\n`);
-        }
-        if (sops.length > 3) w(`    ${d('… +' + (sops.length - 3) + ' more SOPs')}\n`);
 
         w('\n');
       }
@@ -523,14 +515,13 @@ function main(): void {
 
       const nodes = db.getNodes(session.id);
       const edges = db.getEdges(session.id);
-      const sops = db.getSOPs(session.id);
 
       const w = (s: string) => process.stdout.write(s);
 
       w('\n');
       w(dim(`  ─────────────────────────────────────────────────────\n`));
       w(`  ${bold('CARTOGRAPHY CHAT')}  ${dim('Session ' + session.id.substring(0, 8))}\n`);
-      w(`  ${dim(String(nodes.length) + ' Nodes · ' + edges.length + ' Edges · ' + sops.length + ' SOPs')}\n`);
+      w(`  ${dim(String(nodes.length) + ' Nodes · ' + edges.length + ' Edges')}\n`);
       w(dim(`  ─────────────────────────────────────────────────────\n`));
       w(`  ${dim('Ask anything about your infrastructure. exit = quit.\n\n')}`);
 
@@ -546,15 +537,14 @@ function main(): void {
           tags: n.tags,
         })),
         edges: edges.map(e => ({ from: e.sourceId, to: e.targetId, rel: e.relationship, conf: e.confidence })),
-        sops: sops.map(s => ({ title: s.title, description: s.description, steps: s.steps.length, duration: s.estimatedDuration })),
       });
 
       const systemPrompt = `You are an infrastructure analyst for Cartography.
 You have access to the fully mapped infrastructure of this session.
 Answer questions precisely and helpfully. Use the data concretely.
-You can explain SOPs, analyze dependencies, identify risks, suggest optimizations.
+You can analyze dependencies, identify risks, suggest optimizations.
 
-INFRASTRUCTURE SNAPSHOT (${nodes.length} nodes, ${edges.length} edges, ${sops.length} SOPs):
+INFRASTRUCTURE SNAPSHOT (${nodes.length} nodes, ${edges.length} edges):
 ${infraSummary.substring(0, 12000)}`;
 
       // Multi-turn conversation history
@@ -672,7 +662,7 @@ ${infraSummary.substring(0, 12000)}`;
       out(b(cyan('  ANALYSIS & EXPORT\n')));
       out('\n');
       out(`  ${green('datasynx-cartography export [session-id]')}\n`);
-      out(dim('    --format <fmt...>   mermaid, json, yaml, html, sops  (default: all)\n'));
+      out(dim('    --format <fmt...>   mermaid, json, yaml, html, map  (default: all)\n'));
       out(dim('    -o, --output <dir>  Output directory\n'));
       out('\n');
       out(`  ${green('datasynx-cartography show [session-id]')}    ${dim('Session details + node list')}\n`);

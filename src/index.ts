@@ -8,12 +8,9 @@ export {
   exportJSON,
   exportJGF,
   exportBackstageYAML,
-  exportSOPMarkdown,
-  exportSOPDashboard,
   exportDiscoveryApp,
   generateTopologyMermaid,
   generateDependencyMermaid,
-  generateWorkflowMermaid,
 } from './exporter.js';
 export {
   hexToPixel, pixelToHex, hexCorners, hexNeighbors,

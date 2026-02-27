@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
   CartographyConfig, DiscoveryNode, DiscoveryEdge,
-  NodeRow, EdgeRow, SessionRow, SOP, Connection,
+  NodeRow, EdgeRow, SessionRow, Connection,
 } from './types.js';
 
 export interface ConnectionRow extends Connection {
@@ -36,7 +36,6 @@ export interface TaskRow {
   steps: string;
   involvedServices: string;
   status: 'active' | 'completed' | 'cancelled';
-  isSOPCandidate: boolean;
 }
 
 export interface WorkflowRow {
@@ -125,8 +124,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed_at TEXT,
   steps TEXT NOT NULL DEFAULT '[]',
   involved_services TEXT NOT NULL DEFAULT '[]',
-  status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','cancelled')),
-  is_sop_candidate INTEGER DEFAULT 0
+  status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','cancelled'))
 );
 
 CREATE TABLE IF NOT EXISTS workflows (
@@ -140,19 +138,6 @@ CREATE TABLE IF NOT EXISTS workflows (
   last_seen TEXT NOT NULL,
   avg_duration_ms INTEGER,
   involved_services TEXT NOT NULL DEFAULT '[]'
-);
-
-CREATE TABLE IF NOT EXISTS sops (
-  id TEXT PRIMARY KEY,
-  workflow_id TEXT NOT NULL,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL,
-  steps TEXT NOT NULL,
-  involved_systems TEXT NOT NULL DEFAULT '[]',
-  estimated_duration TEXT,
-  frequency TEXT,
-  generated_at TEXT NOT NULL,
-  confidence REAL DEFAULT 0.5
 );
 
 CREATE TABLE IF NOT EXISTS node_approvals (
@@ -415,7 +400,6 @@ export class CartographyDB {
       steps: r['steps'] as string,
       involvedServices: r['involved_services'] as string,
       status: r['status'] as TaskRow['status'],
-      isSOPCandidate: Boolean(r['is_sop_candidate']),
     };
   }
 
@@ -449,63 +433,6 @@ export class CartographyDB {
       lastSeen: r['last_seen'] as string,
       avgDurationMs: r['avg_duration_ms'] as number,
       involvedServices: r['involved_services'] as string,
-    }));
-  }
-
-  // ── SOPs ────────────────────────────────
-
-  insertSOP(sop: { workflowId: string } & SOP): void {
-    const id = crypto.randomUUID();
-    this.db.prepare(`
-      INSERT INTO sops
-        (id, workflow_id, title, description, steps, involved_systems,
-         estimated_duration, frequency, generated_at, confidence)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, sop.workflowId, sop.title, sop.description,
-      JSON.stringify(sop.steps),
-      JSON.stringify(sop.involvedSystems),
-      sop.estimatedDuration, sop.frequency,
-      new Date().toISOString(), sop.confidence,
-    );
-  }
-
-  getSOPs(sessionId: string): Array<SOP & { id: string; workflowId: string }> {
-    const rows = this.db.prepare(`
-      SELECT s.* FROM sops s
-      JOIN workflows w ON s.workflow_id = w.id
-      WHERE w.session_id = ?
-    `).all(sessionId) as Record<string, unknown>[];
-    return rows.map(r => ({
-      id: r['id'] as string,
-      workflowId: r['workflow_id'] as string,
-      title: r['title'] as string,
-      description: r['description'] as string,
-      steps: JSON.parse(r['steps'] as string) as SOP['steps'],
-      involvedSystems: JSON.parse(r['involved_systems'] as string) as string[],
-      estimatedDuration: r['estimated_duration'] as string,
-      frequency: r['frequency'] as string,
-      confidence: r['confidence'] as number,
-    }));
-  }
-
-  markTaskAsSOPCandidate(taskId: string): void {
-    this.db.prepare('UPDATE tasks SET is_sop_candidate = 1 WHERE id = ?').run(taskId);
-  }
-
-  getAllSOPs(): Array<SOP & { id: string; workflowId: string; generatedAt: string }> {
-    const rows = this.db.prepare('SELECT * FROM sops ORDER BY generated_at DESC').all() as Record<string, unknown>[];
-    return rows.map(r => ({
-      id: r['id'] as string,
-      workflowId: r['workflow_id'] as string,
-      title: r['title'] as string,
-      description: r['description'] as string,
-      steps: JSON.parse(r['steps'] as string) as SOP['steps'],
-      involvedSystems: JSON.parse(r['involved_systems'] as string) as string[],
-      estimatedDuration: r['estimated_duration'] as string,
-      frequency: r['frequency'] as string,
-      confidence: r['confidence'] as number,
-      generatedAt: r['generated_at'] as string,
     }));
   }
 
