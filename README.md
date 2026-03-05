@@ -80,9 +80,7 @@ Cartography runs natively on **Linux**, **macOS**, and **Windows** — no WSL re
 | **Database Discovery** | PostgreSQL, MySQL, MongoDB, Redis, SQLite file scan. Windows: `Get-Service` for DB engine detection |
 | **Cloud Scanning** | AWS (EC2/RDS/EKS/S3), GCP (Compute/GKE/Cloud Run), Azure (AKS/WebApps), Kubernetes |
 | **Human-in-the-Loop** | Chat with the agent mid-discovery: type `"hubspot windsurf"` to search for specific tools |
-| **SOP Generation** | Automatically generates Standard Operating Procedures from observed workflows |
-| **SOP Dashboard** | HTML dashboard with all SOPs, step details, frequency stats |
-| **Export Formats** | Mermaid topology, D3.js interactive graph, Backstage YAML, JSON, SOP Markdown |
+| **Export Formats** | Mermaid topology, D3.js interactive graph, Backstage YAML, JSON |
 | **Safety First** | `PreToolUse` hook blocks all destructive commands — Unix AND PowerShell. 100% read-only |
 
 ---
@@ -162,7 +160,7 @@ Discovery pipeline (automatic, in order):
 
 ```
 datasynx-cartography export [session-id] [options]
-  --format <fmt...>    mermaid, json, yaml, html, sops  (default: all)
+  --format <fmt...>    mermaid, json, yaml, html, map  (default: all)
   -o, --output <dir>   Output directory
 datasynx-cartography show [session-id]             Session details + node list
 datasynx-cartography sessions                      List all sessions
@@ -182,13 +180,7 @@ datasynx-output/
 ├── catalog-info.yaml          Backstage service catalog
 ├── topology.mermaid           Infrastructure topology (graph TB)
 ├── dependencies.mermaid       Service dependencies (graph LR)
-├── discovery.html             Enterprise discovery frontend (Map + Topology)
-├── sop-dashboard.html         HTML dashboard with all SOPs + frequency stats
-├── sops/
-│   ├── deploy-check.md
-│   └── db-migration.md
-└── workflows/
-    └── workflow-001.mermaid
+└── discovery.html             Enterprise discovery frontend (Map + Topology)
 ```
 
 ---
@@ -198,7 +190,6 @@ datasynx-output/
 | Mode | Model | Interval | per Hour | per 8h Day |
 |------|-------|----------|----------|------------|
 | Discover | Sonnet | one-shot | $0.15–0.50 | one-shot |
-| SOP generation | Sonnet | one-shot | $0.01–0.03 | one-shot |
 
 ---
 
@@ -241,7 +232,6 @@ import {
   CartographyDB,
   runDiscovery,
   exportAll,
-  exportSOPDashboard,
   safetyHook,
   defaultConfig,
 } from '@datasynx/agentic-ai-cartography';
