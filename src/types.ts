@@ -42,26 +42,6 @@ export const EdgeSchema = z.object({
 });
 export type DiscoveryEdge = z.infer<typeof EdgeSchema>;
 
-export const SOPStepSchema = z.object({
-  order: z.number(),
-  instruction: z.string(),
-  tool: z.string(),
-  target: z.string().optional(),
-  notes: z.string().optional(),
-});
-export type SOPStep = z.infer<typeof SOPStepSchema>;
-
-export const SOPSchema = z.object({
-  title: z.string(),
-  description: z.string(),
-  steps: z.array(SOPStepSchema),
-  involvedSystems: z.array(z.string()),
-  estimatedDuration: z.string(),
-  frequency: z.string(),
-  confidence: z.number().min(0).max(1),
-});
-export type SOP = z.infer<typeof SOPSchema>;
-
 // ── Cartography Map Types ────────────────
 
 export const DataAssetSchema = z.object({

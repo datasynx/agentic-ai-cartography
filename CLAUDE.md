@@ -1,6 +1,6 @@
 # Cartograph
 
-AI-powered Infrastructure Cartography & SOP Generation.
+AI-powered Infrastructure Discovery & Agentic AI Cartography.
 Gebaut auf Claude Agent SDK — Claude IST der Agent.
 
 ## Tech Stack

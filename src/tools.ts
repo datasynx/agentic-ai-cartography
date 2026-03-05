@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CartographyDB } from './db.js';
-import { NODE_TYPES, EDGE_RELATIONSHIPS, SOPStepSchema } from './types.js';
+import { NODE_TYPES, EDGE_RELATIONSHIPS } from './types.js';
 import { scanAllBookmarks, scanAllHistory } from './bookmarks.js';
 import {
   IS_WIN, IS_MAC, IS_LINUX, HOME, PLATFORM,
@@ -475,29 +475,6 @@ export async function createCartographyTools(
         .join('\n\n');
 
       return { content: [{ type: 'text', text: out }] };
-    }),
-
-    tool('save_sop', 'Save a Standard Operating Procedure', {
-      workflowId: z.string(),
-      title: z.string(),
-      description: z.string(),
-      steps: z.array(SOPStepSchema),
-      involvedSystems: z.array(z.string()),
-      estimatedDuration: z.string(),
-      frequency: z.string(),
-      confidence: z.number().min(0).max(1),
-    }, async (args) => {
-      db.insertSOP({
-        workflowId: args['workflowId'] as string,
-        title: args['title'] as string,
-        description: args['description'] as string,
-        steps: args['steps'] as ReturnType<typeof SOPStepSchema.parse>[],
-        involvedSystems: args['involvedSystems'] as string[],
-        estimatedDuration: args['estimatedDuration'] as string,
-        frequency: args['frequency'] as string,
-        confidence: args['confidence'] as number,
-      });
-      return { content: [{ type: 'text', text: `✓ SOP: ${args['title']}` }] };
     }),
   ];
 

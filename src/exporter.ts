@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CartographyDB } from './db.js';
-import type { NodeRow, EdgeRow, SOP } from './types.js';
+import type { NodeRow, EdgeRow } from './types.js';
 import { buildMapData } from './mapper.js';
 import { shadeVariant } from './cluster.js';
 import { hexToPixel } from './hex.js';
@@ -189,22 +189,6 @@ export function generateDependencyMermaid(nodes: NodeRow[], edges: EdgeRow[]): s
   return lines.join('\n');
 }
 
-export function generateWorkflowMermaid(sop: SOP): string {
-  const lines: string[] = ['flowchart TD'];
-
-  for (const step of sop.steps) {
-    const nodeId = `S${step.order}`;
-    const label = `${step.order}. ${step.instruction.substring(0, 60)}`;
-    lines.push(`    ${nodeId}["${label}"]`);
-
-    if (step.order > 1) {
-      lines.push(`    S${step.order - 1} --> ${nodeId}`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
 // ── Backstage YAML ───────────────────────────────────────────────────────────
 
 export function exportBackstageYAML(nodes: NodeRow[], edges: EdgeRow[], org?: string): string {
@@ -248,7 +232,6 @@ export function exportJSON(db: CartographyDB, sessionId: string): string {
   const edges = db.getEdges(sessionId);
   const events = db.getEvents(sessionId);
   const tasks = db.getTasks(sessionId);
-  const sops = db.getSOPs(sessionId);
   const stats = db.getStats(sessionId);
 
   return JSON.stringify({
@@ -259,7 +242,6 @@ export function exportJSON(db: CartographyDB, sessionId: string): string {
     edges,
     events,
     tasks,
-    sops,
   }, null, 2);
 }
 
@@ -779,229 +761,6 @@ svgEl.on('click', () => {
   buildNodeList(nodeSearchEl.value);
   sidebar.innerHTML = '<h2>Infrastructure Map</h2><p class="hint">Click a node to view details.</p>';
 });
-</script>
-</body>
-</html>`;
-}
-
-// ── SOP Markdown ─────────────────────────────────────────────────────────────
-
-export function exportSOPMarkdown(sop: SOP): string {
-  const lines: string[] = [
-    `# ${sop.title}`,
-    '',
-    `**Description:** ${sop.description}`,
-    `**Systems:** ${sop.involvedSystems.join(', ')}`,
-    `**Duration:** ${sop.estimatedDuration}`,
-    `**Frequency:** ${sop.frequency}`,
-    `**Confidence:** ${sop.confidence.toFixed(2)}`,
-    '',
-    '## Steps',
-    '',
-  ];
-
-  for (const step of sop.steps) {
-    lines.push(`${step.order}. **${step.tool}**${step.target ? ` → \`${step.target}\`` : ''}`);
-    lines.push(`   ${step.instruction}`);
-    if (step.notes) lines.push(`   _${step.notes}_`);
-    lines.push('');
-  }
-
-  return lines.join('\n');
-}
-
-// ── SOP Dashboard HTML ───────────────────────────────────────────────────────
-
-export function exportSOPDashboard(sops: Array<SOP & { id: string; workflowId: string; generatedAt?: string }>): string {
-  const sopsJson = JSON.stringify(sops.map(s => ({
-    id: s.id,
-    title: s.title,
-    description: s.description,
-    steps: s.steps,
-    systems: s.involvedSystems,
-    duration: s.estimatedDuration,
-    frequency: s.frequency,
-    confidence: s.confidence,
-    generatedAt: s.generatedAt ?? new Date().toISOString(),
-  })));
-
-  // System frequency: how many SOPs reference each system
-  const systemCount: Record<string, number> = {};
-  for (const sop of sops) {
-    for (const sys of sop.involvedSystems) {
-      systemCount[sys] = (systemCount[sys] ?? 0) + 1;
-    }
-  }
-  const systemsJson = JSON.stringify(
-    Object.entries(systemCount).sort((a, b) => b[1] - a[1])
-  );
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Cartography — SOP Dashboard</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #0d1117; color: #e6edf3;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
-      padding: 0; line-height: 1.6;
-    }
-    .header {
-      background: linear-gradient(135deg, #161b22 0%, #1a1f2e 100%);
-      border-bottom: 1px solid #30363d; padding: 32px 40px;
-    }
-    .header h1 { font-size: 24px; color: #58a6ff; margin-bottom: 8px; }
-    .header .subtitle { color: #8b949e; font-size: 14px; }
-    .stats-row {
-      display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap;
-    }
-    .stat-card {
-      background: #21262d; border: 1px solid #30363d; border-radius: 8px;
-      padding: 12px 20px; min-width: 140px;
-    }
-    .stat-card .value { font-size: 28px; font-weight: 700; color: #58a6ff; }
-    .stat-card .label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 24px 40px; }
-    .section-title { font-size: 18px; color: #c9d1d9; margin: 32px 0 16px; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
-    /* Systems bar chart */
-    .systems-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
-    .sys-tag {
-      background: #21262d; border: 1px solid #30363d; border-radius: 6px;
-      padding: 6px 12px; font-size: 12px; cursor: default;
-    }
-    .sys-tag .count { color: #58a6ff; font-weight: 600; margin-left: 4px; }
-    /* SOP cards */
-    .sop-card {
-      background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-      margin-bottom: 16px; overflow: hidden; transition: border-color 0.2s;
-    }
-    .sop-card:hover { border-color: #58a6ff; }
-    .sop-header {
-      padding: 16px 20px; cursor: pointer; display: flex;
-      justify-content: space-between; align-items: center;
-    }
-    .sop-header h3 { font-size: 16px; color: #e6edf3; }
-    .sop-meta { display: flex; gap: 16px; align-items: center; font-size: 12px; color: #8b949e; }
-    .sop-meta .freq { color: #3fb950; font-weight: 600; }
-    .sop-meta .dur { color: #d29922; }
-    .sop-meta .conf {
-      display: inline-flex; align-items: center; gap: 4px;
-    }
-    .conf-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    .sop-body { display: none; padding: 0 20px 20px; border-top: 1px solid #21262d; }
-    .sop-body.open { display: block; padding-top: 16px; }
-    .sop-desc { color: #8b949e; font-size: 13px; margin-bottom: 12px; }
-    .sop-systems { margin-bottom: 12px; }
-    .sop-systems span { background: #0d419d33; color: #58a6ff; border-radius: 4px; padding: 2px 8px; font-size: 11px; margin-right: 4px; }
-    .steps-list { list-style: none; counter-reset: step; }
-    .steps-list li {
-      counter-increment: step; position: relative;
-      padding: 10px 12px 10px 44px; border-left: 2px solid #30363d;
-      margin-left: 14px; font-size: 13px;
-    }
-    .steps-list li:last-child { border-left-color: transparent; }
-    .steps-list li::before {
-      content: counter(step);
-      position: absolute; left: -14px; top: 8px;
-      width: 26px; height: 26px; border-radius: 50%;
-      background: #21262d; border: 2px solid #30363d;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 600; color: #58a6ff;
-    }
-    .step-tool { color: #d2a8ff; font-weight: 600; }
-    .step-target { color: #7ee787; font-size: 12px; }
-    .step-notes { color: #8b949e; font-style: italic; font-size: 12px; margin-top: 2px; }
-    .step-instr { color: #c9d1d9; }
-    .toggle-icon { color: #8b949e; font-size: 18px; transition: transform 0.2s; }
-    .toggle-icon.open { transform: rotate(90deg); }
-    .empty { color: #484f58; font-size: 14px; padding: 40px; text-align: center; }
-    .gen-time { color: #484f58; font-size: 11px; margin-top: 8px; }
-  </style>
-</head>
-<body>
-<div class="header">
-  <h1>SOP Dashboard</h1>
-  <div class="subtitle">Cartography — Standard Operating Procedures</div>
-  <div class="stats-row">
-    <div class="stat-card"><div class="value" id="sop-count">0</div><div class="label">SOPs</div></div>
-    <div class="stat-card"><div class="value" id="step-count">0</div><div class="label">Total Steps</div></div>
-    <div class="stat-card"><div class="value" id="sys-count">0</div><div class="label">Systems</div></div>
-    <div class="stat-card"><div class="value" id="avg-conf">—</div><div class="label">Avg Confidence</div></div>
-  </div>
-</div>
-<div class="container">
-  <h2 class="section-title">Involved Systems</h2>
-  <div class="systems-grid" id="systems"></div>
-
-  <h2 class="section-title">SOPs</h2>
-  <div id="sop-list"></div>
-</div>
-<script>
-const sops = ${sopsJson};
-const systems = ${systemsJson};
-
-document.getElementById('sop-count').textContent = sops.length;
-document.getElementById('step-count').textContent = sops.reduce((a, s) => a + s.steps.length, 0);
-document.getElementById('sys-count').textContent = systems.length;
-const avgConf = sops.length > 0
-  ? (sops.reduce((a, s) => a + s.confidence, 0) / sops.length * 100).toFixed(0) + '%'
-  : '—';
-document.getElementById('avg-conf').textContent = avgConf;
-
-const sysDiv = document.getElementById('systems');
-systems.forEach(([name, count]) => {
-  const el = document.createElement('div');
-  el.className = 'sys-tag';
-  el.innerHTML = name + '<span class="count">x' + count + '</span>';
-  sysDiv.appendChild(el);
-});
-
-const listDiv = document.getElementById('sop-list');
-if (sops.length === 0) {
-  listDiv.innerHTML = '<div class="empty">No SOPs found. Run a discovery session first.</div>';
-}
-
-sops.forEach((sop, i) => {
-  const confColor = sop.confidence >= 0.8 ? '#3fb950' : sop.confidence >= 0.5 ? '#d29922' : '#f85149';
-  const card = document.createElement('div');
-  card.className = 'sop-card';
-  card.innerHTML = \`
-    <div class="sop-header" onclick="toggle(\${i})">
-      <h3>\${sop.title}</h3>
-      <div class="sop-meta">
-        <span class="freq">\${sop.frequency}</span>
-        <span class="dur">\${sop.duration}</span>
-        <span class="conf"><span class="conf-dot" style="background:\${confColor}"></span>\${Math.round(sop.confidence*100)}%</span>
-        <span class="toggle-icon" id="icon-\${i}">▸</span>
-      </div>
-    </div>
-    <div class="sop-body" id="body-\${i}">
-      <div class="sop-desc">\${sop.description}</div>
-      <div class="sop-systems">\${sop.systems.map(s => '<span>'+s+'</span>').join('')}</div>
-      <ol class="steps-list">
-        \${sop.steps.map(st => \`
-          <li>
-            <span class="step-tool">\${st.tool}</span>
-            \${st.target ? '<span class="step-target"> → '+st.target+'</span>' : ''}
-            <div class="step-instr">\${st.instruction}</div>
-            \${st.notes ? '<div class="step-notes">'+st.notes+'</div>' : ''}
-          </li>
-        \`).join('')}
-      </ol>
-      <div class="gen-time">Generated: \${sop.generatedAt ? sop.generatedAt.substring(0,19).replace('T',' ') : '—'}</div>
-    </div>
-  \`;
-  listDiv.appendChild(card);
-});
-
-function toggle(i) {
-  const body = document.getElementById('body-'+i);
-  const icon = document.getElementById('icon-'+i);
-  body.classList.toggle('open');
-  icon.classList.toggle('open');
-}
 </script>
 </body>
 </html>`;
@@ -1725,10 +1484,7 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
   background:var(--bg-surface);border-bottom:1px solid var(--border);z-index:100;flex-shrink:0;
 }
 .tb-left{display:flex;align-items:center;gap:10px}
-.brand-logo{flex-shrink:0}
-.brand-name{font-size:15px;font-weight:700;color:var(--accent);letter-spacing:-.02em}
-.brand-product{font-size:14px;font-weight:500;color:var(--text-muted);margin-left:2px}
-.brand-sep{width:1px;height:24px;background:var(--border);margin:0 6px}
+.brand-product{font-size:15px;font-weight:600;color:var(--text-muted)}
 .tb-center{display:flex;align-items:center;gap:2px;margin-left:auto;
   background:var(--bg-elevated);border-radius:8px;padding:3px}
 .tab-btn{
@@ -1918,16 +1674,6 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
      ═══════════════════════════════════════════════════════════════════════════ -->
 <header id="topbar">
   <div class="tb-left">
-    <svg class="brand-logo" width="32" height="32" viewBox="0 0 32 32" fill="none">
-      <path d="M16 1.5L29.5 8.75V23.25L16 30.5L2.5 23.25V8.75L16 1.5Z" fill="#0F2347" stroke="#2563EB" stroke-width="1.2"/>
-      <circle cx="10" cy="16" r="2.8" fill="#60A5FA"/><circle cx="22" cy="10.5" r="2.2" fill="#38BDF8"/>
-      <circle cx="22" cy="21.5" r="2.2" fill="#38BDF8"/>
-      <line x1="12.5" y1="14.8" x2="19.8" y2="11.2" stroke="#93C5FD" stroke-width="1.2"/>
-      <line x1="12.5" y1="17.2" x2="19.8" y2="20.8" stroke="#93C5FD" stroke-width="1.2"/>
-      <line x1="22" y1="12.7" x2="22" y2="19.3" stroke="#93C5FD" stroke-width="1" stroke-dasharray="2 1.5"/>
-    </svg>
-    <span class="brand-name">datasynx</span>
-    <span class="brand-sep"></span>
     <span class="brand-product">Cartography</span>
   </div>
   <div class="tb-center">
@@ -1942,12 +1688,6 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
       </svg>
       <input id="global-search" type="text" placeholder="Search..." autocomplete="off" spellcheck="false"/>
     </div>
-    <a href="https://www.linkedin.com/company/datasynx-ai/" target="_blank" rel="noopener noreferrer"
-       class="icon-btn" title="Datasynx on LinkedIn" aria-label="LinkedIn">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-      </svg>
-    </a>
     <button id="theme-btn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
       ${theme === 'dark' ? '&#9788;' : '&#9790;'}
     </button>
@@ -2759,11 +2499,9 @@ export function exportAll(
   db: CartographyDB,
   sessionId: string,
   outputDir: string,
-  formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'map', 'discovery', 'sops'],
+  formats: string[] = ['mermaid', 'json', 'yaml', 'html', 'map', 'discovery'],
 ): void {
   mkdirSync(outputDir, { recursive: true });
-  mkdirSync(join(outputDir, 'sops'), { recursive: true });
-  mkdirSync(join(outputDir, 'workflows'), { recursive: true });
 
   const nodes = db.getNodes(sessionId);
   const edges = db.getEdges(sessionId);
@@ -2771,40 +2509,22 @@ export function exportAll(
   // Always export JGF to well-known path (overwritten each run)
   const jgfPath = join(outputDir, 'cartography-graph.jgf.json');
   writeFileSync(jgfPath, exportJGF(nodes, edges));
-  process.stderr.write('✓ cartography-graph.jgf.json\n');
 
   if (formats.includes('mermaid')) {
     writeFileSync(join(outputDir, 'topology.mermaid'), generateTopologyMermaid(nodes, edges));
     writeFileSync(join(outputDir, 'dependencies.mermaid'), generateDependencyMermaid(nodes, edges));
-    process.stderr.write('✓ topology.mermaid, dependencies.mermaid\n');
   }
 
   if (formats.includes('json')) {
     writeFileSync(join(outputDir, 'catalog.json'), exportJSON(db, sessionId));
-    process.stderr.write('✓ catalog.json\n');
   }
 
   if (formats.includes('yaml')) {
     writeFileSync(join(outputDir, 'catalog-info.yaml'), exportBackstageYAML(nodes, edges));
-    process.stderr.write('✓ catalog-info.yaml\n');
   }
 
   if (formats.includes('html') || formats.includes('map') || formats.includes('discovery')) {
     writeFileSync(join(outputDir, 'discovery.html'), exportDiscoveryApp(nodes, edges));
-    process.stderr.write('✓ discovery.html\n');
   }
 
-  if (formats.includes('sops')) {
-    const sops = db.getSOPs(sessionId);
-    for (const sop of sops) {
-      const filename = sop.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.md';
-      writeFileSync(join(outputDir, 'sops', filename), exportSOPMarkdown(sop));
-
-      const wfFilename = `workflow-${sop.workflowId.substring(0, 8)}.mermaid`;
-      writeFileSync(join(outputDir, 'workflows', wfFilename), generateWorkflowMermaid(sop));
-    }
-    if (sops.length > 0) {
-      process.stderr.write(`✓ ${sops.length} SOPs + workflow diagrams\n`);
-    }
-  }
 }
