@@ -1085,6 +1085,49 @@ ${infraSummary.substring(0, 12000)}`;
       }
     });
 
+  // ── Prune ──────────────────────────────────────────────────────────────────
+
+  program
+    .command('prune')
+    .description('Delete old sessions and their data')
+    .option('--older-than <days>', 'Delete sessions older than N days', '30')
+    .option('--db <path>', 'DB path')
+    .option('--dry-run', 'Show what would be deleted without actually deleting', false)
+    .action((opts) => {
+      const days = parseInt(opts.olderThan, 10);
+      if (Number.isNaN(days) || days < 1) {
+        process.stderr.write(`Invalid --older-than: "${opts.olderThan}" (must be >= 1)\n`);
+        process.exitCode = 2;
+        return;
+      }
+
+      const config = defaultConfig({ ...(opts.db ? { dbPath: opts.db } : {}) });
+      const db = new CartographyDB(config.dbPath);
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+      const sessions = db.getSessions().filter(s => s.startedAt < cutoff);
+
+      if (sessions.length === 0) {
+        process.stderr.write(`No sessions older than ${days} days.\n`);
+        db.close();
+        return;
+      }
+
+      if (opts.dryRun) {
+        process.stderr.write(`Would delete ${sessions.length} session(s) older than ${days} days:\n`);
+        for (const s of sessions) {
+          const stats = db.getStats(s.id);
+          process.stderr.write(`  ${s.id.substring(0, 8)}  ${s.startedAt.substring(0, 19)}  nodes:${stats.nodes} edges:${stats.edges}\n`);
+        }
+      } else {
+        const deleted = db.pruneSessions(cutoff);
+        logInfo('Sessions pruned', { deleted, olderThanDays: days });
+        process.stderr.write(`Deleted ${deleted} session(s) older than ${days} days.\n`);
+      }
+
+      db.close();
+    });
+
   // ── Banner (always show) ──────────────────────────────────────────────────
 
   const o = (s: string) => process.stderr.write(s);

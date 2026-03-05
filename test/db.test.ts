@@ -346,4 +346,57 @@ describe('CartographyDB', () => {
     expect(conns).toHaveLength(1);
     expect(conns[0]?.type).toBeUndefined();
   });
+
+  it('deleteSession removes session and all associated data', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    db.upsertNode(sessionId, {
+      id: 'host:x', type: 'host', name: 'X', discoveredVia: 'test',
+      confidence: 0.9, metadata: {}, tags: [],
+    });
+    db.insertEdge(sessionId, {
+      sourceId: 'host:x', targetId: 'host:y',
+      relationship: 'connects_to', evidence: 'test', confidence: 0.5,
+    });
+    db.insertEvent(sessionId, { eventType: 'test', process: 'node', pid: 1 });
+    db.startTask(sessionId, 'task');
+
+    db.deleteSession(sessionId);
+
+    expect(db.getSession(sessionId)).toBeUndefined();
+    expect(db.getNodes(sessionId)).toHaveLength(0);
+    expect(db.getEdges(sessionId)).toHaveLength(0);
+    expect(db.getEvents(sessionId)).toHaveLength(0);
+    expect(db.getTasks(sessionId)).toHaveLength(0);
+  });
+
+  it('pruneSessions deletes old sessions only', () => {
+    const config = defaultConfig();
+    const s1 = db.createSession('discover', config);
+    const s2 = db.createSession('discover', config);
+    db.upsertNode(s1, {
+      id: 'host:old', type: 'host', name: 'Old', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+    db.upsertNode(s2, {
+      id: 'host:new', type: 'host', name: 'New', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+
+    // Prune everything older than a future date (deletes all)
+    const deleted = db.pruneSessions('2099-01-01T00:00:00.000Z');
+    expect(deleted).toBe(2);
+    expect(db.getSessions()).toHaveLength(0);
+    expect(db.getNodes(s1)).toHaveLength(0);
+    expect(db.getNodes(s2)).toHaveLength(0);
+  });
+
+  it('pruneSessions returns 0 when no sessions match', () => {
+    const config = defaultConfig();
+    db.createSession('discover', config);
+    // Prune with a very old cutoff — nothing should be deleted
+    const deleted = db.pruneSessions('1970-01-01T00:00:00.000Z');
+    expect(deleted).toBe(0);
+    expect(db.getSessions()).toHaveLength(1);
+  });
 });

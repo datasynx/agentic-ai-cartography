@@ -583,6 +583,34 @@ export class CartographyDB {
     return row?.action;
   }
 
+  // ── Pruning ──────────────────────────────
+
+  /**
+   * Delete a session and all its associated data (nodes, edges, events, tasks, workflows, connections).
+   */
+  deleteSession(sessionId: string): void {
+    this.db.prepare('DELETE FROM connections WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM workflows WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM activity_events WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM tasks WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM edges WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM nodes WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+  }
+
+  /**
+   * Prune sessions older than the given ISO date string. Returns count of deleted sessions.
+   */
+  pruneSessions(olderThan: string): number {
+    const rows = this.db.prepare(
+      'SELECT id FROM sessions WHERE started_at < ?'
+    ).all(olderThan) as { id: string }[];
+    for (const row of rows) {
+      this.deleteSession(row.id);
+    }
+    return rows.length;
+  }
+
   // ── Stats ───────────────────────────────
 
   getStats(sessionId: string): { nodes: number; edges: number; events: number; tasks: number } {
