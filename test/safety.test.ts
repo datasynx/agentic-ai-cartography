@@ -46,4 +46,106 @@ describe('safetyHook', () => {
     const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'curl -X POST http://api/data' } });
     expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
   });
+
+  // ── Edge Cases ──
+
+  it('handles empty command string', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: '' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('allow');
+  });
+
+  it('handles missing command property', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: {} });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('allow');
+  });
+
+  it('blocks mv command', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'mv /tmp/a /tmp/b' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks chmod', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'chmod 777 /etc/passwd' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks npm install', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'npm install express' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks pip install', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'pip install requests' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks append redirect (>>)', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'echo test >> /tmp/file' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks curl PUT', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'curl -X PUT http://api/data' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks curl DELETE', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'curl -X DELETE http://api/data/1' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks kill command', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'kill -9 1234' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks reboot', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'reboot' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks docker run', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'docker run -it ubuntu' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('allows docker ps', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'docker ps' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('allow');
+  });
+
+  it('allows kubectl get', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'kubectl get pods' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('allow');
+  });
+
+  it('blocks PowerShell Remove-Item', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'Remove-Item C:\\temp\\file.txt' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks PowerShell Stop-Process', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'Stop-Process -Id 1234' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('blocks systemctl start', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'systemctl start nginx' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  it('allows systemctl status', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'systemctl status nginx' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('allow');
+  });
+
+  it('passes through non-hook events (no tool_name)', async () => {
+    const result = await safetyHook({ some_other_field: 'test' });
+    expect(result).toEqual({});
+  });
+
+  it('blocks case-insensitive RM command', async () => {
+    const result = await safetyHook({ tool_name: 'Bash', tool_input: { command: 'RM -rf /tmp' } });
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
 });
