@@ -23,5 +23,7 @@ export {
 export { nodesToAssets, edgesToConnections, buildMapData } from './mapper.js';
 export { defaultConfig } from './types.js';
 export { checkPrerequisites } from './preflight.js';
+export { log, logInfo, logError, logWarn, logDebug, setVerbose } from './logger.js';
+export type { LogLevel, LogEntry } from './logger.js';
 export { CartographyDB as default } from './db.js';
 export type * from './types.js';

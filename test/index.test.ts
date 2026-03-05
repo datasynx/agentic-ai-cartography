@@ -77,4 +77,14 @@ describe('index re-exports', () => {
     const mod = await import('../src/index.js');
     expect(mod.default).toBe(mod.CartographyDB);
   });
+
+  it('exports logger functions', async () => {
+    const mod = await import('../src/index.js');
+    expect(typeof mod.log).toBe('function');
+    expect(typeof mod.logInfo).toBe('function');
+    expect(typeof mod.logError).toBe('function');
+    expect(typeof mod.logWarn).toBe('function');
+    expect(typeof mod.logDebug).toBe('function');
+    expect(typeof mod.setVerbose).toBe('function');
+  });
 });
