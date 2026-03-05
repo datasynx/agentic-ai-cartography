@@ -1484,10 +1484,7 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
   background:var(--bg-surface);border-bottom:1px solid var(--border);z-index:100;flex-shrink:0;
 }
 .tb-left{display:flex;align-items:center;gap:10px}
-.brand-logo{flex-shrink:0}
-.brand-name{font-size:15px;font-weight:700;color:var(--accent);letter-spacing:-.02em}
-.brand-product{font-size:14px;font-weight:500;color:var(--text-muted);margin-left:2px}
-.brand-sep{width:1px;height:24px;background:var(--border);margin:0 6px}
+.brand-product{font-size:15px;font-weight:600;color:var(--text-muted)}
 .tb-center{display:flex;align-items:center;gap:2px;margin-left:auto;
   background:var(--bg-elevated);border-radius:8px;padding:3px}
 .tab-btn{
@@ -1677,16 +1674,6 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
      ═══════════════════════════════════════════════════════════════════════════ -->
 <header id="topbar">
   <div class="tb-left">
-    <svg class="brand-logo" width="32" height="32" viewBox="0 0 32 32" fill="none">
-      <path d="M16 1.5L29.5 8.75V23.25L16 30.5L2.5 23.25V8.75L16 1.5Z" fill="#0F2347" stroke="#2563EB" stroke-width="1.2"/>
-      <circle cx="10" cy="16" r="2.8" fill="#60A5FA"/><circle cx="22" cy="10.5" r="2.2" fill="#38BDF8"/>
-      <circle cx="22" cy="21.5" r="2.2" fill="#38BDF8"/>
-      <line x1="12.5" y1="14.8" x2="19.8" y2="11.2" stroke="#93C5FD" stroke-width="1.2"/>
-      <line x1="12.5" y1="17.2" x2="19.8" y2="20.8" stroke="#93C5FD" stroke-width="1.2"/>
-      <line x1="22" y1="12.7" x2="22" y2="19.3" stroke="#93C5FD" stroke-width="1" stroke-dasharray="2 1.5"/>
-    </svg>
-    <span class="brand-name">datasynx</span>
-    <span class="brand-sep"></span>
     <span class="brand-product">Cartography</span>
   </div>
   <div class="tb-center">
@@ -1701,12 +1688,6 @@ body{display:flex;flex-direction:column;background:var(--bg-base);color:var(--te
       </svg>
       <input id="global-search" type="text" placeholder="Search..." autocomplete="off" spellcheck="false"/>
     </div>
-    <a href="https://www.linkedin.com/company/datasynx-ai/" target="_blank" rel="noopener noreferrer"
-       class="icon-btn" title="Datasynx on LinkedIn" aria-label="LinkedIn">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-      </svg>
-    </a>
     <button id="theme-btn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
       ${theme === 'dark' ? '&#9788;' : '&#9790;'}
     </button>
