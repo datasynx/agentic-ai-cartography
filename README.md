@@ -7,7 +7,8 @@
 [![npm version](https://img.shields.io/npm/v/@datasynx/agentic-ai-cartography?style=flat-square&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
 [![npm downloads](https://img.shields.io/npm/dm/@datasynx/agentic-ai-cartography?style=flat-square&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Node.js ≥18](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node.js >=20](https://img.shields.io/badge/Node.js-%E2%89%A520-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+[![CI](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/ci.yml/badge.svg)](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/ci.yml)
 [![Built with Claude](https://img.shields.io/badge/Built_with-Claude_Agent_SDK-D4A017?style=flat-square&logo=anthropic&logoColor=white)](https://github.com/anthropics/claude-code)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Datasynx_AI-0077B5?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/datasynx-ai/)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/datasynx/agentic-ai-cartography)
@@ -87,7 +88,7 @@ Cartography runs natively on **Linux**, **macOS**, and **Windows** — no WSL re
 
 ## Requirements
 
-- **Node.js >= 18** (Linux, macOS, or Windows)
+- **Node.js >= 20** (Linux, macOS, or Windows)
 - **Claude CLI** — the Agent SDK starts it as a subprocess
 
 ```bash

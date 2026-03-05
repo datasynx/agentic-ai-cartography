@@ -1,0 +1,38 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] - 2026-03-05
+
+### Added
+
+- **Discovery agent** -- Claude-powered autonomous infrastructure scanning via Agent SDK
+- **Browser bookmarks** -- Chrome, Chromium, Firefox, Brave, Edge, Vivaldi, Opera (all platforms including Snap/Flatpak)
+- **Browser history scanning** -- anonymized hostname extraction with user consent
+- **Installed app detection** -- platform-native scanning (dpkg/snap/flatpak/rpm, Homebrew/Spotlight, Registry/winget/choco/scoop)
+- **Local database discovery** -- PostgreSQL, MySQL, MongoDB, Redis, SQLite file scanning
+- **Cloud resource scanning** -- AWS (EC2/RDS/EKS/S3), GCP (Compute/GKE/Cloud Run), Azure (AKS/WebApps)
+- **Kubernetes scanning** -- Nodes, Services, Pods, Deployments, Ingresses
+- **Human-in-the-loop** -- `ask_user()` tool for mid-discovery clarification
+- **Export formats** -- JSON, JGF, Mermaid (topology + dependencies), Backstage YAML, interactive HTML map
+- **Hex grid visualization** -- axial coordinate system with domain clustering
+- **Safety hook** -- `PreToolUse` blocklist for destructive commands (Unix + PowerShell)
+- **Cross-platform support** -- Linux, macOS, Windows (native PowerShell, no WSL required)
+- **Structured logging** -- JSON to stderr for ELK/Datadog/Splunk/CloudWatch
+- **Graceful shutdown** -- SIGTERM/SIGINT handlers with DB cleanup
+- **Input validation** -- `--depth` (1-50), `--max-turns` (1-500)
+- **Discovery timeout** -- 30-minute wall-clock guard
+- **Environment safety** -- whitelisted env vars for child processes (`safeEnv()`)
+- **CLI commands** -- `discover`, `export`, `show`, `sessions`, `overview`, `chat`, `bookmarks`, `seed`, `doctor`, `docs`
+- **CI/CD** -- GitHub Actions workflow (lint, test, build on Node 20/22)
+- **210 tests** across 12 test files (vitest)
+
+### Security
+
+- Bash safety hook blocks destructive commands on all platforms
+- `stripSensitive()` removes credentials from URLs before storage
+- Child processes receive only whitelisted environment variables
+- Read-only discovery -- agent never writes, deletes, or modifies system state
