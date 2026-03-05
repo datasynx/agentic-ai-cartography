@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-03-05
+
+### Changed
+
+- **Zod DB validation** -- all 7 row mappers (session, node, edge, event, task, workflow, connection) now validate raw SQLite rows through Zod schemas, catching corrupted data at read time
+- **Circuit breaker** -- cloud scan tools (k8s, AWS, GCP, Azure) skip remaining commands after 3 consecutive failures, preventing long hangs when CLIs are unconfigured
+
+### Added
+
+- **Test coverage** -- 239 tests across 14 test files (+29 new tests)
+  - `bookmarks.ts` -- 17 tests covering Chrome parsing, multi-profile, deduplication, Firefox discovery, URL edge cases
+  - `agent.ts` -- 12 tests covering event emission, error propagation, turn counting, hint passing, mixed content blocks
+
 ## [1.0.0] - 2026-03-05
 
 ### Added
