@@ -13,6 +13,31 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type McpServer = any;
 
+/**
+ * Circuit breaker for sequential CLI scans.
+ * After `threshold` consecutive failures, remaining commands are skipped.
+ */
+function createScanRunner(
+  runFn: (cmd: string, opts?: { timeout?: number; env?: NodeJS.ProcessEnv }) => string,
+  opts: { timeout?: number; env?: NodeJS.ProcessEnv; threshold?: number } = {},
+) {
+  const threshold = opts.threshold ?? 3;
+  let consecutiveFailures = 0;
+  let tripped = false;
+
+  return (cmd: string): string => {
+    if (tripped) return '(skipped — circuit breaker: too many consecutive failures)';
+    const result = runFn(cmd, { timeout: opts.timeout ?? 20_000, env: opts.env });
+    if (!result) {
+      consecutiveFailures++;
+      if (consecutiveFailures >= threshold) tripped = true;
+      return '(error or not available)';
+    }
+    consecutiveFailures = 0;
+    return result;
+  };
+}
+
 export interface CartographyToolsOptions {
   /** Called when the agent needs a human answer. Return the user's response. */
   onAskUser?: (question: string, context?: string) => Promise<string>;
@@ -260,10 +285,7 @@ export async function createCartographyTools(
     }, async (args) => {
       const ns = args['namespace'] as string | undefined;
       const nsFlag = ns ? `-n ${ns}` : '--all-namespaces';
-      const runK = (cmd: string): string => {
-        const r = run(cmd, { timeout: 15_000 });
-        return r || `(error or not available)`;
-      };
+      const runK = createScanRunner(run, { timeout: 15_000, threshold: 3 });
       const sections: [string, string][] = IS_WIN
         ? [
             ['CONTEXT', 'kubectl config current-context'],
@@ -300,7 +322,7 @@ export async function createCartographyTools(
       const env: NodeJS.ProcessEnv = { ...process.env };
       if (region) env['AWS_DEFAULT_REGION'] = region;
       const pf = profile ? `--profile ${profile}` : '';
-      const runAws = (cmd: string): string => run(cmd, { timeout: 20_000, env }) || '(error or not available)';
+      const runAws = createScanRunner(run, { timeout: 20_000, env, threshold: 3 });
       // aws CLI commands work the same on all platforms (aws is cross-platform)
       const sections: [string, string][] = [
         ['IDENTITY', `aws sts get-caller-identity ${pf} --output json`],
@@ -321,7 +343,7 @@ export async function createCartographyTools(
     }, async (args) => {
       const project = args['project'] as string | undefined;
       const pf = project ? `--project ${project}` : '';
-      const runGcp = (cmd: string): string => run(cmd, { timeout: 20_000 }) || '(error or not available)';
+      const runGcp = createScanRunner(run, { timeout: 20_000, threshold: 3 });
       // gcloud CLI is cross-platform
       const sections: [string, string][] = [
         ['IDENTITY', `gcloud config list account --format="value(core.account)"`],
@@ -346,7 +368,7 @@ export async function createCartographyTools(
       const rg = args['resourceGroup'] as string | undefined;
       const sf = sub ? `--subscription ${sub}` : '';
       const rf = rg ? `--resource-group ${rg}` : '';
-      const runAz = (cmd: string): string => run(cmd, { timeout: 20_000 }) || '(error or not available)';
+      const runAz = createScanRunner(run, { timeout: 20_000, threshold: 3 });
       // az CLI is cross-platform
       const sections: [string, string][] = [
         ['IDENTITY', `az account show --output json ${sf}`],
