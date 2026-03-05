@@ -1,10 +1,97 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { z } from 'zod';
+import { NODE_TYPES, EDGE_RELATIONSHIPS } from './types.js';
 import type {
   CartographyConfig, DiscoveryNode, DiscoveryEdge,
   NodeRow, EdgeRow, SessionRow, Connection,
 } from './types.js';
+
+// ── Row validation schemas ──────────────────────────────────────────────────
+
+const SessionRowSchema = z.object({
+  id: z.string(),
+  mode: z.literal('discover'),
+  started_at: z.string(),
+  completed_at: z.string().nullable().optional(),
+  config: z.string(),
+});
+
+const NodeRowSchema = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  type: z.enum(NODE_TYPES),
+  name: z.string(),
+  discovered_via: z.string().nullable().optional(),
+  discovered_at: z.string(),
+  path_id: z.string().nullable().optional(),
+  depth: z.number().default(0),
+  confidence: z.number().default(0.5),
+  metadata: z.string().default('{}'),
+  tags: z.string().default('[]'),
+  domain: z.string().nullable().optional(),
+  sub_domain: z.string().nullable().optional(),
+  quality_score: z.number().nullable().optional(),
+});
+
+const EdgeRowSchema = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  source_id: z.string(),
+  target_id: z.string(),
+  relationship: z.enum(EDGE_RELATIONSHIPS),
+  evidence: z.string().nullable().optional(),
+  confidence: z.number().default(0.5),
+  discovered_at: z.string(),
+});
+
+const EventRowSchema = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  task_id: z.string().nullable().optional(),
+  timestamp: z.string(),
+  event_type: z.string(),
+  process: z.string(),
+  pid: z.number(),
+  target: z.string().nullable().optional(),
+  target_type: z.string().nullable().optional(),
+  port: z.number().nullable().optional(),
+  duration_ms: z.number().nullable().optional(),
+});
+
+const TaskRowSchema = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  description: z.string().nullable().optional(),
+  started_at: z.string(),
+  completed_at: z.string().nullable().optional(),
+  steps: z.string().default('[]'),
+  involved_services: z.string().default('[]'),
+  status: z.enum(['active', 'completed', 'cancelled']),
+});
+
+const WorkflowRowSchema = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  name: z.string().nullable().optional(),
+  pattern: z.string(),
+  task_ids: z.string().default('[]'),
+  occurrences: z.number().default(1),
+  first_seen: z.string(),
+  last_seen: z.string(),
+  avg_duration_ms: z.number().nullable().optional(),
+  involved_services: z.string().default('[]'),
+});
+
+const ConnectionRowSchema = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  source_asset_id: z.string(),
+  target_asset_id: z.string(),
+  type: z.string().nullable().optional(),
+  created_at: z.string(),
+});
 
 export interface ConnectionRow extends Connection {
   sessionId: string;
@@ -230,12 +317,13 @@ export class CartographyDB {
   }
 
   private mapSession(r: Record<string, unknown>): SessionRow {
+    const v = SessionRowSchema.parse(r);
     return {
-      id: r['id'] as string,
-      mode: r['mode'] as 'discover',
-      startedAt: r['started_at'] as string,
-      completedAt: (r['completed_at'] as string | null) ?? undefined,
-      config: r['config'] as string,
+      id: v.id,
+      mode: v.mode,
+      startedAt: v.started_at,
+      completedAt: v.completed_at ?? undefined,
+      config: v.config,
     };
   }
 
@@ -264,21 +352,22 @@ export class CartographyDB {
   }
 
   private mapNode(r: Record<string, unknown>): NodeRow {
+    const v = NodeRowSchema.parse(r);
     return {
-      id: r['id'] as string,
-      sessionId: r['session_id'] as string,
-      type: r['type'] as NodeRow['type'],
-      name: r['name'] as string,
-      discoveredVia: r['discovered_via'] as string,
-      discoveredAt: r['discovered_at'] as string,
-      depth: r['depth'] as number,
-      confidence: r['confidence'] as number,
-      metadata: JSON.parse(r['metadata'] as string) as Record<string, unknown>,
-      tags: JSON.parse(r['tags'] as string) as string[],
-      pathId: r['path_id'] as string | undefined,
-      domain: (r['domain'] as string | null) ?? undefined,
-      subDomain: (r['sub_domain'] as string | null) ?? undefined,
-      qualityScore: (r['quality_score'] as number | null) ?? undefined,
+      id: v.id,
+      sessionId: v.session_id,
+      type: v.type,
+      name: v.name,
+      discoveredVia: v.discovered_via ?? '',
+      discoveredAt: v.discovered_at,
+      depth: v.depth,
+      confidence: v.confidence,
+      metadata: JSON.parse(v.metadata) as Record<string, unknown>,
+      tags: JSON.parse(v.tags) as string[],
+      pathId: v.path_id ?? undefined,
+      domain: v.domain ?? undefined,
+      subDomain: v.sub_domain ?? undefined,
+      qualityScore: v.quality_score ?? undefined,
     };
   }
 
@@ -307,16 +396,19 @@ export class CartographyDB {
 
   getEdges(sessionId: string): EdgeRow[] {
     const rows = this.db.prepare('SELECT * FROM edges WHERE session_id = ?').all(sessionId) as Record<string, unknown>[];
-    return rows.map(r => ({
-      id: r['id'] as string,
-      sessionId: r['session_id'] as string,
-      sourceId: r['source_id'] as string,
-      targetId: r['target_id'] as string,
-      relationship: r['relationship'] as EdgeRow['relationship'],
-      evidence: r['evidence'] as string,
-      confidence: r['confidence'] as number,
-      discoveredAt: r['discovered_at'] as string,
-    }));
+    return rows.map(r => {
+      const v = EdgeRowSchema.parse(r);
+      return {
+        id: v.id,
+        sessionId: v.session_id,
+        sourceId: v.source_id,
+        targetId: v.target_id,
+        relationship: v.relationship,
+        evidence: v.evidence ?? '',
+        confidence: v.confidence,
+        discoveredAt: v.discovered_at,
+      };
+    });
   }
 
   // ── Events ──────────────────────────────
@@ -338,19 +430,22 @@ export class CartographyDB {
     const rows = since
       ? this.db.prepare('SELECT * FROM activity_events WHERE session_id = ? AND timestamp > ? ORDER BY timestamp').all(sessionId, since) as Record<string, unknown>[]
       : this.db.prepare('SELECT * FROM activity_events WHERE session_id = ? ORDER BY timestamp').all(sessionId) as Record<string, unknown>[];
-    return rows.map(r => ({
-      id: r['id'] as string,
-      sessionId: r['session_id'] as string,
-      taskId: r['task_id'] as string | undefined,
-      timestamp: r['timestamp'] as string,
-      eventType: r['event_type'] as EventRow['eventType'],
-      process: r['process'] as string,
-      pid: r['pid'] as number,
-      target: r['target'] as string | undefined,
-      targetType: r['target_type'] as EventRow['targetType'],
-      port: r['port'] as number | undefined,
-      durationMs: r['duration_ms'] as number | undefined,
-    }));
+    return rows.map(r => {
+      const v = EventRowSchema.parse(r);
+      return {
+        id: v.id,
+        sessionId: v.session_id,
+        taskId: v.task_id ?? undefined,
+        timestamp: v.timestamp,
+        eventType: v.event_type,
+        process: v.process,
+        pid: v.pid,
+        target: v.target ?? undefined,
+        targetType: v.target_type ?? undefined,
+        port: v.port ?? undefined,
+        durationMs: v.duration_ms ?? undefined,
+      };
+    });
   }
 
   // ── Tasks ───────────────────────────────
@@ -391,15 +486,16 @@ export class CartographyDB {
   }
 
   private mapTask(r: Record<string, unknown>): TaskRow {
+    const v = TaskRowSchema.parse(r);
     return {
-      id: r['id'] as string,
-      sessionId: r['session_id'] as string,
-      description: r['description'] as string | undefined,
-      startedAt: r['started_at'] as string,
-      completedAt: r['completed_at'] as string | undefined,
-      steps: r['steps'] as string,
-      involvedServices: r['involved_services'] as string,
-      status: r['status'] as TaskRow['status'],
+      id: v.id,
+      sessionId: v.session_id,
+      description: v.description ?? undefined,
+      startedAt: v.started_at,
+      completedAt: v.completed_at ?? undefined,
+      steps: v.steps,
+      involvedServices: v.involved_services,
+      status: v.status,
     };
   }
 
@@ -422,18 +518,21 @@ export class CartographyDB {
 
   getWorkflows(sessionId: string): WorkflowRow[] {
     const rows = this.db.prepare('SELECT * FROM workflows WHERE session_id = ?').all(sessionId) as Record<string, unknown>[];
-    return rows.map(r => ({
-      id: r['id'] as string,
-      sessionId: r['session_id'] as string,
-      name: r['name'] as string | undefined,
-      pattern: r['pattern'] as string,
-      taskIds: r['task_ids'] as string,
-      occurrences: r['occurrences'] as number,
-      firstSeen: r['first_seen'] as string,
-      lastSeen: r['last_seen'] as string,
-      avgDurationMs: r['avg_duration_ms'] as number,
-      involvedServices: r['involved_services'] as string,
-    }));
+    return rows.map(r => {
+      const v = WorkflowRowSchema.parse(r);
+      return {
+        id: v.id,
+        sessionId: v.session_id,
+        name: v.name ?? undefined,
+        pattern: v.pattern,
+        taskIds: v.task_ids,
+        occurrences: v.occurrences,
+        firstSeen: v.first_seen,
+        lastSeen: v.last_seen,
+        avgDurationMs: v.avg_duration_ms ?? 0,
+        involvedServices: v.involved_services,
+      };
+    });
   }
 
   // ── Connections (user-created hex map links) ─────────────────────────────
@@ -454,14 +553,17 @@ export class CartographyDB {
 
   getConnections(sessionId: string): ConnectionRow[] {
     const rows = this.db.prepare('SELECT * FROM connections WHERE session_id = ?').all(sessionId) as Record<string, unknown>[];
-    return rows.map(r => ({
-      id: r['id'] as string,
-      sessionId: r['session_id'] as string,
-      sourceAssetId: r['source_asset_id'] as string,
-      targetAssetId: r['target_asset_id'] as string,
-      type: (r['type'] as string | null) ?? undefined,
-      createdAt: r['created_at'] as string,
-    }));
+    return rows.map(r => {
+      const v = ConnectionRowSchema.parse(r);
+      return {
+        id: v.id,
+        sessionId: v.session_id,
+        sourceAssetId: v.source_asset_id,
+        targetAssetId: v.target_asset_id,
+        type: v.type ?? undefined,
+        createdAt: v.created_at,
+      };
+    });
   }
 
   deleteConnection(sessionId: string, connectionId: string): void {
