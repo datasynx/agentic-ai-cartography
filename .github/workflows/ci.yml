@@ -48,3 +48,16 @@ jobs:
 
       - name: Dry-run pack
         run: npm pack --dry-run
+
+      - name: Generate SBOM (CycloneDX)
+        if: matrix.node-version == 22
+        run: npx --yes @cyclonedx/cyclonedx-npm --output-file sbom.cdx.json --spec-version 1.5 --omit dev
+        continue-on-error: true
+
+      - name: Upload SBOM artifact
+        if: matrix.node-version == 22
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          if-no-files-found: warn
