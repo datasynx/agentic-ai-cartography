@@ -1,6 +1,6 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "0.9.2",
+  "version": "1.1.0",
   "description": "AI-powered infrastructure cartography CLI — built on Claude Agent SDK",
   "type": "module",
   "bin": {
@@ -22,6 +22,7 @@
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run lint && npm run test && npm run build",
     "postinstall": "node -e \"try{require('child_process').execSync('claude --version',{stdio:'pipe'})}catch{console.warn('\\n⚠ datasynx-cartography requires Claude CLI: npm i -g @anthropic-ai/claude-code\\n')}\""
@@ -67,6 +68,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.2",

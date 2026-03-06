@@ -11,6 +11,7 @@ export type DiscoveryEvent =
   | { kind: 'tool_call'; tool: string; input: Record<string, unknown> }
   | { kind: 'tool_result'; tool: string; output: string }
   | { kind: 'turn'; turn: number }
+  | { kind: 'error'; text: string }
   | { kind: 'done' };
 
 export type AskUserFn = (question: string, context?: string) => Promise<string>;
@@ -154,73 +155,89 @@ Then systematically scan local services, then config files.
 Finally, map all edges (Step 8 — critical!) before finishing.
 Use ask_user when you need context from the user.`;
 
+  const MAX_DISCOVERY_MS = 30 * 60 * 1000; // 30-minute wall-clock timeout
   let turnCount = 0;
 
-  for await (const msg of query({
-    prompt: initialPrompt,
-    options: {
-      model: config.agentModel,
-      maxTurns: config.maxTurns,
-      systemPrompt,
-      mcpServers: { cartography: tools },
-      allowedTools: [
-        'Bash',
-        'mcp__cartograph__save_node',
-        'mcp__cartograph__save_edge',
-        'mcp__cartograph__get_catalog',
-        'mcp__cartograph__scan_bookmarks',
-        'mcp__cartograph__scan_browser_history',
-        'mcp__cartograph__scan_installed_apps',
-        'mcp__cartograph__scan_local_databases',
-        'mcp__cartograph__scan_k8s_resources',
-        'mcp__cartograph__scan_aws_resources',
-        'mcp__cartograph__scan_gcp_resources',
-        'mcp__cartograph__scan_azure_resources',
-        'mcp__cartograph__ask_user',
-      ],
-      hooks: {
-        PreToolUse: [{ matcher: 'Bash', hooks: [safetyHook] }],
+  try {
+    const startTime = Date.now();
+
+    for await (const msg of query({
+      prompt: initialPrompt,
+      options: {
+        model: config.agentModel,
+        maxTurns: config.maxTurns,
+        systemPrompt,
+        mcpServers: { cartography: tools },
+        allowedTools: [
+          'Bash',
+          'mcp__cartograph__save_node',
+          'mcp__cartograph__save_edge',
+          'mcp__cartograph__get_catalog',
+          'mcp__cartograph__scan_bookmarks',
+          'mcp__cartograph__scan_browser_history',
+          'mcp__cartograph__scan_installed_apps',
+          'mcp__cartograph__scan_local_databases',
+          'mcp__cartograph__scan_k8s_resources',
+          'mcp__cartograph__scan_aws_resources',
+          'mcp__cartograph__scan_gcp_resources',
+          'mcp__cartograph__scan_azure_resources',
+          'mcp__cartograph__ask_user',
+        ],
+        hooks: {
+          PreToolUse: [{ matcher: 'Bash', hooks: [safetyHook] }],
+        },
+        permissionMode: 'bypassPermissions',
       },
-      permissionMode: 'bypassPermissions',
-    },
-  })) {
-    if (!onEvent) continue;
-
-    if (msg.type === 'assistant') {
-      turnCount++;
-      onEvent({ kind: 'turn', turn: turnCount });
-
-      for (const block of msg.message.content) {
-        if (block.type === 'text') {
-          onEvent({ kind: 'thinking', text: block.text });
-        }
-        if (block.type === 'tool_use') {
-          onEvent({
-            kind: 'tool_call',
-            tool: block.name as string,
-            input: block.input as Record<string, unknown>,
-          });
-        }
+    })) {
+      // Wall-clock timeout guard
+      if (Date.now() - startTime > MAX_DISCOVERY_MS) {
+        onEvent?.({ kind: 'error', text: `Discovery timeout after ${MAX_DISCOVERY_MS / 60000} minutes` });
+        onEvent?.({ kind: 'done' });
+        return;
       }
-    }
 
-    if (msg.type === 'user') {
-      const content = msg.message?.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (typeof block === 'object' && block !== null && 'type' in block && (block as { type: string }).type === 'tool_result') {
-            const tb = block as { tool_use_id?: string; content?: unknown };
-            const text = typeof tb.content === 'string' ? tb.content : '';
-            onEvent({ kind: 'tool_result', tool: tb.tool_use_id ?? '', output: text });
+      if (!onEvent) continue;
+
+      if (msg.type === 'assistant') {
+        turnCount++;
+        onEvent({ kind: 'turn', turn: turnCount });
+
+        for (const block of msg.message.content) {
+          if (block.type === 'text') {
+            onEvent({ kind: 'thinking', text: block.text });
+          }
+          if (block.type === 'tool_use') {
+            onEvent({
+              kind: 'tool_call',
+              tool: block.name as string,
+              input: block.input as Record<string, unknown>,
+            });
           }
         }
       }
-    }
 
-    if (msg.type === 'result') {
-      onEvent({ kind: 'done' });
-      return;
+      if (msg.type === 'user') {
+        const content = msg.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (typeof block === 'object' && block !== null && 'type' in block && (block as { type: string }).type === 'tool_result') {
+              const tb = block as { tool_use_id?: string; content?: unknown };
+              const text = typeof tb.content === 'string' ? tb.content : '';
+              onEvent({ kind: 'tool_result', tool: tb.tool_use_id ?? '', output: text });
+            }
+          }
+        }
+      }
+
+      if (msg.type === 'result') {
+        onEvent({ kind: 'done' });
+        return;
+      }
     }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    onEvent?.({ kind: 'error', text: `Discovery error: ${message}` });
+    throw err;
   }
 }
 

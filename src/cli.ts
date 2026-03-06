@@ -9,6 +9,8 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { createInterface } from 'readline';
 import { IS_WIN, IS_MAC, PLATFORM, commandExists } from './platform.js';
+import { logInfo, logError, logWarn, setVerbose } from './logger.js';
+import { cleanupTempFiles } from './bookmarks.js';
 
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
@@ -23,10 +25,26 @@ const red     = (s: string) => `\x1b[31m${s}\x1b[0m`;
 main();
 
 function main(): void {
+  // ── Graceful shutdown ──
+  let activeDb: CartographyDB | null = null;
+  const shutdown = (signal: string) => {
+    logWarn(`Received ${signal}, shutting down gracefully…`);
+    if (activeDb) {
+      try { activeDb.close(); } catch { /* already closed */ }
+      activeDb = null;
+    }
+    process.exit(signal === 'SIGINT' ? 130 : 0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  // Clean up orphaned temp files from previous bookmark/history scans
+  cleanupTempFiles();
+
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '0.7.0';
+  const VERSION = '1.0.1';
 
   program
     .name(CMD)
@@ -49,10 +67,26 @@ function main(): void {
     .action(async (opts) => {
       checkPrerequisites();
 
+      // ── Input validation ──
+      const parsedDepth = parseInt(opts.depth, 10);
+      const parsedMaxTurns = parseInt(opts.maxTurns, 10);
+      if (Number.isNaN(parsedDepth) || parsedDepth < 1 || parsedDepth > 50) {
+        process.stderr.write(`❌ Invalid --depth: "${opts.depth}" (must be 1–50)\n`);
+        process.exitCode = 2;
+        return;
+      }
+      if (Number.isNaN(parsedMaxTurns) || parsedMaxTurns < 1 || parsedMaxTurns > 500) {
+        process.stderr.write(`❌ Invalid --max-turns: "${opts.maxTurns}" (must be 1–500)\n`);
+        process.exitCode = 2;
+        return;
+      }
+
+      setVerbose(opts.verbose);
+
       const config = defaultConfig({
         entryPoints: opts.entry,
-        maxDepth: parseInt(opts.depth, 10),
-        maxTurns: parseInt(opts.maxTurns, 10),
+        maxDepth: parsedDepth,
+        maxTurns: parsedMaxTurns,
         agentModel: opts.model,
         organization: opts.org,
         outputDir: opts.output,
@@ -60,7 +94,15 @@ function main(): void {
         verbose: opts.verbose,
       });
 
+      logInfo('Discovery started', {
+        entryPoints: config.entryPoints,
+        model: config.agentModel,
+        maxTurns: config.maxTurns,
+        maxDepth: config.maxDepth,
+      });
+
       const db = new CartographyDB(config.dbPath);
+      activeDb = db;
       const sessionId = db.createSession('discover', config);
 
       const w = process.stderr.write.bind(process.stderr);
@@ -197,8 +239,11 @@ function main(): void {
         await runDiscovery(config, db, sessionId, handleEvent, onAskUser, undefined);
       } catch (err) {
         stopSpinner();
-        w(`\n  ${bold('\x1b[31m✗\x1b[0m')}  Discovery failed: ${err}\n`);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logError('Discovery failed', { sessionId, error: errMsg });
+        w(`\n  ${bold('\x1b[31m✗\x1b[0m')}  Discovery failed: ${errMsg}\n`);
         db.close();
+        activeDb = null;
         process.exitCode = 1;
         return;
       }
@@ -207,6 +252,13 @@ function main(): void {
       db.endSession(sessionId);
       const stats = db.getStats(sessionId);
       const totalSec = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      logInfo('Discovery completed', {
+        sessionId,
+        nodes: stats.nodes,
+        edges: stats.edges,
+        durationSec: parseFloat(totalSec),
+      });
 
       w('\n');
       w(dim('  ────────────────────────────────────────────────\n'));
@@ -1035,6 +1087,49 @@ ${infraSummary.substring(0, 12000)}`;
         out('  \x1b[31m\x1b[1mSome checks failed. Please fix the issues above.\x1b[0m\n\n');
         process.exitCode = 1;
       }
+    });
+
+  // ── Prune ──────────────────────────────────────────────────────────────────
+
+  program
+    .command('prune')
+    .description('Delete old sessions and their data')
+    .option('--older-than <days>', 'Delete sessions older than N days', '30')
+    .option('--db <path>', 'DB path')
+    .option('--dry-run', 'Show what would be deleted without actually deleting', false)
+    .action((opts) => {
+      const days = parseInt(opts.olderThan, 10);
+      if (Number.isNaN(days) || days < 1) {
+        process.stderr.write(`Invalid --older-than: "${opts.olderThan}" (must be >= 1)\n`);
+        process.exitCode = 2;
+        return;
+      }
+
+      const config = defaultConfig({ ...(opts.db ? { dbPath: opts.db } : {}) });
+      const db = new CartographyDB(config.dbPath);
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+      const sessions = db.getSessions().filter(s => s.startedAt < cutoff);
+
+      if (sessions.length === 0) {
+        process.stderr.write(`No sessions older than ${days} days.\n`);
+        db.close();
+        return;
+      }
+
+      if (opts.dryRun) {
+        process.stderr.write(`Would delete ${sessions.length} session(s) older than ${days} days:\n`);
+        for (const s of sessions) {
+          const stats = db.getStats(s.id);
+          process.stderr.write(`  ${s.id.substring(0, 8)}  ${s.startedAt.substring(0, 19)}  nodes:${stats.nodes} edges:${stats.edges}\n`);
+        }
+      } else {
+        const deleted = db.pruneSessions(cutoff);
+        logInfo('Sessions pruned', { deleted, olderThanDays: days });
+        process.stderr.write(`Deleted ${deleted} session(s) older than ${days} days.\n`);
+      }
+
+      db.close();
     });
 
   // ── Banner (always show) ──────────────────────────────────────────────────

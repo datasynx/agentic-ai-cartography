@@ -201,4 +201,202 @@ describe('CartographyDB', () => {
     db.deleteConnection(sessionId, id);
     expect(db.getConnections(sessionId)).toHaveLength(0);
   });
+
+  // ── Edge Cases ──
+
+  it('returns undefined for non-existent session', () => {
+    expect(db.getSession('non-existent-id')).toBeUndefined();
+  });
+
+  it('returns zero stats for empty session', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    const stats = db.getStats(sessionId);
+    expect(stats).toEqual({ nodes: 0, edges: 0, events: 0, tasks: 0 });
+  });
+
+  it('upserts a node (replaces on same id)', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    db.upsertNode(sessionId, {
+      id: 'host:test',
+      type: 'host',
+      name: 'original',
+      discoveredVia: 'ss',
+      confidence: 0.5,
+      metadata: {},
+      tags: [],
+    });
+    db.upsertNode(sessionId, {
+      id: 'host:test',
+      type: 'host',
+      name: 'updated',
+      discoveredVia: 'ss',
+      confidence: 0.9,
+      metadata: {},
+      tags: [],
+    });
+    const nodes = db.getNodes(sessionId);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.name).toBe('updated');
+    expect(nodes[0]?.confidence).toBe(0.9);
+  });
+
+  it('deletes a node and its orphaned edges', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    db.upsertNode(sessionId, {
+      id: 'host:a', type: 'host', name: 'A', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+    db.upsertNode(sessionId, {
+      id: 'host:b', type: 'host', name: 'B', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+    db.insertEdge(sessionId, {
+      sourceId: 'host:a', targetId: 'host:b',
+      relationship: 'connects_to', evidence: 'test', confidence: 0.5,
+    });
+    db.deleteNode(sessionId, 'host:a');
+    expect(db.getNodes(sessionId)).toHaveLength(1);
+    expect(db.getEdges(sessionId)).toHaveLength(0);
+  });
+
+  it('handles events with since filter', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    db.insertEvent(sessionId, { eventType: 'old', process: 'node', pid: 1 });
+    const eventsAfter = db.getEvents(sessionId, '2099-01-01T00:00:00.000Z');
+    expect(eventsAfter).toHaveLength(0);
+  });
+
+  it('handles multiple sessions independently', () => {
+    const config = defaultConfig();
+    const s1 = db.createSession('discover', config);
+    const s2 = db.createSession('discover', config);
+    db.upsertNode(s1, {
+      id: 'host:s1', type: 'host', name: 'session1', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+    db.upsertNode(s2, {
+      id: 'host:s2', type: 'host', name: 'session2', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+    expect(db.getNodes(s1)).toHaveLength(1);
+    expect(db.getNodes(s2)).toHaveLength(1);
+    expect(db.getNodes(s1)[0]?.name).toBe('session1');
+  });
+
+  it('getSessions returns all sessions in reverse order', () => {
+    const config = defaultConfig();
+    const id1 = db.createSession('discover', config);
+    const id2 = db.createSession('discover', config);
+    const sessions = db.getSessions();
+    expect(sessions).toHaveLength(2);
+    expect(sessions[0]?.id).toBe(id2);
+    expect(sessions[1]?.id).toBe(id1);
+  });
+
+  it('getLatestSession returns undefined when no sessions exist', () => {
+    expect(db.getLatestSession()).toBeUndefined();
+  });
+
+  it('stores and retrieves workflows', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    db.insertWorkflow(sessionId, {
+      sessionId, name: 'test-workflow', pattern: 'A->B->C', taskIds: '[]',
+      occurrences: 3, firstSeen: '2024-01-01T00:00:00Z', lastSeen: '2024-01-02T00:00:00Z',
+      avgDurationMs: 500, involvedServices: '["svc-a","svc-b"]',
+    });
+    const workflows = db.getWorkflows(sessionId);
+    expect(workflows).toHaveLength(1);
+    expect(workflows[0]?.name).toBe('test-workflow');
+    expect(workflows[0]?.occurrences).toBe(3);
+  });
+
+  it('manages approvals', () => {
+    db.setApproval('*.internal.com', 'save');
+    expect(db.getApproval('*.internal.com')).toBe('save');
+    db.setApproval('*.internal.com', 'ignore');
+    expect(db.getApproval('*.internal.com')).toBe('ignore');
+    expect(db.getApproval('non-existent')).toBeUndefined();
+  });
+
+  it('updates task description on active task', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    db.startTask(sessionId, 'initial');
+    db.updateTaskDescription(sessionId, 'updated description');
+    const active = db.getActiveTask(sessionId);
+    expect(active?.description).toBe('updated description');
+  });
+
+  it('returns undefined for getActiveTask when no active task', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    expect(db.getActiveTask(sessionId)).toBeUndefined();
+  });
+
+  it('handles connection without type', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    db.upsertConnection(sessionId, { sourceAssetId: 'a', targetAssetId: 'b' });
+    const conns = db.getConnections(sessionId);
+    expect(conns).toHaveLength(1);
+    expect(conns[0]?.type).toBeUndefined();
+  });
+
+  it('deleteSession removes session and all associated data', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+    db.upsertNode(sessionId, {
+      id: 'host:x', type: 'host', name: 'X', discoveredVia: 'test',
+      confidence: 0.9, metadata: {}, tags: [],
+    });
+    db.insertEdge(sessionId, {
+      sourceId: 'host:x', targetId: 'host:y',
+      relationship: 'connects_to', evidence: 'test', confidence: 0.5,
+    });
+    db.insertEvent(sessionId, { eventType: 'test', process: 'node', pid: 1 });
+    db.startTask(sessionId, 'task');
+
+    db.deleteSession(sessionId);
+
+    expect(db.getSession(sessionId)).toBeUndefined();
+    expect(db.getNodes(sessionId)).toHaveLength(0);
+    expect(db.getEdges(sessionId)).toHaveLength(0);
+    expect(db.getEvents(sessionId)).toHaveLength(0);
+    expect(db.getTasks(sessionId)).toHaveLength(0);
+  });
+
+  it('pruneSessions deletes old sessions only', () => {
+    const config = defaultConfig();
+    const s1 = db.createSession('discover', config);
+    const s2 = db.createSession('discover', config);
+    db.upsertNode(s1, {
+      id: 'host:old', type: 'host', name: 'Old', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+    db.upsertNode(s2, {
+      id: 'host:new', type: 'host', name: 'New', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+
+    // Prune everything older than a future date (deletes all)
+    const deleted = db.pruneSessions('2099-01-01T00:00:00.000Z');
+    expect(deleted).toBe(2);
+    expect(db.getSessions()).toHaveLength(0);
+    expect(db.getNodes(s1)).toHaveLength(0);
+    expect(db.getNodes(s2)).toHaveLength(0);
+  });
+
+  it('pruneSessions returns 0 when no sessions match', () => {
+    const config = defaultConfig();
+    db.createSession('discover', config);
+    // Prune with a very old cutoff — nothing should be deleted
+    const deleted = db.pruneSessions('1970-01-01T00:00:00.000Z');
+    expect(deleted).toBe(0);
+    expect(db.getSessions()).toHaveLength(1);
+  });
 });

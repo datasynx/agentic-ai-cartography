@@ -1,7 +1,27 @@
 import { tmpdir } from 'node:os';
-import { existsSync, readFileSync, readdirSync, copyFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, copyFileSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { HOME, IS_WIN, IS_MAC, browserBasePaths, firefoxBaseDirs } from './platform.js';
+
+/**
+ * Remove orphaned temp files from previous bookmark/history scans.
+ * Call at startup to prevent /tmp accumulation after crashes.
+ */
+export function cleanupTempFiles(): number {
+  let cleaned = 0;
+  const tmp = tmpdir();
+  try {
+    for (const f of readdirSync(tmp)) {
+      if (f.startsWith('cartograph_') && f.endsWith('.sqlite')) {
+        try {
+          unlinkSync(join(tmp, f));
+          cleaned++;
+        } catch { /* file in use or already gone */ }
+      }
+    }
+  } catch { /* tmpdir not readable */ }
+  return cleaned;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

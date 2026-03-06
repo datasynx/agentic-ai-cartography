@@ -54,13 +54,31 @@ export interface RunOptions {
  * Run a shell command, returning stdout as string. Returns '' on error.
  * Automatically uses the correct shell for the platform.
  */
+/** Safe environment variables — excludes secrets from child processes */
+const SAFE_ENV_KEYS = [
+  'PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'TERM', 'SHELL',
+  'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'PROGRAMFILES',
+  'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_RUNTIME_DIR',
+  'AWS_DEFAULT_REGION', 'AWS_PROFILE', 'AWS_CONFIG_FILE',
+  'KUBECONFIG', 'GOOGLE_APPLICATION_CREDENTIALS',
+  'AZURE_CONFIG_DIR',
+];
+
+export function safeEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of SAFE_ENV_KEYS) {
+    if (process.env[key]) env[key] = process.env[key];
+  }
+  return env;
+}
+
 export function run(cmd: string, opts: RunOptions = {}): string {
   try {
     return execSync(cmd, {
       stdio: 'pipe',
       timeout: opts.timeout ?? 10_000,
       shell: getShell(),
-      env: opts.env,
+      env: opts.env ?? safeEnv(),
     }).toString().trim();
   } catch {
     return '';
