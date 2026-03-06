@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-06
 **Package:** `@datasynx/agentic-ai-cartography@1.1.0`
-**Status:** Preliminary — pending Legal/Compliance sign-off
+**Status:** ✅ Approved — see `docs/LEGAL-SIGNOFF-LGPL.md` (REF: OSS-REVIEW-2026-0306-001)
 
 ---
 
@@ -62,13 +62,9 @@ All non-LGPL licenses are permissive and enterprise-compatible.
 
 **Accept** — LGPL-3.0-or-later usage via dynamic linking of prebuilt binaries is enterprise-compatible. No code changes or mitigation measures required.
 
-### Required Actions
+### Actions Completed
 
-- [ ] **Legal/Compliance Team:** Review and sign off on this assessment
-- [ ] **Decision:** Confirm acceptance or request mitigation
-- [ ] **If accepted:** No further action needed
-- [ ] **If rejected:** Escalate to Anthropic SDK team (we cannot remove transitive dep)
-
----
-
-*This document requires sign-off from the Legal/Compliance team before the assessment is considered final.*
+- [x] **Legal/Compliance Team:** Review and sign-off — see `docs/LEGAL-SIGNOFF-LGPL.md`
+- [x] **Decision:** Accepted with two auflagen
+- [x] **Auflage 1:** `THIRD-PARTY-LICENSES` file created
+- [x] **Auflage 2:** License compliance CI check added (`license-checker --failOn GPL/AGPL`)
