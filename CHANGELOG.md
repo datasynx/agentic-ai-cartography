@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-03-06
+
+### Security
+
+- **npm audit CI gate** -- `npm audit --audit-level=high` as mandatory CI step; build breaks on high/critical vulnerabilities
+- **License compliance CI gate** -- `license-checker --failOn GPL/AGPL` blocks strong copyleft introductions
+- **Dependabot** -- weekly npm dependency updates with dev-dependency grouping (`.github/dependabot.yml`)
+- **.npmrc security defaults** -- `audit=true`, `engine-strict=true`, `fund=false`
+- **LGPL-3.0 legal sign-off** -- formal compliance review, `THIRD-PARTY-LICENSES` file, CI enforcement
+
+### Changed
+
+- **vitest 3.x → 4.x** -- major version upgrade, 244/244 tests pass with zero config changes
+- **postinstall ESM** -- extracted inline CJS postinstall to `scripts/postinstall.mjs`
+- **Dependency updates** -- `claude-agent-sdk` 0.2.59→0.2.70, `@types/node` patch update
+
+### Added
+
+- **SBOM generation** -- CycloneDX SBOM (`sbom.cdx.json`) generated and uploaded as CI artifact
+- **Enterprise evaluation docs** -- evaluation report, task specification, legal sign-off, spike results
+
 ## [1.1.0] - 2026-03-06
 
 ### Added
