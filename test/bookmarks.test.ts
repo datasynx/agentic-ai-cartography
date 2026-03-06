@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { cleanupTempFiles } from '../src/bookmarks.js';
 
 // We need to test internal functions, so we'll test through the public API
 // and also test readChromeLike via fixture files.
@@ -321,6 +322,33 @@ describe('bookmarks module', () => {
 
       expect(dirs).toHaveLength(1);
       expect(dirs[0]).toContain('abc123.default-release');
+    });
+  });
+
+  describe('cleanupTempFiles', () => {
+    it('removes orphaned cartograph_ temp files', () => {
+      const tmp = tmpdir();
+      const orphan1 = join(tmp, `cartograph_test_cleanup_1.sqlite`);
+      const orphan2 = join(tmp, `cartograph_test_cleanup_2.sqlite`);
+      writeFileSync(orphan1, 'fake');
+      writeFileSync(orphan2, 'fake');
+
+      const cleaned = cleanupTempFiles();
+      expect(cleaned).toBeGreaterThanOrEqual(2);
+      expect(existsSync(orphan1)).toBe(false);
+      expect(existsSync(orphan2)).toBe(false);
+    });
+
+    it('does not remove non-cartograph files', () => {
+      const tmp = tmpdir();
+      const safe = join(tmp, `other_file_${Date.now()}.sqlite`);
+      writeFileSync(safe, 'safe');
+
+      cleanupTempFiles();
+      expect(existsSync(safe)).toBe(true);
+
+      // Cleanup
+      try { rmSync(safe); } catch { /* ok */ }
     });
   });
 

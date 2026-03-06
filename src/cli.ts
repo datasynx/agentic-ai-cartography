@@ -10,6 +10,7 @@ import { resolve } from 'path';
 import { createInterface } from 'readline';
 import { IS_WIN, IS_MAC, PLATFORM, commandExists } from './platform.js';
 import { logInfo, logError, logWarn, setVerbose } from './logger.js';
+import { cleanupTempFiles } from './bookmarks.js';
 
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
@@ -36,6 +37,9 @@ function main(): void {
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+
+  // Clean up orphaned temp files from previous bookmark/history scans
+  cleanupTempFiles();
 
   const program = new Command();
 
