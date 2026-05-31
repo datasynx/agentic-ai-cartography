@@ -10,9 +10,8 @@ import {
   scanWindowsPrograms, scanWindowsDbServices,
 } from './platform.js';
 
-// Lazy import to avoid hard-wiring SDK at module parse time
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type McpServer = any;
+// Type-only import — no runtime dependency on SDK at module parse time
+import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 
 /**
  * Circuit breaker for sequential CLI scans.
@@ -70,7 +69,7 @@ export async function createCartographyTools(
   db: CartographyDB,
   sessionId: string,
   opts: CartographyToolsOptions = {},
-): Promise<McpServer> {
+): Promise<McpServerConfig> {
   // Dynamically import the SDK so missing package doesn't crash at load time
   const { tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
 
