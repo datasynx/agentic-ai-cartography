@@ -6,7 +6,8 @@ import { runDiscovery } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
 import { exportAll } from './exporter.js';
 import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
 import { IS_WIN, IS_MAC, PLATFORM, commandExists } from './platform.js';
 import { logInfo, logError, logWarn, setVerbose } from './logger.js';
@@ -44,7 +45,8 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const { version: VERSION } = JSON.parse(readFileSync(resolve(import.meta.dirname ?? '.', '..', 'package.json'), 'utf-8'));
+  const __dirname = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+  const { version: VERSION } = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8'));
 
   program
     .name(CMD)

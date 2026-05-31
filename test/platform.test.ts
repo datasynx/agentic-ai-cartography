@@ -3,7 +3,8 @@ import {
   PLATFORM, IS_WIN, IS_MAC, IS_LINUX, HOME, NULL_DEV,
   run, commandExists, browserBasePaths, firefoxBaseDirs,
   dbScanDirs, appDataDir, userDataDir, fileUrl, getShell,
-  findFiles,
+  findFiles, safeEnv, scanListeningPorts, scanProcesses,
+  scanWindowsPrograms, scanWindowsDbServices,
 } from '../src/platform.js';
 
 describe('platform constants', () => {
@@ -145,6 +146,71 @@ describe('fileUrl', () => {
       const url = fileUrl('C:\\Users\\test\\file.html');
       expect(url).toContain('file:///');
       expect(url).toContain('C:/Users/test/file.html');
+    }
+  });
+});
+
+describe('safeEnv', () => {
+  it('returns an object', () => {
+    const env = safeEnv();
+    expect(typeof env).toBe('object');
+  });
+
+  it('includes PATH', () => {
+    const env = safeEnv();
+    expect(env.PATH).toBeDefined();
+    expect(env.PATH!.length).toBeGreaterThan(0);
+  });
+
+  it('includes HOME', () => {
+    const env = safeEnv();
+    expect(env.HOME).toBeDefined();
+  });
+
+  it('does not include SECRET or TOKEN vars', () => {
+    process.env.SECRET_KEY = 'should_not_leak';
+    process.env.API_TOKEN = 'should_not_leak';
+    const env = safeEnv();
+    expect(env.SECRET_KEY).toBeUndefined();
+    expect(env.API_TOKEN).toBeUndefined();
+    delete process.env.SECRET_KEY;
+    delete process.env.API_TOKEN;
+  });
+
+  it('does not include AWS_SECRET_ACCESS_KEY', () => {
+    process.env.AWS_SECRET_ACCESS_KEY = 'mysecret';
+    const env = safeEnv();
+    expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+    delete process.env.AWS_SECRET_ACCESS_KEY;
+  });
+});
+
+describe('scanListeningPorts', () => {
+  it('returns a string (may be empty if no ports)', () => {
+    const result = scanListeningPorts();
+    expect(typeof result).toBe('string');
+  });
+});
+
+describe('scanProcesses', () => {
+  it('returns non-empty string with running processes', () => {
+    const result = scanProcesses();
+    expect(result.length).toBeGreaterThan(0);
+  });
+});
+
+describe('scanWindowsPrograms', () => {
+  it('returns empty string on non-Windows', () => {
+    if (!IS_WIN) {
+      expect(scanWindowsPrograms()).toBe('');
+    }
+  });
+});
+
+describe('scanWindowsDbServices', () => {
+  it('returns empty string on non-Windows', () => {
+    if (!IS_WIN) {
+      expect(scanWindowsDbServices()).toBe('');
     }
   });
 });

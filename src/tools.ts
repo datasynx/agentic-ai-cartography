@@ -18,7 +18,7 @@ type McpServer = any;
  * Circuit breaker for sequential CLI scans.
  * After `threshold` consecutive failures, remaining commands are skipped.
  */
-function createScanRunner(
+export function createScanRunner(
   runFn: (cmd: string, opts?: { timeout?: number; env?: NodeJS.ProcessEnv }) => string,
   opts: { timeout?: number; env?: NodeJS.ProcessEnv; threshold?: number } = {},
 ) {
