@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { CartographyDB } from './db.js';
 import { NODE_TYPES, EDGE_RELATIONSHIPS } from './types.js';
 import { scanAllBookmarks, scanAllHistory } from './bookmarks.js';
+import { logDebug } from './logger.js';
 import {
   IS_WIN, IS_MAC, IS_LINUX, HOME, PLATFORM,
   run, commandExists, findFiles, dbScanDirs,
@@ -26,11 +27,17 @@ function createScanRunner(
   let tripped = false;
 
   return (cmd: string): string => {
-    if (tripped) return '(skipped — circuit breaker: too many consecutive failures)';
+    if (tripped) {
+      logDebug(`Circuit breaker: skipping "${cmd}" (${consecutiveFailures} consecutive failures)`);
+      return '(skipped — circuit breaker: too many consecutive failures)';
+    }
     const result = runFn(cmd, { timeout: opts.timeout ?? 20_000, env: opts.env });
     if (!result) {
       consecutiveFailures++;
-      if (consecutiveFailures >= threshold) tripped = true;
+      if (consecutiveFailures >= threshold) {
+        tripped = true;
+        logDebug(`Circuit breaker tripped after ${threshold} failures, last command: "${cmd}"`);
+      }
       return '(error or not available)';
     }
     consecutiveFailures = 0;
@@ -44,14 +51,18 @@ export interface CartographyToolsOptions {
 }
 
 export function stripSensitive(target: string): string {
+  const raw = target.trim();
+  if (!raw) return raw;
   try {
-    const url = new URL(target.startsWith('http') ? target : `tcp://${target}`);
-    return `${url.hostname}${url.port ? ':' + url.port : ''}`;
+    const url = new URL(raw.startsWith('http') ? raw : `tcp://${raw}`);
+    const stripped = `${url.hostname}${url.port ? ':' + url.port : ''}`;
+    return stripped || raw;
   } catch {
-    return target
+    const stripped = raw
       .replace(/\/.*$/, '')
       .replace(/\?.*$/, '')
       .replace(/@.*:/, ':');
+    return stripped || raw;
   }
 }
 

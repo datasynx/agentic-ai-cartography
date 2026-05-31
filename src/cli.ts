@@ -44,7 +44,7 @@ function main(): void {
   const program = new Command();
 
   const CMD = 'datasynx-cartography';
-  const VERSION = '1.0.1';
+  const { version: VERSION } = JSON.parse(readFileSync(resolve(import.meta.dirname ?? '.', '..', 'package.json'), 'utf-8'));
 
   program
     .name(CMD)
@@ -1135,57 +1135,52 @@ ${infraSummary.substring(0, 12000)}`;
   // ── Banner (always show) ──────────────────────────────────────────────────
 
   const o = (s: string) => process.stderr.write(s);
-  const _b = (s: string) => `\x1b[1m${s}\x1b[0m`;
-  const _d = (s: string) => `\x1b[2m${s}\x1b[0m`;
-  const _c = (s: string) => `\x1b[36m${s}\x1b[0m`;
-  const _g = (s: string) => `\x1b[32m${s}\x1b[0m`;
-  const _m = (s: string) => `\x1b[35m${s}\x1b[0m`;
 
   o('\n');
-  o(_c('   ____        _        ____                    ') + '\n');
-  o(_c('  |  _ \\  __ _| |_ __ _/ ___| _   _ _ __ __  __') + '\n');
-  o(_c('  | | | |/ _` | __/ _` \\___ \\| | | | \'_ \\\\ \\/ /') + '\n');
-  o(_c('  | |_| | (_| | || (_| |___) | |_| | | | |>  < ') + '\n');
-  o(_c('  |____/ \\__,_|\\__\\__,_|____/ \\__, |_| |_/_/\\_\\') + '\n');
-  o(_c('                              |___/             ') + '\n');
+  o(cyan('   ____        _        ____                    ') + '\n');
+  o(cyan('  |  _ \\  __ _| |_ __ _/ ___| _   _ _ __ __  __') + '\n');
+  o(cyan('  | | | |/ _` | __/ _` \\___ \\| | | | \'_ \\\\ \\/ /') + '\n');
+  o(cyan('  | |_| | (_| | || (_| |___) | |_| | | | |>  < ') + '\n');
+  o(cyan('  |____/ \\__,_|\\__\\__,_|____/ \\__, |_| |_/_/\\_\\') + '\n');
+  o(cyan('                              |___/             ') + '\n');
   o('\n');
-  o(_b('  Cartography') + '  ' + _d('v' + VERSION) + '\n');
-  o(_d('  AI-powered Infrastructure Discovery & Agentic AI Cartography\n'));
-  o(_d('  Built on Claude Agent SDK\n'));
+  o(bold('  Cartography') + '  ' + dim('v' + VERSION) + '\n');
+  o(dim('  AI-powered Infrastructure Discovery & Agentic AI Cartography\n'));
+  o(dim('  Built on Claude Agent SDK\n'));
   o('\n');
 
   // ── Welcome Screen (no args → Befehlsübersicht) ─────────────────────────
 
   if (process.argv.length <= 2) {
-    o(_d('  ────────────────────────────────────────────────\n'));
+    o(dim('  ────────────────────────────────────────────────\n'));
     o('\n');
-    o(_b('  Commands:\n'));
+    o(bold('  Commands:\n'));
     o('\n');
-    o(`  ${_g('discover')}             ${_d('Scan infrastructure (Claude Sonnet)')}\n`);
-    o(`  ${_g('seed')}                 ${_d('Manually add known tools/DBs/APIs')}\n`);
-    o(`  ${_g('bookmarks')}            ${_d('View browser bookmarks')}\n`);
-    o(`  ${_g('export')} ${_d('[session]')}    ${_d('Export Mermaid, JSON, YAML, HTML')}\n`);
-    o(`  ${_g('show')} ${_d('[session]')}      ${_d('Show session details')}\n`);
-    o(`  ${_g('sessions')}             ${_d('List all sessions')}\n`);
-    o(`  ${_g('doctor')}               ${_d('Check requirements (kubectl, aws, gcloud, az)')}\n`);
-    o(`  ${_g('docs')}                 ${_d('Full feature reference')}\n`);
+    o(`  ${green('discover')}             ${dim('Scan infrastructure (Claude Sonnet)')}\n`);
+    o(`  ${green('seed')}                 ${dim('Manually add known tools/DBs/APIs')}\n`);
+    o(`  ${green('bookmarks')}            ${dim('View browser bookmarks')}\n`);
+    o(`  ${green('export')} ${dim('[session]')}    ${dim('Export Mermaid, JSON, YAML, HTML')}\n`);
+    o(`  ${green('show')} ${dim('[session]')}      ${dim('Show session details')}\n`);
+    o(`  ${green('sessions')}             ${dim('List all sessions')}\n`);
+    o(`  ${green('doctor')}               ${dim('Check requirements (kubectl, aws, gcloud, az)')}\n`);
+    o(`  ${green('docs')}                 ${dim('Full feature reference')}\n`);
     o('\n');
-    o(_d('  ────────────────────────────────────────────────\n'));
+    o(dim('  ────────────────────────────────────────────────\n'));
     o('\n');
-    o(_b('  Quick Start:\n'));
+    o(bold('  Quick Start:\n'));
     o('\n');
-    o(`  ${_m('$')} ${_b('datasynx-cartography doctor')}         ${_d('Check requirements')}\n`);
-    o(`  ${_m('$')} ${_b('datasynx-cartography seed')}           ${_d('Add known infrastructure')}\n`);
-    o(`  ${_m('$')} ${_b('datasynx-cartography discover')}       ${_d('One-time scan')}\n`);
+    o(`  ${magenta('$')} ${bold('datasynx-cartography doctor')}         ${dim('Check requirements')}\n`);
+    o(`  ${magenta('$')} ${bold('datasynx-cartography seed')}           ${dim('Add known infrastructure')}\n`);
+    o(`  ${magenta('$')} ${bold('datasynx-cartography discover')}       ${dim('One-time scan')}\n`);
     o('\n');
-    o(_d('  Docs:   datasynx-cartography docs\n'));
-    o(_d('  Help:   datasynx-cartography --help\n'));
-    o(_d('  npm:    @datasynx/agentic-ai-cartography\n'));
+    o(dim('  Docs:   datasynx-cartography docs\n'));
+    o(dim('  Help:   datasynx-cartography --help\n'));
+    o(dim('  npm:    @datasynx/agentic-ai-cartography\n'));
     o('\n');
     return;
   }
 
-  o(_d('  ────────────────────────────────────────────────\n'));
+  o(dim('  ────────────────────────────────────────────────\n'));
   o('\n');
 
   // ── Parse ──────────────────────────────────────────────────────────────────

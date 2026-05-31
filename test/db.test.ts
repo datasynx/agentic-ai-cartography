@@ -399,4 +399,19 @@ describe('CartographyDB', () => {
     expect(deleted).toBe(0);
     expect(db.getSessions()).toHaveLength(1);
   });
+
+  it('connections use composite index for fast upsert lookups', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+
+    const id1 = db.upsertConnection(sessionId, { sourceAssetId: 'a', targetAssetId: 'b', type: 'api' });
+    const id2 = db.upsertConnection(sessionId, { sourceAssetId: 'a', targetAssetId: 'b', type: 'api' });
+    expect(id1).toBe(id2);
+
+    const id3 = db.upsertConnection(sessionId, { sourceAssetId: 'a', targetAssetId: 'c', type: 'db' });
+    expect(id3).not.toBe(id1);
+
+    const conns = db.getConnections(sessionId);
+    expect(conns).toHaveLength(2);
+  });
 });

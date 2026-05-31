@@ -125,7 +125,13 @@ function findFreeOrigin(
 ): AxialCoord {
   const key = (q: number, r: number) => `${q},${r}`;
 
-  // Search in expanding rings around the global origin
+  // Pre-parse occupied coordinates to avoid repeated string splitting
+  const parsedOccupied: AxialCoord[] = [];
+  for (const oKey of occupied) {
+    const [oq, or] = oKey.split(',').map(Number);
+    parsedOccupied.push({ q: oq, r: or });
+  }
+
   for (let searchRadius = 1; searchRadius < 100; searchRadius++) {
     const candidates = hexSpiral({ q: 0, r: 0 }, 1 + 6 * searchRadius * (searchRadius + 1) / 2);
 
@@ -134,12 +140,10 @@ function findFreeOrigin(
       let fits = true;
 
       for (const tp of testPositions) {
-        // Check that the cell itself and its gap neighbors are free
         if (occupied.has(key(tp.q, tp.r))) { fits = false; break; }
 
-        for (const oKey of occupied) {
-          const [oq, or] = oKey.split(',').map(Number);
-          if (hexDistance(tp, { q: oq, r: or }) < gap) {
+        for (const oc of parsedOccupied) {
+          if (hexDistance(tp, oc) < gap) {
             fits = false;
             break;
           }
@@ -151,7 +155,6 @@ function findFreeOrigin(
     }
   }
 
-  // Fallback
   return { q: occupied.size * 5, r: 0 };
 }
 

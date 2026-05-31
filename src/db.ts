@@ -239,6 +239,7 @@ CREATE INDEX IF NOT EXISTS idx_events_session ON activity_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_events_task ON activity_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_connections_session ON connections(session_id);
+CREATE INDEX IF NOT EXISTS idx_connections_lookup ON connections(session_id, source_asset_id, target_asset_id);
 `;
 
 export class CartographyDB {
@@ -257,7 +258,7 @@ export class CartographyDB {
     const version = (this.db.pragma('user_version', { simple: true }) as number);
     if (version === 0) {
       this.db.exec(SCHEMA);
-      this.db.pragma('user_version = 2');
+      this.db.pragma('user_version = 3');
     } else if (version === 1) {
       // v1 → v2: add hex map columns to nodes + connections table
       const cols = (this.db.prepare("PRAGMA table_info(nodes)").all() as Array<{ name: string }>).map(c => c.name);
@@ -274,8 +275,14 @@ export class CartographyDB {
           created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_connections_session ON connections(session_id);
+        CREATE INDEX IF NOT EXISTS idx_connections_lookup ON connections(session_id, source_asset_id, target_asset_id);
       `);
-      this.db.pragma('user_version = 2');
+      this.db.pragma('user_version = 3');
+    }
+    if (version === 2) {
+      // v2 → v3: add composite index for connection upsert lookups
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_connections_lookup ON connections(session_id, source_asset_id, target_asset_id)');
+      this.db.pragma('user_version = 3');
     }
   }
 

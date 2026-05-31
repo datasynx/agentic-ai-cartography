@@ -59,4 +59,21 @@ describe('stripSensitive', () => {
   it('handles host:port with trailing slash', () => {
     expect(stripSensitive('localhost:3000/')).toBe('localhost:3000');
   });
+
+  it('returns empty string for empty input', () => {
+    expect(stripSensitive('')).toBe('');
+  });
+
+  it('trims whitespace', () => {
+    expect(stripSensitive('  localhost:3000  ')).toBe('localhost:3000');
+  });
+
+  it('never returns empty for valid URL', () => {
+    const result = stripSensitive('http://');
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('preserves bare IP without port', () => {
+    expect(stripSensitive('10.0.0.1')).toBe('10.0.0.1');
+  });
 });
