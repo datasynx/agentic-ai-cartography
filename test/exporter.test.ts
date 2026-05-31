@@ -213,6 +213,72 @@ describe('exportHTML', () => {
   });
 });
 
+describe('generateTopologyMermaid node type layers', () => {
+  it('assigns messaging layer for message_broker type', () => {
+    const nodes: NodeRow[] = [{
+      id: 'message_broker:rabbitmq:5672', type: 'message_broker', name: 'RabbitMQ',
+      discoveredVia: 'ss', confidence: 0.9, metadata: {}, tags: [],
+      sessionId: 'test-session', discoveredAt: new Date().toISOString(), depth: 0,
+    }];
+    const result = generateTopologyMermaid(nodes, []);
+    expect(result).toContain('RabbitMQ');
+    expect(result).toContain('Messaging');
+  });
+
+  it('assigns infra layer for host type', () => {
+    const nodes: NodeRow[] = [{
+      id: 'host:server-1', type: 'host', name: 'server-1',
+      discoveredVia: 'ps', confidence: 0.9, metadata: {}, tags: [],
+      sessionId: 'test-session', discoveredAt: new Date().toISOString(), depth: 0,
+    }];
+    const result = generateTopologyMermaid(nodes, []);
+    expect(result).toContain('server-1');
+    expect(result).toContain('Infra');
+  });
+
+  it('assigns config layer for config_file type', () => {
+    const nodes: NodeRow[] = [{
+      id: 'config_file:.env', type: 'config_file', name: '.env',
+      discoveredVia: 'find', confidence: 0.8, metadata: {}, tags: [],
+      sessionId: 'test-session', discoveredAt: new Date().toISOString(), depth: 0,
+    }];
+    const result = generateTopologyMermaid(nodes, []);
+    expect(result).toContain('.env');
+  });
+
+  it('assigns other layer for unknown type', () => {
+    const nodes: NodeRow[] = [{
+      id: 'custom:thing', type: 'custom_widget', name: 'custom-thing',
+      discoveredVia: 'test', confidence: 0.9, metadata: {}, tags: [],
+      sessionId: 'test-session', discoveredAt: new Date().toISOString(), depth: 0,
+    }];
+    const result = generateTopologyMermaid(nodes, []);
+    expect(result).toContain('custom-thing');
+  });
+
+  it('includes metadata category in node label', () => {
+    const nodes: NodeRow[] = [{
+      id: 'saas_tool:hubspot', type: 'saas_tool', name: 'HubSpot',
+      discoveredVia: 'bookmark', confidence: 0.9,
+      metadata: { category: 'Marketing Automation' }, tags: [],
+      sessionId: 'test-session', discoveredAt: new Date().toISOString(), depth: 0,
+    }];
+    const result = generateTopologyMermaid(nodes, []);
+    expect(result).toContain('Marketing Automation');
+  });
+
+  it('includes metadata version in node label when no category', () => {
+    const nodes: NodeRow[] = [{
+      id: 'database_server:pg', type: 'database_server', name: 'PostgreSQL',
+      discoveredVia: 'ss', confidence: 0.9,
+      metadata: { version: '16.2' }, tags: [],
+      sessionId: 'test-session', discoveredAt: new Date().toISOString(), depth: 0,
+    }];
+    const result = generateTopologyMermaid(nodes, []);
+    expect(result).toContain('16.2');
+  });
+});
+
 describe('generateTopologyMermaid edge cases', () => {
   it('handles empty nodes and edges', () => {
     const result = generateTopologyMermaid([], []);

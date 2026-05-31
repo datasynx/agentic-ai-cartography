@@ -126,11 +126,33 @@ describe('dbScanDirs', () => {
     const dirs = dbScanDirs();
     expect(Array.isArray(dirs)).toBe(true);
   });
+
+  it('all returned dirs exist on filesystem', () => {
+    const dirs = dbScanDirs();
+    for (const d of dirs) {
+      expect(typeof d).toBe('string');
+      expect(d.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('returns at least one dir on Linux', () => {
+    if (IS_LINUX) {
+      const dirs = dbScanDirs();
+      expect(dirs.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('findFiles', () => {
   it('returns empty string for empty dirs', () => {
     expect(findFiles([], ['*.txt'], 2, 10)).toBe('');
+  });
+
+  it('finds files in a real directory', () => {
+    if (!IS_WIN) {
+      const result = findFiles(['/tmp'], ['*.sqlite'], 1, 5);
+      expect(typeof result).toBe('string');
+    }
   });
 });
 

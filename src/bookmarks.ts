@@ -70,7 +70,7 @@ export function walkChrome(node: ChromeNode, source: string, out: BookmarkHost[]
   }
 }
 
-function readChromeLike(filePath: string, source: string): BookmarkHost[] {
+export function readChromeLike(filePath: string, source: string): BookmarkHost[] {
   if (!existsSync(filePath)) return [];
   try {
     const raw = JSON.parse(readFileSync(filePath, 'utf8')) as {
@@ -177,7 +177,7 @@ async function readChromiumHistory(historyPath: string, source: string): Promise
 const IS_LINUX = !IS_MAC && !IS_WIN;
 
 // Browser bookmark file paths (multiple profiles supported)
-function chromeLikePaths(base: string): string[] {
+export function chromeLikePaths(base: string): string[] {
   const paths: string[] = [];
   const defaultPath = join(base, 'Default', 'Bookmarks');
   if (existsSync(defaultPath)) paths.push(defaultPath);
@@ -195,7 +195,7 @@ function chromeLikePaths(base: string): string[] {
   return paths;
 }
 
-function chromeLikeHistoryPaths(base: string): string[] {
+export function chromeLikeHistoryPaths(base: string): string[] {
   const paths: string[] = [];
   const defaultPath = join(base, 'Default', 'History');
   if (existsSync(defaultPath)) paths.push(defaultPath);
