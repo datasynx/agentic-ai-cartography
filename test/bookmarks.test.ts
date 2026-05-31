@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { cleanupTempFiles } from '../src/bookmarks.js';
+import { cleanupTempFiles, extractHost, walkChrome } from '../src/bookmarks.js';
+import type { BookmarkHost, ChromeNode } from '../src/bookmarks.js';
 
 // We need to test internal functions, so we'll test through the public API
 // and also test readChromeLike via fixture files.
@@ -352,28 +353,116 @@ describe('bookmarks module', () => {
     });
   });
 
-  describe('URL hostname extraction edge cases', () => {
-    it('lowercases hostnames', () => {
-      const u = new URL('https://GitHub.COM/path');
-      expect(u.hostname).toBe('github.com'); // URL constructor lowercases
+  describe('extractHost', () => {
+    it('extracts hostname and port from HTTPS URL', () => {
+      const result = extractHost('https://github.com/user/repo', 'chrome');
+      expect(result).toEqual({ hostname: 'github.com', port: 443, protocol: 'https', source: 'chrome' });
     });
 
-    it('handles IDN hostnames', () => {
-      const u = new URL('https://xn--nxasmq6b.example.com');
-      expect(u.hostname).toBeTruthy();
+    it('extracts hostname and port from HTTP URL', () => {
+      const result = extractHost('http://api.example.com:3000/v1', 'edge');
+      expect(result).toEqual({ hostname: 'api.example.com', port: 3000, protocol: 'http', source: 'edge' });
+    });
+
+    it('returns null for non-http protocols', () => {
+      expect(extractHost('ftp://files.example.com', 'chrome')).toBeNull();
+      expect(extractHost('chrome://settings', 'chrome')).toBeNull();
+      expect(extractHost('javascript:void(0)', 'chrome')).toBeNull();
+      expect(extractHost('file:///home/user/doc.html', 'chrome')).toBeNull();
+    });
+
+    it('returns null for localhost and 127.0.0.1', () => {
+      expect(extractHost('http://localhost:3000', 'chrome')).toBeNull();
+      expect(extractHost('https://127.0.0.1:8080', 'chrome')).toBeNull();
+    });
+
+    it('returns null for invalid URLs', () => {
+      expect(extractHost('not-a-url', 'chrome')).toBeNull();
+      expect(extractHost('', 'chrome')).toBeNull();
+    });
+
+    it('lowercases hostnames', () => {
+      const result = extractHost('https://GitHub.COM/path', 'chrome');
+      expect(result?.hostname).toBe('github.com');
     });
 
     it('handles IP addresses', () => {
-      const u = new URL('http://192.168.1.100:8080');
-      expect(u.hostname).toBe('192.168.1.100');
-      expect(u.port).toBe('8080');
+      const result = extractHost('http://192.168.1.100:8080/api', 'chrome');
+      expect(result?.hostname).toBe('192.168.1.100');
+      expect(result?.port).toBe(8080);
     });
 
-    it('rejects invalid URLs gracefully', () => {
-      const invalids = ['not-a-url', '', 'just-a-hostname', '://missing-protocol'];
-      for (const url of invalids) {
-        expect(() => new URL(url)).toThrow();
-      }
+    it('defaults to port 443 for HTTPS', () => {
+      const result = extractHost('https://example.com', 'chrome');
+      expect(result?.port).toBe(443);
+    });
+
+    it('defaults to port 80 for HTTP', () => {
+      const result = extractHost('http://example.com', 'chrome');
+      expect(result?.port).toBe(80);
+    });
+  });
+
+  describe('walkChrome', () => {
+    it('extracts URLs from flat bookmark list', () => {
+      const root: ChromeNode = {
+        type: 'folder',
+        children: [
+          { type: 'url', url: 'https://github.com' },
+          { type: 'url', url: 'https://notion.so' },
+        ],
+      };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(2);
+      expect(out[0]?.hostname).toBe('github.com');
+      expect(out[1]?.hostname).toBe('notion.so');
+    });
+
+    it('extracts URLs from nested folders', () => {
+      const root: ChromeNode = {
+        type: 'folder',
+        children: [
+          {
+            type: 'folder',
+            children: [
+              { type: 'url', url: 'https://deeply.nested.example.com' },
+            ],
+          },
+        ],
+      };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(1);
+      expect(out[0]?.hostname).toBe('deeply.nested.example.com');
+    });
+
+    it('skips non-url nodes', () => {
+      const root: ChromeNode = {
+        type: 'folder',
+        children: [
+          { type: 'folder' },
+          { type: 'separator' },
+          { type: 'url', url: 'https://valid.com' },
+        ],
+      };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(1);
+    });
+
+    it('handles empty tree', () => {
+      const root: ChromeNode = { type: 'folder', children: [] };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(0);
+    });
+
+    it('handles node without children', () => {
+      const root: ChromeNode = { type: 'folder' };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(0);
     });
   });
 });

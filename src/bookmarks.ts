@@ -38,7 +38,7 @@ export interface HistoryHost extends BookmarkHost {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function extractHost(rawUrl: string, source: string): BookmarkHost | null {
+export function extractHost(rawUrl: string, source: string): BookmarkHost | null {
   try {
     const u = new URL(rawUrl);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
@@ -54,13 +54,13 @@ function extractHost(rawUrl: string, source: string): BookmarkHost | null {
 }
 
 // Chrome/Edge/Brave JSON format
-interface ChromeNode {
+export interface ChromeNode {
   type?: string;
   url?: string;
   children?: ChromeNode[];
 }
 
-function walkChrome(node: ChromeNode, source: string, out: BookmarkHost[]): void {
+export function walkChrome(node: ChromeNode, source: string, out: BookmarkHost[]): void {
   if (node.type === 'url' && node.url) {
     const h = extractHost(node.url, source);
     if (h) out.push(h);
