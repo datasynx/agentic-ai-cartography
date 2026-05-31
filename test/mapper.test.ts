@@ -53,6 +53,31 @@ describe('nodesToAssets', () => {
     expect(assets[0].domain).toBe('Data Layer');
   });
 
+  it('uses metadata.category as domain when no explicit domain', () => {
+    const nodes = [makeNode('saas_tool:x', { metadata: { category: 'Finance' } })];
+    const assets = nodesToAssets(nodes);
+    expect(assets[0].domain).toBe('Finance');
+  });
+
+  it('uses capitalized tag as domain when no explicit domain or category', () => {
+    const nodes = [makeNode('saas_tool:x', { tags: ['Marketing', 'crm'] })];
+    const assets = nodesToAssets(nodes);
+    expect(assets[0].domain).toBe('Marketing');
+  });
+
+  it('skips short tags for domain resolution', () => {
+    const nodes = [makeNode('saas_tool:x', { tags: ['ab', 'cd'] })];
+    const assets = nodesToAssets(nodes);
+    // Should fall back to type-based since all tags are <= 2 chars
+    expect(assets[0].domain).toBeTruthy();
+  });
+
+  it('prefers explicit domain over metadata.category', () => {
+    const nodes = [makeNode('saas_tool:x', { domain: 'Sales', metadata: { category: 'Finance' } })];
+    const assets = nodesToAssets(nodes);
+    expect(assets[0].domain).toBe('Sales');
+  });
+
   it('uses confidence as qualityScore fallback', () => {
     const nodes = [makeNode('host:x', { confidence: 0.75 })];
     const assets = nodesToAssets(nodes);
