@@ -12,6 +12,7 @@ import { createInterface } from 'readline';
 import { IS_WIN, IS_MAC, PLATFORM, commandExists } from './platform.js';
 import { logInfo, logError, logWarn, setVerbose } from './logger.js';
 import { cleanupTempFiles } from './bookmarks.js';
+import { stripSensitive } from './tools.js';
 
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
@@ -241,7 +242,8 @@ function main(): void {
         await runDiscovery(config, db, sessionId, handleEvent, onAskUser, undefined);
       } catch (err) {
         stopSpinner();
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = rawMsg.replace(/https?:\/\/[^\s]+/g, u => stripSensitive(u));
         logError('Discovery failed', { sessionId, error: errMsg });
         w(`\n  ${bold('\x1b[31m✗\x1b[0m')}  Discovery failed: ${errMsg}\n`);
         db.close();
