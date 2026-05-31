@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
 import { CartographyDB } from '../src/db.js';
 import { defaultConfig } from '../src/types.js';
 import { tmpdir } from 'node:os';
@@ -456,6 +457,144 @@ describe('CartographyDB', () => {
 
     const all = db.getEdges(sessionId);
     expect(all).toHaveLength(3);
+  });
+
+  it('migrates v1 database to v3', () => {
+    const migPath = join(tmpdir(), `cartography-mig-v1-${Date.now()}.db`);
+    try {
+      const raw = new Database(migPath);
+      raw.exec(`
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY, mode TEXT NOT NULL CHECK (mode IN ('discover')),
+          started_at TEXT NOT NULL, completed_at TEXT, config TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE TABLE nodes (
+          id TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES sessions(id),
+          type TEXT NOT NULL, name TEXT NOT NULL, discovered_via TEXT,
+          discovered_at TEXT NOT NULL, path_id TEXT, depth INTEGER DEFAULT 0,
+          confidence REAL DEFAULT 0.5, metadata TEXT NOT NULL DEFAULT '{}',
+          tags TEXT NOT NULL DEFAULT '[]',
+          PRIMARY KEY (id, session_id)
+        );
+        CREATE TABLE edges (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
+          source_id TEXT NOT NULL, target_id TEXT NOT NULL,
+          relationship TEXT NOT NULL, evidence TEXT, confidence REAL DEFAULT 0.5,
+          discovered_at TEXT NOT NULL
+        );
+        CREATE TABLE activity_events (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL, task_id TEXT,
+          timestamp TEXT NOT NULL, event_type TEXT NOT NULL, process TEXT NOT NULL,
+          pid INTEGER NOT NULL, source TEXT, target TEXT, target_type TEXT,
+          port INTEGER, duration_ms INTEGER
+        );
+        CREATE TABLE tasks (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL, description TEXT,
+          started_at TEXT NOT NULL, completed_at TEXT, steps TEXT NOT NULL DEFAULT '[]',
+          involved_services TEXT NOT NULL DEFAULT '[]',
+          status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','cancelled'))
+        );
+        CREATE TABLE workflows (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL, name TEXT,
+          pattern TEXT NOT NULL, task_ids TEXT NOT NULL DEFAULT '[]',
+          occurrences INTEGER DEFAULT 1, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+          avg_duration_ms INTEGER, involved_services TEXT NOT NULL DEFAULT '[]'
+        );
+        CREATE TABLE node_approvals (
+          pattern TEXT PRIMARY KEY, action TEXT NOT NULL CHECK (action IN ('save','ignore','auto')),
+          created_at TEXT NOT NULL
+        );
+      `);
+      raw.pragma('user_version = 1');
+      raw.close();
+
+      const migDb = new CartographyDB(migPath);
+      const sessionId = migDb.createSession('discover', defaultConfig());
+      migDb.upsertNode(sessionId, {
+        id: 'host:x', type: 'host', name: 'X', discoveredVia: 'test',
+        confidence: 0.9, metadata: {}, tags: [], domain: 'Infra',
+      });
+      const nodes = migDb.getNodes(sessionId);
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0]?.domain).toBe('Infra');
+
+      migDb.upsertConnection(sessionId, { sourceAssetId: 'a', targetAssetId: 'b' });
+      expect(migDb.getConnections(sessionId)).toHaveLength(1);
+
+      migDb.close();
+    } finally {
+      try { rmSync(migPath); } catch { /* ok */ }
+    }
+  });
+
+  it('migrates v2 database to v3 (adds composite index)', () => {
+    const migPath = join(tmpdir(), `cartography-mig-v2-${Date.now()}.db`);
+    try {
+      const raw = new Database(migPath);
+      raw.exec(`
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY, mode TEXT NOT NULL CHECK (mode IN ('discover')),
+          started_at TEXT NOT NULL, completed_at TEXT, config TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE TABLE nodes (
+          id TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES sessions(id),
+          type TEXT NOT NULL, name TEXT NOT NULL, discovered_via TEXT,
+          discovered_at TEXT NOT NULL, path_id TEXT, depth INTEGER DEFAULT 0,
+          confidence REAL DEFAULT 0.5, metadata TEXT NOT NULL DEFAULT '{}',
+          tags TEXT NOT NULL DEFAULT '[]', domain TEXT, sub_domain TEXT, quality_score REAL,
+          PRIMARY KEY (id, session_id)
+        );
+        CREATE TABLE edges (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
+          source_id TEXT NOT NULL, target_id TEXT NOT NULL,
+          relationship TEXT NOT NULL, evidence TEXT, confidence REAL DEFAULT 0.5,
+          discovered_at TEXT NOT NULL
+        );
+        CREATE TABLE connections (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
+          source_asset_id TEXT NOT NULL, target_asset_id TEXT NOT NULL,
+          type TEXT, created_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_connections_session ON connections(session_id);
+        CREATE TABLE activity_events (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL, task_id TEXT,
+          timestamp TEXT NOT NULL, event_type TEXT NOT NULL, process TEXT NOT NULL,
+          pid INTEGER NOT NULL, source TEXT, target TEXT, target_type TEXT,
+          port INTEGER, duration_ms INTEGER
+        );
+        CREATE TABLE tasks (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL, description TEXT,
+          started_at TEXT NOT NULL, completed_at TEXT, steps TEXT NOT NULL DEFAULT '[]',
+          involved_services TEXT NOT NULL DEFAULT '[]',
+          status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','cancelled'))
+        );
+        CREATE TABLE workflows (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL, name TEXT,
+          pattern TEXT NOT NULL, task_ids TEXT NOT NULL DEFAULT '[]',
+          occurrences INTEGER DEFAULT 1, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+          avg_duration_ms INTEGER, involved_services TEXT NOT NULL DEFAULT '[]'
+        );
+        CREATE TABLE node_approvals (
+          pattern TEXT PRIMARY KEY, action TEXT NOT NULL CHECK (action IN ('save','ignore','auto')),
+          created_at TEXT NOT NULL
+        );
+      `);
+      raw.pragma('user_version = 2');
+      raw.close();
+
+      const migDb = new CartographyDB(migPath);
+      const sessionId = migDb.createSession('discover', defaultConfig());
+      migDb.upsertConnection(sessionId, { sourceAssetId: 'x', targetAssetId: 'y' });
+      const conns = migDb.getConnections(sessionId);
+      expect(conns).toHaveLength(1);
+
+      const version = (migDb as unknown as { db: Database.Database }).db.pragma('user_version', { simple: true });
+      expect(version).toBe(3);
+
+      migDb.close();
+    } finally {
+      try { rmSync(migPath); } catch { /* ok */ }
+    }
   });
 
   it('connections use composite index for fast upsert lookups', () => {
