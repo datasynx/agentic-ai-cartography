@@ -9,13 +9,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Node.js >=20](https://img.shields.io/badge/Node.js-%E2%89%A520-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![CI](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/ci.yml/badge.svg)](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/ci.yml)
-[![Built with Claude](https://img.shields.io/badge/Built_with-Claude_Agent_SDK-D4A017?style=flat-square&logo=anthropic&logoColor=white)](https://github.com/anthropics/claude-code)
+[![Agentic AI](https://img.shields.io/badge/Agentic_AI-Provider_Agnostic-D4A017?style=flat-square)](https://github.com/datasynx/agentic-ai-cartography)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Datasynx_AI-0077B5?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/datasynx-ai/)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/datasynx/agentic-ai-cartography)
 
 <br/>
 
-*Claude IS the agent — it decides which read-only commands to run, analyses the output, and stores results via custom MCP tools into SQLite. No hand-written parsers, diff logic, or decision trees.*
+*An AI agent autonomously discovers your infrastructure — it decides which read-only commands to run, analyses the output, and stores results via MCP tools into SQLite. No hand-written parsers, diff logic, or decision trees. Provider-agnostic: works with Claude, OpenAI, Ollama, or any compatible LLM.*
 
 <br/>
 
@@ -89,12 +89,9 @@ Cartography runs natively on **Linux**, **macOS**, and **Windows** — no WSL re
 ## Requirements
 
 - **Node.js >= 20** (Linux, macOS, or Windows)
-- **Claude CLI** — the Agent SDK starts it as a subprocess
-
-```bash
-npm install -g @anthropic-ai/claude-code
-claude login
-```
+- **LLM Provider** (one of the following):
+  - **Claude CLI** (default): `npm install -g @anthropic-ai/claude-code && claude login`
+  - OpenAI, Ollama, or any OpenAI-compatible endpoint (coming in v2.x)
 
 ---
 
@@ -114,7 +111,7 @@ npm install -g @datasynx/agentic-ai-cartography
 # Check all requirements (platform-aware)
 datasynx-cartography doctor
 
-# Discover your full infrastructure (one-shot, Claude Sonnet)
+# Discover your full infrastructure (autonomous agent scan)
 # → scans bookmarks, installed apps, local services, cloud, config files
 # → then interactive follow-up: type tool names to search further
 datasynx-cartography discover
@@ -142,7 +139,7 @@ datasynx-cartography discover [options]
   --entry <hosts...>    Start hosts          (default: localhost)
   --depth <n>           Max crawl depth      (default: 8)
   --max-turns <n>       Max agent turns      (default: 50)
-  --model <m>           Claude model         (default: claude-sonnet-4-5-...)
+  --model <m>           LLM model            (default: claude-sonnet-4-5-...)
   --org <name>          Org name for Backstage YAML
   -o, --output <dir>    Output directory     (default: ./datasynx-output)
   -v, --verbose         Show agent reasoning
@@ -198,12 +195,12 @@ datasynx-output/
 
 ```
 CLI (Commander.js)
-  └── Preflight: Claude CLI + API key check
+  └── Preflight: LLM provider check
       └── Platform Detection (src/platform.ts)
           ├── Shell: /bin/sh (Unix) | PowerShell (Windows)
           ├── Commands: which (Unix) | Get-Command (Windows)
           └── Agent Orchestrator (src/agent.ts)
-              └── runDiscovery()     Claude Sonnet + Bash + MCP Tools
+              └── runDiscovery()     LLM Agent + Bash + MCP Tools
                   ├── scan_bookmarks()          browser bookmark extraction (all platforms)
                   ├── scan_browser_history()     anonymized hostname extraction
                   ├── scan_installed_apps()      platform-native app detection
@@ -222,7 +219,7 @@ Every Bash call is guarded by a `PreToolUse` hook that blocks destructive comman
 
 **Windows/PowerShell:** `Remove-Item`, `Move-Item`, `Stop-Process`, `Stop-Service`, `Restart-Computer`, `Format-Volume`, `Out-File`, `Set-Content`, and more.
 
-**Claude only reads — never writes, never deletes.**
+**The agent only reads — never writes, never deletes.**
 
 ---
 

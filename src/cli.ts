@@ -1148,7 +1148,7 @@ ${infraSummary.substring(0, 12000)}`;
   o('\n');
   o(bold('  Cartography') + '  ' + dim('v' + VERSION) + '\n');
   o(dim('  AI-powered Infrastructure Discovery & Agentic AI Cartography\n'));
-  o(dim('  Built on Claude Agent SDK\n'));
+  o(dim('  Autonomous infrastructure discovery — zero-config, provider-agnostic\n'));
   o('\n');
 
   // ── Welcome Screen (no args → Befehlsübersicht) ─────────────────────────
