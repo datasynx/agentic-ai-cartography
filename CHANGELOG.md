@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-31
+
+### Changed
+
+- **Provider-agnostic positioning** -- README, CLI banner, and package metadata no longer reference a specific LLM vendor; architecture designed for Claude, OpenAI, Ollama, or any compatible provider
+- **Remove unused dependencies** -- `ora` and `picocolors` removed (17 transitive packages eliminated)
+- **Dynamic CLI version** -- reads from package.json at runtime instead of hardcoded string
+- **Deduplicated color helpers** -- consolidated banner formatting functions in cli.ts
+- **Build target aligned** -- tsup target updated from node18 to node20 (matches engines field)
+- **npm keywords expanded** -- added `cmdb`, `platform-engineering`, `agentic-ai`, `mcp`, `shadow-it`
+
+### Added
+
+- **DB pagination** -- `getNodes()`/`getEdges()` accept optional `{ limit, offset }` for paginated queries
+- **`getNodeCount()`** -- efficient COUNT query without loading all rows
+- **Composite index** -- `idx_connections_lookup` on `(session_id, source_asset_id, target_asset_id)` for O(1) upsert lookups
+- **DB migration v3** -- automatically adds composite index to existing v2 databases
+- **Circuit breaker logging** -- `logDebug()` calls when breaker trips (observability)
+- **Error message sanitization** -- URLs in error messages stripped of credentials before logging
+- **Public API exports** -- `createScanRunner`, `safeEnv`, `extractHost`, `walkChrome` exported for plugin authors
+- **303 tests** across 14 test files (+59 new tests)
+  - Circuit breaker: trip threshold, reset, timeout passthrough (6 tests)
+  - safeEnv: secret filtering, AWS key exclusion (5 tests)
+  - Platform: scanListeningPorts, scanProcesses, Windows stubs (4 tests)
+  - Exporter: JGF, HTML, discoveryApp, exportAll integration (19 tests)
+  - Bookmarks: extractHost, walkChrome direct tests (15 tests)
+  - DB: pagination, getNodeCount, composite index (4 tests)
+  - stripSensitive: edge cases (4 tests)
+- **Vision & Strategy 2026-2027** -- comprehensive product strategy document with market analysis, competitive landscape, open-source revenue model, and 4-phase roadmap
+
+### Security
+
+- **stripSensitive hardened** -- trim whitespace, never return empty string for valid input
+- **Error log sanitization** -- URLs in discovery failure messages sanitized before output
+- **safeEnv secret filtering** -- verified: AWS_SECRET_ACCESS_KEY and arbitrary env vars excluded from child processes
+
+### Performance
+
+- **Hex layout optimization** -- pre-parse occupied coordinates in `findFreeOrigin()` instead of re-splitting strings per iteration
+- **Connection upsert** -- composite index reduces lookup from O(n) table scan to O(1)
+
 ## [1.1.1] - 2026-03-06
 
 ### Security
