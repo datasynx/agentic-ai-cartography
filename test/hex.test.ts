@@ -26,6 +26,20 @@ describe('hexRound', () => {
     expect(hexRound(0.1, 0.1)).toEqual({ q: 0, r: 0 });
     expect(hexRound(0.9, 0.1)).toEqual({ q: 1, r: 0 });
   });
+
+  it('adjusts q when q has largest rounding error', () => {
+    // q=0.5, r=-0.2: rq=1, rr=0, rs=0 → sum=1 ≠ 0, dq=0.5 largest → rq=-rr-rs=0
+    const result = hexRound(0.5, -0.2);
+    expect(result.q + result.r + (-result.q - result.r)).toBe(0);
+    expect(result).toEqual({ q: 0, r: 0 });
+  });
+
+  it('adjusts r when r has largest rounding error', () => {
+    // q=0.1, r=0.5: s=-0.6, rq=0, rr=1, rs=-1, sum=0
+    // dq=0.1, dr=0.5, ds=0.4 → dr largest → rr=-rq-rs=0-(-1)=1
+    const result = hexRound(0.1, 0.5);
+    expect(result).toEqual({ q: 0, r: 1 });
+  });
 });
 
 describe('hexCorners', () => {
