@@ -1,7 +1,7 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
   "version": "1.1.1",
-  "description": "AI-powered infrastructure cartography CLI — built on Claude Agent SDK",
+  "description": "AI-powered infrastructure discovery CLI — autonomous topology mapping, zero-config",
   "type": "module",
   "bin": {
     "datasynx-cartography": "./dist/cli.js"
@@ -35,14 +35,18 @@
     "infrastructure",
     "cartography",
     "discovery",
-    "sop",
-    "claude",
+    "topology",
     "ai-agent",
+    "agentic-ai",
+    "mcp",
     "devops",
+    "platform-engineering",
     "mermaid",
     "backstage",
+    "cmdb",
     "network-topology",
-    "observability"
+    "observability",
+    "shadow-it"
   ],
   "author": {
     "name": "Datasynx AI",

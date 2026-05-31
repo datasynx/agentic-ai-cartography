@@ -400,6 +400,64 @@ describe('CartographyDB', () => {
     expect(db.getSessions()).toHaveLength(1);
   });
 
+  it('getNodeCount returns correct count', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+
+    expect(db.getNodeCount(sessionId)).toBe(0);
+
+    db.upsertNode(sessionId, {
+      id: 'host:a', type: 'host', name: 'A', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+    db.upsertNode(sessionId, {
+      id: 'host:b', type: 'host', name: 'B', discoveredVia: 'test',
+      confidence: 0.5, metadata: {}, tags: [],
+    });
+
+    expect(db.getNodeCount(sessionId)).toBe(2);
+  });
+
+  it('getNodes supports pagination', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+
+    for (let i = 0; i < 5; i++) {
+      db.upsertNode(sessionId, {
+        id: `host:node${i}`, type: 'host', name: `Node${i}`, discoveredVia: 'test',
+        confidence: 0.5, metadata: {}, tags: [],
+      });
+    }
+
+    const page1 = db.getNodes(sessionId, { limit: 2 });
+    expect(page1).toHaveLength(2);
+
+    const page2 = db.getNodes(sessionId, { limit: 2, offset: 2 });
+    expect(page2).toHaveLength(2);
+
+    const all = db.getNodes(sessionId);
+    expect(all).toHaveLength(5);
+  });
+
+  it('getEdges supports pagination', () => {
+    const config = defaultConfig();
+    const sessionId = db.createSession('discover', config);
+
+    db.upsertNode(sessionId, { id: 'a', type: 'host', name: 'A', discoveredVia: 'test', confidence: 1, metadata: {}, tags: [] });
+    db.upsertNode(sessionId, { id: 'b', type: 'host', name: 'B', discoveredVia: 'test', confidence: 1, metadata: {}, tags: [] });
+    db.upsertNode(sessionId, { id: 'c', type: 'host', name: 'C', discoveredVia: 'test', confidence: 1, metadata: {}, tags: [] });
+
+    db.insertEdge(sessionId, { sourceId: 'a', targetId: 'b', relationship: 'connects_to', evidence: '', confidence: 1 });
+    db.insertEdge(sessionId, { sourceId: 'b', targetId: 'c', relationship: 'connects_to', evidence: '', confidence: 1 });
+    db.insertEdge(sessionId, { sourceId: 'a', targetId: 'c', relationship: 'connects_to', evidence: '', confidence: 1 });
+
+    const page = db.getEdges(sessionId, { limit: 2 });
+    expect(page).toHaveLength(2);
+
+    const all = db.getEdges(sessionId);
+    expect(all).toHaveLength(3);
+  });
+
   it('connections use composite index for fast upsert lookups', () => {
     const config = defaultConfig();
     const sessionId = db.createSession('discover', config);
