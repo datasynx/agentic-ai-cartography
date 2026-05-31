@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-31
+
+### Changed
+
+- **Remove `any` type** -- `McpServer = any` replaced with typed `McpServerConfig` import (kein `any` compliance)
+- **Deduplicate browser DB reading** -- `queryBrowserDb<T>()` helper consolidates 3 copy-open-query-close patterns; `db.close()` now in `finally` for guaranteed cleanup
+- **Export bookmarks internals** -- `readChromeLike`, `chromeLikePaths`, `chromeLikeHistoryPaths` exported for direct testing
+
+### Security
+
+- **npm audit fix** -- patched vite path traversal + WebSocket vulnerabilities (nanoid, picomatch updates); 0 vulnerabilities
+
+### Added
+
+- **327 tests** across 14 test files (+24 new tests, +7 files at 100% coverage)
+  - DB migration: v1→v3 and v2→v3 migration path tests (2 tests)
+  - Hex: hexRound q/r branch coverage → 100% (2 tests)
+  - Exporter: nodeLayer branches (messaging/infra/config/other), metadata extras (6 tests)
+  - Bookmarks: readChromeLike direct tests, chromeLikePaths/chromeLikeHistoryPaths (14 tests)
+  - Platform: dbScanDirs, findFiles improvements (3 tests)
+- **7 files at 100% coverage** -- hex.ts, exporter.ts, mapper.ts, db.ts (lines), logger.ts, safety.ts, preflight.ts
+
+### Performance
+
+- **70% overall statement coverage** -- up from 62% baseline
+
 ## [1.2.0] - 2026-05-31
 
 ### Changed
