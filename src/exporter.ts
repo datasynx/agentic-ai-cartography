@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CartographyDB } from './db.js';
 import type { NodeRow, EdgeRow } from './types.js';
+import { NODE_TYPE_GROUPS } from './types.js';
 import { buildMapData } from './mapper.js';
 import { shadeVariant } from './cluster.js';
 import { hexToPixel } from './hex.js';
@@ -9,12 +10,9 @@ import { hexToPixel } from './hex.js';
 // ── Layer assignment ─────────────────────────────────────────────────────────
 
 function nodeLayer(type: string): string {
-  if (type === 'saas_tool') return 'saas';
-  if (['web_service', 'api_endpoint'].includes(type)) return 'web';
-  if (['database_server', 'database', 'table', 'cache_server'].includes(type)) return 'data';
-  if (['message_broker', 'queue', 'topic'].includes(type)) return 'messaging';
-  if (['host', 'container', 'pod', 'k8s_cluster'].includes(type)) return 'infra';
-  if (type === 'config_file') return 'config';
+  for (const [layer, types] of Object.entries(NODE_TYPE_GROUPS)) {
+    if ((types as readonly string[]).includes(type)) return layer;
+  }
   return 'other';
 }
 

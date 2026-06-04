@@ -1,12 +1,13 @@
 # Cartograph
 
-AI-powered Infrastructure Discovery & Agentic AI Cartography.
-Built on Claude Agent SDK — Claude IS the agent.
+MCP-first infrastructure & agentic-AI cartography.
+Primary interface: a Model Context Protocol server. The Claude Agent SDK loop is one optional adapter.
 
 ## Tech Stack
 
-TypeScript 5.7+ strict, ESM only, Node 18+
-@anthropic-ai/claude-code + @anthropic-ai/sdk + better-sqlite3 + commander + zod
+TypeScript 5.7+ strict, dual ESM/CJS, Node 20+
+Core: @modelcontextprotocol/sdk + better-sqlite3 + commander + zod
+Optional: @anthropic-ai/claude-agent-sdk + @anthropic-ai/sdk (Claude loop), sqlite-vec + @huggingface/transformers (semantic search)
 Build: tsup | Test: vitest | Dev: tsx
 
 ## Coding Rules

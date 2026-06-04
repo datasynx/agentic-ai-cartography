@@ -1,20 +1,33 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "1.2.1",
-  "description": "AI-powered infrastructure discovery CLI — autonomous topology mapping, zero-config",
+  "version": "2.0.0",
+  "description": "MCP-first infrastructure & agentic-AI cartography — install once, every AI agent knows your system landscape. Read-only discovery exposed over the Model Context Protocol.",
   "type": "module",
+  "mcpName": "io.github.datasynx/cartography",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "datasynx-cartography": "./dist/cli.js"
+    "datasynx-cartography": "./dist/cli.js",
+    "cartography-mcp": "./dist/mcp-bin.js"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "scripts",
+    "server.json",
     "README.md",
     "LICENSE"
   ],
@@ -54,7 +67,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/datasynx/agentic-ai-cartography.git"
+    "url": "git+https://github.com/datasynx/agentic-ai-cartography.git"
   },
   "homepage": "https://github.com/datasynx/agentic-ai-cartography#readme",
   "bugs": {
@@ -62,19 +75,24 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.59",
-    "@anthropic-ai/sdk": "^0.78.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.6.0",
     "commander": "^14.0.0",
     "zod": "^4.3.6"
   },
+  "optionalDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.59",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@huggingface/transformers": "^4.2.0",
+    "sqlite-vec": "^0.1.9"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/coverage-v8": "^4.1.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.2",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.0"
   }
 }
