@@ -62,14 +62,16 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.59",
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.6.0",
     "commander": "^14.0.0",
-    "sqlite-vec": "^0.1.9",
     "zod": "^4.3.6"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.59",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@huggingface/transformers": "^4.2.0",
+    "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

@@ -324,6 +324,15 @@ export class CartographyDB {
     this.db.close();
   }
 
+  /**
+   * Advanced: the underlying better-sqlite3 connection. Used by the optional
+   * semantic-search layer to load the `sqlite-vec` extension and manage its
+   * virtual table. Prefer the typed methods above for everything else.
+   */
+  rawConnection(): Database.Database {
+    return this.db;
+  }
+
   // ── Sessions ────────────────────────────
 
   createSession(mode: 'discover', config: CartographyConfig): string {
