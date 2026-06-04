@@ -73,6 +73,10 @@
   "bugs": {
     "url": "https://github.com/datasynx/agentic-ai-cartography/issues"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
