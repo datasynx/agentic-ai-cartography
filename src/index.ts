@@ -1,6 +1,8 @@
 export { CartographyDB } from './db.js';
 export { createCartographyTools, stripSensitive, createScanRunner } from './tools.js';
 export { safetyHook } from './safety.js';
+export { checkReadOnly, isReadOnlyCommand, assertReadOnly, splitSegments } from './allowlist.js';
+export type { PolicyResult, ShellKind } from './allowlist.js';
 export { runDiscovery } from './agent.js';
 export type { DiscoveryEvent } from './agent.js';
 export {

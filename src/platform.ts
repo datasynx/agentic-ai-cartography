@@ -7,6 +7,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { checkReadOnly } from './allowlist.js';
+import { logWarn } from './logger.js';
 
 // ── Platform detection ───────────────────────────────────────────────────────
 
@@ -73,6 +75,13 @@ export function safeEnv(): NodeJS.ProcessEnv {
 }
 
 export function run(cmd: string, opts: RunOptions = {}): string {
+  // Defense in depth: never spawn a command that is not on the read-only allowlist,
+  // regardless of where it originated (scanner template, agent, or MCP tool).
+  const policy = checkReadOnly(cmd, { shell: IS_WIN ? 'powershell' : 'posix' });
+  if (!policy.allowed) {
+    logWarn(`Blocked non-read-only command: ${policy.reason}`);
+    return '';
+  }
   try {
     return execSync(cmd, {
       stdio: 'pipe',
