@@ -41,5 +41,4 @@ export { safeEnv } from './platform.js';
 export { cleanupTempFiles } from './bookmarks.js';
 export { log, logInfo, logError, logWarn, logDebug, setVerbose } from './logger.js';
 export type { LogLevel, LogEntry } from './logger.js';
-export { CartographyDB as default } from './db.js';
 export type * from './types.js';

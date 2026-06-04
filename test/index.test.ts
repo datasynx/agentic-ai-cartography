@@ -73,9 +73,14 @@ describe('index re-exports', () => {
     expect(typeof mod.checkPrerequisites).toBe('function');
   });
 
-  it('exports CartographyDB as default', async () => {
+  it('exports the MCP-first headline API', async () => {
     const mod = await import('../src/index.js');
-    expect(mod.default).toBe(mod.CartographyDB);
+    expect(typeof mod.createMcpServer).toBe('function');
+    expect(typeof mod.runStdio).toBe('function');
+    expect(typeof mod.runHttp).toBe('function');
+    expect(typeof mod.createSemanticSearch).toBe('function');
+    expect(typeof mod.runLocalDiscovery).toBe('function');
+    expect(typeof mod.defaultRegistry).toBe('function');
   });
 
   it('exports logger functions', async () => {

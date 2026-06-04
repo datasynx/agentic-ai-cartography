@@ -4,6 +4,9 @@
   "description": "MCP-first infrastructure & agentic-AI cartography — install once, every AI agent knows your system landscape. Read-only discovery exposed over the Model Context Protocol.",
   "type": "module",
   "mcpName": "io.github.datasynx/cartography",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "datasynx-cartography": "./dist/cli.js",
     "cartography-mcp": "./dist/mcp-bin.js"
@@ -64,7 +67,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/datasynx/agentic-ai-cartography.git"
+    "url": "git+https://github.com/datasynx/agentic-ai-cartography.git"
   },
   "homepage": "https://github.com/datasynx/agentic-ai-cartography#readme",
   "bugs": {
