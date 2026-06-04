@@ -527,7 +527,7 @@ describe('CartographyDB', () => {
     }
   });
 
-  it('migrates v2 database to v3 (adds composite index)', () => {
+  it('migrates a v2 database to the current schema version (composite + graph indexes)', () => {
     const migPath = join(tmpdir(), `cartography-mig-v2-${Date.now()}.db`);
     try {
       const raw = new Database(migPath);
@@ -589,7 +589,7 @@ describe('CartographyDB', () => {
       expect(conns).toHaveLength(1);
 
       const version = (migDb as unknown as { db: Database.Database }).db.pragma('user_version', { simple: true });
-      expect(version).toBe(3);
+      expect(version).toBe(4);
 
       migDb.close();
     } finally {
@@ -610,5 +610,77 @@ describe('CartographyDB', () => {
 
     const conns = db.getConnections(sessionId);
     expect(conns).toHaveLength(2);
+  });
+});
+
+describe('CartographyDB — graph queries', () => {
+  let sid: string;
+
+  beforeEach(() => {
+    sid = db.createSession('discover', defaultConfig());
+    const mk = (id: string, type: string, name: string, domain?: string) =>
+      db.upsertNode(sid, { id, type: type as never, name, discoveredVia: 'test', confidence: 0.9, metadata: {}, tags: [], domain });
+    mk('saas_tool:app', 'saas_tool', 'App', 'Engineering');
+    mk('web_service:api', 'web_service', 'API', 'Engineering');
+    mk('database_server:pg', 'database_server', 'Postgres', 'Data Layer');
+    mk('cache_server:redis', 'cache_server', 'Redis', 'Data Layer');
+    const edge = (s: string, t: string, rel: string) =>
+      db.insertEdge(sid, { sourceId: s, targetId: t, relationship: rel as never, evidence: 'observed', confidence: 0.9 });
+    edge('saas_tool:app', 'web_service:api', 'calls');
+    edge('web_service:api', 'database_server:pg', 'writes_to');
+    edge('web_service:api', 'cache_server:redis', 'depends_on');
+    edge('database_server:pg', 'saas_tool:app', 'connects_to'); // cycle
+  });
+
+  it('getNode returns a single node or undefined', () => {
+    expect(db.getNode(sid, 'saas_tool:app')?.name).toBe('App');
+    expect(db.getNode(sid, 'nope:x')).toBeUndefined();
+  });
+
+  it('getNodesByType filters by type', () => {
+    expect(db.getNodesByType(sid, ['database_server']).map(n => n.id)).toEqual(['database_server:pg']);
+    expect(db.getNodesByType(sid, ['saas_tool', 'cache_server']).length).toBe(2);
+    expect(db.getNodesByType(sid, [])).toEqual([]);
+  });
+
+  it('searchNodes matches id, name and domain case-insensitively', () => {
+    expect(db.searchNodes(sid, 'redis').map(n => n.id)).toContain('cache_server:redis');
+    expect(db.searchNodes(sid, 'POSTGRES').map(n => n.id)).toContain('database_server:pg');
+    expect(db.searchNodes(sid, 'data layer').length).toBe(2);
+    expect(db.searchNodes(sid, 'redis', { types: ['saas_tool'] })).toHaveLength(0);
+  });
+
+  it('getDependencies traverses downstream with correct depths', () => {
+    const r = db.getDependencies(sid, 'saas_tool:app', { direction: 'downstream', maxDepth: 8 });
+    const byId = Object.fromEntries(r.nodes.map(n => [n.id, n.depth]));
+    expect(byId['web_service:api']).toBe(1);
+    expect(byId['database_server:pg']).toBe(2);
+    expect(byId['cache_server:redis']).toBe(2);
+    expect(r.root?.id).toBe('saas_tool:app');
+  });
+
+  it('getDependencies traverses upstream', () => {
+    const r = db.getDependencies(sid, 'database_server:pg', { direction: 'upstream', maxDepth: 8 });
+    const ids = r.nodes.map(n => n.id);
+    expect(ids).toContain('web_service:api');
+    expect(ids).toContain('saas_tool:app');
+  });
+
+  it('getDependencies guards against cycles and respects maxDepth', () => {
+    const shallow = db.getDependencies(sid, 'saas_tool:app', { direction: 'downstream', maxDepth: 1 });
+    expect(shallow.nodes.map(n => n.id)).toEqual(['web_service:api']);
+    // cycle present (pg -> app) must not cause infinite recursion
+    const both = db.getDependencies(sid, 'saas_tool:app', { direction: 'both', maxDepth: 64 });
+    expect(both.nodes.length).toBeLessThanOrEqual(3);
+  });
+
+  it('getGraphSummary aggregates totals, types, domains and top-connected', () => {
+    const s = db.getGraphSummary(sid);
+    expect(s.totals).toEqual({ nodes: 4, edges: 4 });
+    expect(s.nodesByType['database_server']).toBe(1);
+    expect(s.nodesByDomain['Data Layer']).toBe(2);
+    expect(s.edgesByRelationship['calls']).toBe(1);
+    expect(s.topConnected[0].id).toBeTruthy();
+    expect(s.topConnected[0].degree).toBeGreaterThanOrEqual(2);
   });
 });

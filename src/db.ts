@@ -98,6 +98,25 @@ export interface ConnectionRow extends Connection {
   createdAt: string;
 }
 
+/** Aggregate, low-token index of a topology — used for progressive disclosure. */
+export interface GraphSummary {
+  sessionId: string;
+  totals: { nodes: number; edges: number };
+  nodesByType: Record<string, number>;
+  nodesByDomain: Record<string, number>;
+  edgesByRelationship: Record<string, number>;
+  topConnected: Array<{ id: string; name: string; type: string; degree: number }>;
+}
+
+/** Result of a recursive dependency traversal. */
+export interface TraversalResult {
+  root?: NodeRow;
+  direction: 'downstream' | 'upstream' | 'both';
+  maxDepth: number;
+  nodes: Array<NodeRow & { depth: number }>;
+  edges: EdgeRow[];
+}
+
 // ── DB Row Types ──
 
 export interface EventRow {
@@ -234,7 +253,10 @@ CREATE TABLE IF NOT EXISTS node_approvals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_nodes_session ON nodes(session_id);
+CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(session_id, type);
 CREATE INDEX IF NOT EXISTS idx_edges_session ON edges(session_id);
+CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(session_id, source_id);
+CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(session_id, target_id);
 CREATE INDEX IF NOT EXISTS idx_events_session ON activity_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_events_task ON activity_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
@@ -258,7 +280,8 @@ export class CartographyDB {
     const version = (this.db.pragma('user_version', { simple: true }) as number);
     if (version === 0) {
       this.db.exec(SCHEMA);
-      this.db.pragma('user_version = 3');
+      this.db.pragma('user_version = 4');
+      return;
     } else if (version === 1) {
       // v1 → v2: add hex map columns to nodes + connections table
       const cols = (this.db.prepare("PRAGMA table_info(nodes)").all() as Array<{ name: string }>).map(c => c.name);
@@ -283,6 +306,16 @@ export class CartographyDB {
       // v2 → v3: add composite index for connection upsert lookups
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_connections_lookup ON connections(session_id, source_asset_id, target_asset_id)');
       this.db.pragma('user_version = 3');
+    }
+    // v3 → v4: add graph-traversal indexes (idempotent for any pre-v4 DB)
+    const current = this.db.pragma('user_version', { simple: true }) as number;
+    if (current < 4) {
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(session_id, type);
+        CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(session_id, source_id);
+        CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(session_id, target_id);
+      `);
+      this.db.pragma('user_version = 4');
     }
   }
 
@@ -631,6 +664,133 @@ export class CartographyDB {
       this.deleteSession(row.id);
     }
     return rows.length;
+  }
+
+  // ── Graph queries (read-only context layer) ─────────────────────────────────
+
+  /** Fetch a single node by id within a session. */
+  getNode(sessionId: string, nodeId: string): NodeRow | undefined {
+    const row = this.db.prepare('SELECT * FROM nodes WHERE session_id = ? AND id = ?')
+      .get(sessionId, nodeId) as Record<string, unknown> | undefined;
+    return row ? this.mapNode(row) : undefined;
+  }
+
+  /** Fetch all nodes of one or more types. */
+  getNodesByType(sessionId: string, types: readonly string[]): NodeRow[] {
+    if (types.length === 0) return [];
+    const placeholders = types.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT * FROM nodes WHERE session_id = ? AND type IN (${placeholders})`,
+    ).all(sessionId, ...types) as Record<string, unknown>[];
+    return rows.map(r => this.mapNode(r));
+  }
+
+  /**
+   * Lexical search over node id, name, domain, sub-domain and tags.
+   * Case-insensitive substring match — the deterministic fallback for semantic search.
+   */
+  searchNodes(sessionId: string, query: string, opts?: { types?: readonly string[]; limit?: number }): NodeRow[] {
+    const q = `%${query.trim().toLowerCase()}%`;
+    const params: unknown[] = [sessionId, q, q, q, q, q];
+    let sql = `
+      SELECT * FROM nodes
+      WHERE session_id = ?
+        AND (
+          lower(id) LIKE ? OR lower(name) LIKE ?
+          OR lower(COALESCE(domain, '')) LIKE ?
+          OR lower(COALESCE(sub_domain, '')) LIKE ?
+          OR lower(tags) LIKE ?
+        )`;
+    if (opts?.types && opts.types.length > 0) {
+      sql += ` AND type IN (${opts.types.map(() => '?').join(',')})`;
+      params.push(...opts.types);
+    }
+    sql += ' ORDER BY confidence DESC';
+    if (opts?.limit) sql += ` LIMIT ${Math.max(1, Math.floor(opts.limit))}`;
+    const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
+    return rows.map(r => this.mapNode(r));
+  }
+
+  /**
+   * Traverse the dependency graph from a node using a recursive CTE with a
+   * path-based cycle guard. `downstream` follows source→target (what the node
+   * depends on / points to); `upstream` follows target→source (what depends on it).
+   */
+  getDependencies(
+    sessionId: string,
+    nodeId: string,
+    opts: { direction?: 'downstream' | 'upstream' | 'both'; maxDepth?: number } = {},
+  ): TraversalResult {
+    const direction = opts.direction ?? 'downstream';
+    const maxDepth = Math.max(1, Math.min(opts.maxDepth ?? 8, 64));
+    const root = this.getNode(sessionId, nodeId);
+
+    const depthById = new Map<string, number>();
+    const collect = (dir: 'downstream' | 'upstream'): void => {
+      // SEP = newline; node ids never contain newlines, so the path guard is collision-free.
+      const [from, to] = dir === 'downstream' ? ['source_id', 'target_id'] : ['target_id', 'source_id'];
+      const sql = `
+        WITH RECURSIVE walk(node_id, depth, path) AS (
+          SELECT ?, 0, char(10) || ? || char(10)
+          UNION ALL
+          SELECT e.${to}, w.depth + 1, w.path || e.${to} || char(10)
+          FROM edges e JOIN walk w ON e.${from} = w.node_id
+          WHERE e.session_id = ?
+            AND w.depth < ?
+            AND instr(w.path, char(10) || e.${to} || char(10)) = 0
+        )
+        SELECT node_id, MIN(depth) AS depth FROM walk WHERE node_id != ? GROUP BY node_id`;
+      const rows = this.db.prepare(sql).all(nodeId, nodeId, sessionId, maxDepth, nodeId) as Array<{ node_id: string; depth: number }>;
+      for (const r of rows) {
+        const prev = depthById.get(r.node_id);
+        if (prev === undefined || r.depth < prev) depthById.set(r.node_id, r.depth);
+      }
+    };
+
+    if (direction === 'both') { collect('downstream'); collect('upstream'); }
+    else collect(direction);
+
+    const nodes = [...depthById.entries()]
+      .map(([id, depth]) => { const n = this.getNode(sessionId, id); return n ? { ...n, depth } : undefined; })
+      .filter((n): n is NodeRow & { depth: number } => n !== undefined)
+      .sort((a, b) => a.depth - b.depth);
+
+    // Edges that lie within the reached subgraph (including the root).
+    const reachable = new Set<string>([nodeId, ...depthById.keys()]);
+    const edges = this.getEdges(sessionId).filter(e => reachable.has(e.sourceId) && reachable.has(e.targetId));
+
+    return { root, direction, maxDepth, nodes, edges };
+  }
+
+  /** Lightweight aggregate index of the whole topology — the progressive-disclosure summary. */
+  getGraphSummary(sessionId: string): GraphSummary {
+    const totals = {
+      nodes: (this.db.prepare('SELECT COUNT(*) c FROM nodes WHERE session_id = ?').get(sessionId) as { c: number }).c,
+      edges: (this.db.prepare('SELECT COUNT(*) c FROM edges WHERE session_id = ?').get(sessionId) as { c: number }).c,
+    };
+    const byType: Record<string, number> = {};
+    for (const r of this.db.prepare('SELECT type, COUNT(*) c FROM nodes WHERE session_id = ? GROUP BY type').all(sessionId) as Array<{ type: string; c: number }>) {
+      byType[r.type] = r.c;
+    }
+    const byDomain: Record<string, number> = {};
+    for (const r of this.db.prepare("SELECT COALESCE(domain, '(none)') d, COUNT(*) c FROM nodes WHERE session_id = ? GROUP BY d").all(sessionId) as Array<{ d: string; c: number }>) {
+      byDomain[r.d] = r.c;
+    }
+    const byRelationship: Record<string, number> = {};
+    for (const r of this.db.prepare('SELECT relationship rel, COUNT(*) c FROM edges WHERE session_id = ? GROUP BY rel').all(sessionId) as Array<{ rel: string; c: number }>) {
+      byRelationship[r.rel] = r.c;
+    }
+    const topConnected = (this.db.prepare(`
+      SELECT n.id, n.name, n.type, COUNT(e.id) AS degree
+      FROM nodes n
+      LEFT JOIN edges e ON e.session_id = n.session_id AND (e.source_id = n.id OR e.target_id = n.id)
+      WHERE n.session_id = ?
+      GROUP BY n.id, n.name, n.type
+      ORDER BY degree DESC, n.confidence DESC
+      LIMIT 10
+    `).all(sessionId) as Array<{ id: string; name: string; type: string; degree: number }>);
+
+    return { sessionId, totals, nodesByType: byType, nodesByDomain: byDomain, edgesByRelationship: byRelationship, topConnected };
   }
 
   // ── Stats ───────────────────────────────
