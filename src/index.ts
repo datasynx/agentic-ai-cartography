@@ -3,6 +3,14 @@ export type { GraphSummary, TraversalResult } from './db.js';
 // MCP server — the headline interface
 export { createMcpServer, runStdio, runHttp } from './mcp/index.js';
 export type { CreateMcpServerOptions, SearchFn, DiscoveryFn, HttpOptions } from './mcp/index.js';
+// Scanner plugin system + deterministic local discovery
+export { ScannerRegistry, defaultRegistry, bookmarksScanner, installedAppsScanner, portsScanner, extractListeningPorts } from './scanners/registry.js';
+export type { Scanner, ScanContext, ScanResult } from './scanners/registry.js';
+export { runLocalDiscovery, localDiscoveryFn } from './discovery/local.js';
+export type { LocalDiscoveryOptions } from './discovery/local.js';
+// Semantic search
+export { createSemanticSearch, createLocalEmbedder, createHashEmbedder, VectorStore } from './semantic/search.js';
+export type { EmbeddingProvider } from './semantic/search.js';
 export { createCartographyTools, stripSensitive, createScanRunner } from './tools.js';
 export { safetyHook } from './safety.js';
 export { checkReadOnly, isReadOnlyCommand, assertReadOnly, splitSegments } from './allowlist.js';
