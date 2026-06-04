@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { cleanupTempFiles } from '../src/bookmarks.js';
+import { cleanupTempFiles, extractHost, walkChrome, readChromeLike, chromeLikePaths, chromeLikeHistoryPaths } from '../src/bookmarks.js';
+import type { BookmarkHost, ChromeNode } from '../src/bookmarks.js';
 
 // We need to test internal functions, so we'll test through the public API
 // and also test readChromeLike via fixture files.
@@ -39,30 +40,20 @@ describe('bookmarks module', () => {
     try { rmSync(TEST_DIR, { recursive: true, force: true }); } catch { /* ok */ }
   });
 
-  describe('extractHost via readChromeLike (integration)', () => {
-    it('extracts hostnames from Chrome-like bookmark files', async () => {
-      // We import dynamically to get the module with its internal functions
-      // Since extractHost and readChromeLike are not exported, we test through
-      // the pattern of creating a bookmark file and scanning it
-
-      const profileDir = join(TEST_DIR, 'Default');
-      mkdirSync(profileDir, { recursive: true });
-
-      const bookmarksPath = join(profileDir, 'Bookmarks');
+  describe('readChromeLike', () => {
+    it('extracts hostnames from Chrome-like bookmark files', () => {
+      const bookmarksPath = join(TEST_DIR, 'readchrome-test.json');
       writeFileSync(bookmarksPath, makeChromeLikeBookmarks([
         { hostname: 'github.com' },
         { hostname: 'notion.so' },
         { hostname: 'linear.app' },
       ]));
 
-      // We can't directly call readChromeLike since it's not exported,
-      // but we can verify the file format is correct by parsing it ourselves
-      const raw = JSON.parse(
-        (await import('node:fs')).readFileSync(bookmarksPath, 'utf8')
-      ) as { roots: Record<string, { children?: Array<{ url?: string }> }> };
-      const urls = raw.roots.bookmark_bar.children?.map(c => c.url) ?? [];
-      expect(urls).toHaveLength(3);
-      expect(urls[0]).toContain('github.com');
+      const hosts = readChromeLike(bookmarksPath, 'chrome');
+      expect(hosts).toHaveLength(3);
+      expect(hosts[0]?.hostname).toBe('github.com');
+      expect(hosts[1]?.hostname).toBe('notion.so');
+      expect(hosts[2]?.hostname).toBe('linear.app');
     });
 
     it('handles nested folders in Chrome bookmarks', () => {
@@ -74,12 +65,7 @@ describe('bookmarks module', () => {
               {
                 type: 'folder',
                 children: [
-                  {
-                    type: 'folder',
-                    children: [
-                      { type: 'url', url: 'https://deeply.nested.example.com/path' },
-                    ],
-                  },
+                  { type: 'url', url: 'https://deeply.nested.example.com/path' },
                 ],
               },
             ],
@@ -87,14 +73,11 @@ describe('bookmarks module', () => {
         },
       });
 
-      const profileDir = join(TEST_DIR, 'nested', 'Default');
-      mkdirSync(profileDir, { recursive: true });
-      writeFileSync(join(profileDir, 'Bookmarks'), data);
-
-      // Verify nested structure is valid JSON
-      const parsed = JSON.parse(data);
-      const innerFolder = parsed.roots.bookmark_bar.children[0].children[0];
-      expect(innerFolder.children[0].url).toBe('https://deeply.nested.example.com/path');
+      const bookmarksPath = join(TEST_DIR, 'nested-chrome.json');
+      writeFileSync(bookmarksPath, data);
+      const hosts = readChromeLike(bookmarksPath, 'chrome');
+      expect(hosts).toHaveLength(1);
+      expect(hosts[0]?.hostname).toBe('deeply.nested.example.com');
     });
 
     it('filters out non-http protocols', () => {
@@ -113,72 +96,58 @@ describe('bookmarks module', () => {
         },
       });
 
-      const parsed = JSON.parse(data);
-      const urls = parsed.roots.bookmark_bar.children.map(
-        (c: { url: string }) => c.url
-      );
-      // Only https:// should pass extractHost
-      const httpUrls = urls.filter((u: string) =>
-        u.startsWith('http://') || u.startsWith('https://')
-      );
-      expect(httpUrls).toHaveLength(1);
-      expect(httpUrls[0]).toContain('valid.example.com');
+      const bookmarksPath = join(TEST_DIR, 'protocols.json');
+      writeFileSync(bookmarksPath, data);
+      const hosts = readChromeLike(bookmarksPath, 'chrome');
+      expect(hosts).toHaveLength(1);
+      expect(hosts[0]?.hostname).toBe('valid.example.com');
     });
 
-    it('filters out localhost and 127.0.0.1', () => {
-      // extractHost should return null for localhost
-      const testUrls = [
-        'https://localhost:3000',
-        'http://127.0.0.1:8080',
-        'https://real-server.com',
-      ];
-      const filtered = testUrls.filter(u => {
-        try {
-          const url = new URL(u);
-          return url.hostname !== 'localhost' && url.hostname !== '127.0.0.1';
-        } catch { return false; }
+    it('returns empty array for non-existent file', () => {
+      expect(readChromeLike('/nonexistent/path/Bookmarks', 'chrome')).toEqual([]);
+    });
+
+    it('returns empty array for invalid JSON', () => {
+      const badPath = join(TEST_DIR, 'bad.json');
+      writeFileSync(badPath, 'not-json');
+      expect(readChromeLike(badPath, 'chrome')).toEqual([]);
+    });
+
+    it('returns empty array for JSON without roots', () => {
+      const emptyPath = join(TEST_DIR, 'empty.json');
+      writeFileSync(emptyPath, '{}');
+      expect(readChromeLike(emptyPath, 'chrome')).toEqual([]);
+    });
+
+    it('filters out localhost bookmarks', () => {
+      const data = JSON.stringify({
+        roots: {
+          bookmark_bar: {
+            type: 'folder',
+            children: [
+              { type: 'url', url: 'https://real-server.com' },
+              { type: 'url', url: 'http://localhost:3000' },
+              { type: 'url', url: 'http://127.0.0.1:8080' },
+            ],
+          },
+        },
       });
-      expect(filtered).toHaveLength(1);
-      expect(filtered[0]).toContain('real-server.com');
-    });
-
-    it('extracts correct port from URLs', () => {
-      const testCases = [
-        { url: 'https://example.com', expectedPort: 443 },
-        { url: 'http://example.com', expectedPort: 80 },
-        { url: 'https://example.com:8443', expectedPort: 8443 },
-        { url: 'http://example.com:3000', expectedPort: 3000 },
-      ];
-
-      for (const tc of testCases) {
-        const u = new URL(tc.url);
-        const port = u.port ? parseInt(u.port, 10) : (u.protocol === 'https:' ? 443 : 80);
-        expect(port).toBe(tc.expectedPort);
-      }
+      const p = join(TEST_DIR, 'localhost.json');
+      writeFileSync(p, data);
+      const hosts = readChromeLike(p, 'chrome');
+      expect(hosts).toHaveLength(1);
+      expect(hosts[0]?.hostname).toBe('real-server.com');
     });
   });
 
-  describe('chromeLikePaths pattern', () => {
+  describe('chromeLikePaths', () => {
     it('finds Default profile bookmark files', () => {
       const base = join(TEST_DIR, 'browser-base');
       const defaultDir = join(base, 'Default');
       mkdirSync(defaultDir, { recursive: true });
       writeFileSync(join(defaultDir, 'Bookmarks'), '{}');
 
-      const { existsSync, readdirSync } = require('node:fs');
-      // Replicate chromeLikePaths logic
-      const paths: string[] = [];
-      const defaultPath = join(base, 'Default', 'Bookmarks');
-      if (existsSync(defaultPath)) paths.push(defaultPath);
-      if (existsSync(base)) {
-        for (const entry of readdirSync(base) as string[]) {
-          if (entry.startsWith('Profile ')) {
-            const p = join(base, entry, 'Bookmarks');
-            if (existsSync(p)) paths.push(p);
-          }
-        }
-      }
-
+      const paths = chromeLikePaths(base);
       expect(paths).toHaveLength(1);
       expect(paths[0]).toContain('Default');
     });
@@ -190,23 +159,48 @@ describe('bookmarks module', () => {
         mkdirSync(d, { recursive: true });
         writeFileSync(join(d, 'Bookmarks'), '{}');
       }
-      // Also add a non-profile directory
       mkdirSync(join(base, 'Extensions'), { recursive: true });
 
-      const { existsSync, readdirSync } = require('node:fs');
-      const paths: string[] = [];
-      const defaultPath = join(base, 'Default', 'Bookmarks');
-      if (existsSync(defaultPath)) paths.push(defaultPath);
-      if (existsSync(base)) {
-        for (const entry of readdirSync(base) as string[]) {
-          if (entry.startsWith('Profile ')) {
-            const p = join(base, entry, 'Bookmarks');
-            if (existsSync(p)) paths.push(p);
-          }
-        }
-      }
+      const paths = chromeLikePaths(base);
+      expect(paths).toHaveLength(4);
+    });
 
-      expect(paths).toHaveLength(4); // Default + Profile 1-3
+    it('returns empty array for non-existent base', () => {
+      expect(chromeLikePaths('/nonexistent/browser/path')).toEqual([]);
+    });
+
+    it('returns empty array when no Bookmarks files exist', () => {
+      const base = join(TEST_DIR, 'no-bookmarks');
+      mkdirSync(join(base, 'Default'), { recursive: true });
+      expect(chromeLikePaths(base)).toEqual([]);
+    });
+  });
+
+  describe('chromeLikeHistoryPaths', () => {
+    it('finds Default profile History files', () => {
+      const base = join(TEST_DIR, 'history-base');
+      const defaultDir = join(base, 'Default');
+      mkdirSync(defaultDir, { recursive: true });
+      writeFileSync(join(defaultDir, 'History'), '');
+
+      const paths = chromeLikeHistoryPaths(base);
+      expect(paths).toHaveLength(1);
+      expect(paths[0]).toContain('History');
+    });
+
+    it('finds multiple profile History files', () => {
+      const base = join(TEST_DIR, 'multi-hist');
+      for (const dir of ['Default', 'Profile 1']) {
+        const d = join(base, dir);
+        mkdirSync(d, { recursive: true });
+        writeFileSync(join(d, 'History'), '');
+      }
+      const paths = chromeLikeHistoryPaths(base);
+      expect(paths).toHaveLength(2);
+    });
+
+    it('returns empty array for non-existent base', () => {
+      expect(chromeLikeHistoryPaths('/nonexistent/path')).toEqual([]);
     });
   });
 
@@ -352,28 +346,116 @@ describe('bookmarks module', () => {
     });
   });
 
-  describe('URL hostname extraction edge cases', () => {
-    it('lowercases hostnames', () => {
-      const u = new URL('https://GitHub.COM/path');
-      expect(u.hostname).toBe('github.com'); // URL constructor lowercases
+  describe('extractHost', () => {
+    it('extracts hostname and port from HTTPS URL', () => {
+      const result = extractHost('https://github.com/user/repo', 'chrome');
+      expect(result).toEqual({ hostname: 'github.com', port: 443, protocol: 'https', source: 'chrome' });
     });
 
-    it('handles IDN hostnames', () => {
-      const u = new URL('https://xn--nxasmq6b.example.com');
-      expect(u.hostname).toBeTruthy();
+    it('extracts hostname and port from HTTP URL', () => {
+      const result = extractHost('http://api.example.com:3000/v1', 'edge');
+      expect(result).toEqual({ hostname: 'api.example.com', port: 3000, protocol: 'http', source: 'edge' });
+    });
+
+    it('returns null for non-http protocols', () => {
+      expect(extractHost('ftp://files.example.com', 'chrome')).toBeNull();
+      expect(extractHost('chrome://settings', 'chrome')).toBeNull();
+      expect(extractHost('javascript:void(0)', 'chrome')).toBeNull();
+      expect(extractHost('file:///home/user/doc.html', 'chrome')).toBeNull();
+    });
+
+    it('returns null for localhost and 127.0.0.1', () => {
+      expect(extractHost('http://localhost:3000', 'chrome')).toBeNull();
+      expect(extractHost('https://127.0.0.1:8080', 'chrome')).toBeNull();
+    });
+
+    it('returns null for invalid URLs', () => {
+      expect(extractHost('not-a-url', 'chrome')).toBeNull();
+      expect(extractHost('', 'chrome')).toBeNull();
+    });
+
+    it('lowercases hostnames', () => {
+      const result = extractHost('https://GitHub.COM/path', 'chrome');
+      expect(result?.hostname).toBe('github.com');
     });
 
     it('handles IP addresses', () => {
-      const u = new URL('http://192.168.1.100:8080');
-      expect(u.hostname).toBe('192.168.1.100');
-      expect(u.port).toBe('8080');
+      const result = extractHost('http://192.168.1.100:8080/api', 'chrome');
+      expect(result?.hostname).toBe('192.168.1.100');
+      expect(result?.port).toBe(8080);
     });
 
-    it('rejects invalid URLs gracefully', () => {
-      const invalids = ['not-a-url', '', 'just-a-hostname', '://missing-protocol'];
-      for (const url of invalids) {
-        expect(() => new URL(url)).toThrow();
-      }
+    it('defaults to port 443 for HTTPS', () => {
+      const result = extractHost('https://example.com', 'chrome');
+      expect(result?.port).toBe(443);
+    });
+
+    it('defaults to port 80 for HTTP', () => {
+      const result = extractHost('http://example.com', 'chrome');
+      expect(result?.port).toBe(80);
+    });
+  });
+
+  describe('walkChrome', () => {
+    it('extracts URLs from flat bookmark list', () => {
+      const root: ChromeNode = {
+        type: 'folder',
+        children: [
+          { type: 'url', url: 'https://github.com' },
+          { type: 'url', url: 'https://notion.so' },
+        ],
+      };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(2);
+      expect(out[0]?.hostname).toBe('github.com');
+      expect(out[1]?.hostname).toBe('notion.so');
+    });
+
+    it('extracts URLs from nested folders', () => {
+      const root: ChromeNode = {
+        type: 'folder',
+        children: [
+          {
+            type: 'folder',
+            children: [
+              { type: 'url', url: 'https://deeply.nested.example.com' },
+            ],
+          },
+        ],
+      };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(1);
+      expect(out[0]?.hostname).toBe('deeply.nested.example.com');
+    });
+
+    it('skips non-url nodes', () => {
+      const root: ChromeNode = {
+        type: 'folder',
+        children: [
+          { type: 'folder' },
+          { type: 'separator' },
+          { type: 'url', url: 'https://valid.com' },
+        ],
+      };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(1);
+    });
+
+    it('handles empty tree', () => {
+      const root: ChromeNode = { type: 'folder', children: [] };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(0);
+    });
+
+    it('handles node without children', () => {
+      const root: ChromeNode = { type: 'folder' };
+      const out: BookmarkHost[] = [];
+      walkChrome(root, 'chrome', out);
+      expect(out).toHaveLength(0);
     });
   });
 });

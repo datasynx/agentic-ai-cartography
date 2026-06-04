@@ -1,7 +1,7 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "1.1.0",
-  "description": "AI-powered infrastructure cartography CLI — built on Claude Agent SDK",
+  "version": "1.2.1",
+  "description": "AI-powered infrastructure discovery CLI — autonomous topology mapping, zero-config",
   "type": "module",
   "bin": {
     "datasynx-cartography": "./dist/cli.js"
@@ -14,6 +14,7 @@
   },
   "files": [
     "dist",
+    "scripts",
     "README.md",
     "LICENSE"
   ],
@@ -25,7 +26,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run lint && npm run test && npm run build",
-    "postinstall": "node -e \"try{require('child_process').execSync('claude --version',{stdio:'pipe'})}catch{console.warn('\\n⚠ datasynx-cartography requires Claude CLI: npm i -g @anthropic-ai/claude-code\\n')}\""
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -34,14 +35,18 @@
     "infrastructure",
     "cartography",
     "discovery",
-    "sop",
-    "claude",
+    "topology",
     "ai-agent",
+    "agentic-ai",
+    "mcp",
     "devops",
+    "platform-engineering",
     "mermaid",
     "backstage",
+    "cmdb",
     "network-topology",
-    "observability"
+    "observability",
+    "shadow-it"
   ],
   "author": {
     "name": "Datasynx AI",
@@ -61,17 +66,15 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "better-sqlite3": "^12.6.0",
     "commander": "^14.0.0",
-    "ora": "^9.3.0",
-    "picocolors": "^1.1.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.0.18",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.18"
   }
 }

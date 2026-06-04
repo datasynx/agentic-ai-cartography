@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stripSensitive } from '../src/tools.js';
+import { stripSensitive, createScanRunner } from '../src/tools.js';
 
 describe('stripSensitive', () => {
   it('strips path from tcp addresses', () => {
@@ -58,5 +58,87 @@ describe('stripSensitive', () => {
 
   it('handles host:port with trailing slash', () => {
     expect(stripSensitive('localhost:3000/')).toBe('localhost:3000');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(stripSensitive('')).toBe('');
+  });
+
+  it('trims whitespace', () => {
+    expect(stripSensitive('  localhost:3000  ')).toBe('localhost:3000');
+  });
+
+  it('never returns empty for valid URL', () => {
+    const result = stripSensitive('http://');
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('preserves bare IP without port', () => {
+    expect(stripSensitive('10.0.0.1')).toBe('10.0.0.1');
+  });
+});
+
+describe('createScanRunner (circuit breaker)', () => {
+  it('returns output for successful commands', () => {
+    const runner = createScanRunner(() => 'ok');
+    expect(runner('test')).toBe('ok');
+  });
+
+  it('resets counter after success', () => {
+    let callCount = 0;
+    const runner = createScanRunner(() => {
+      callCount++;
+      return callCount === 2 ? 'ok' : '';
+    }, { threshold: 3 });
+
+    expect(runner('a')).toBe('(error or not available)');
+    expect(runner('b')).toBe('ok');
+    expect(runner('c')).toBe('(error or not available)');
+    expect(runner('d')).toBe('(error or not available)');
+    // Counter was reset at call 2, so only 2 consecutive failures now
+    expect(runner('e')).toBe('(error or not available)');
+    // Now 3 consecutive → tripped
+    expect(runner('f')).toContain('circuit breaker');
+  });
+
+  it('trips after threshold consecutive failures', () => {
+    const runner = createScanRunner(() => '', { threshold: 2 });
+    expect(runner('a')).toBe('(error or not available)');
+    expect(runner('b')).toBe('(error or not available)');
+    // Now tripped
+    expect(runner('c')).toContain('circuit breaker');
+    expect(runner('d')).toContain('circuit breaker');
+  });
+
+  it('uses default threshold of 3', () => {
+    const runner = createScanRunner(() => '');
+    runner('a');
+    runner('b');
+    expect(runner('c')).toBe('(error or not available)');
+    expect(runner('d')).toContain('circuit breaker');
+  });
+
+  it('passes timeout and env to runFn', () => {
+    let receivedOpts: { timeout?: number; env?: NodeJS.ProcessEnv } | undefined;
+    const env = { PATH: '/usr/bin' };
+    const runner = createScanRunner((_cmd, opts) => {
+      receivedOpts = opts;
+      return 'ok';
+    }, { timeout: 5000, env });
+
+    runner('test');
+    expect(receivedOpts?.timeout).toBe(5000);
+    expect(receivedOpts?.env).toBe(env);
+  });
+
+  it('uses 20s default timeout', () => {
+    let receivedTimeout: number | undefined;
+    const runner = createScanRunner((_cmd, opts) => {
+      receivedTimeout = opts?.timeout;
+      return 'ok';
+    });
+
+    runner('test');
+    expect(receivedTimeout).toBe(20_000);
   });
 });

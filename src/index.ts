@@ -1,5 +1,5 @@
 export { CartographyDB } from './db.js';
-export { createCartographyTools, stripSensitive } from './tools.js';
+export { createCartographyTools, stripSensitive, createScanRunner } from './tools.js';
 export { safetyHook } from './safety.js';
 export { runDiscovery } from './agent.js';
 export type { DiscoveryEvent } from './agent.js';
@@ -23,6 +23,7 @@ export {
 export { nodesToAssets, edgesToConnections, buildMapData } from './mapper.js';
 export { defaultConfig } from './types.js';
 export { checkPrerequisites } from './preflight.js';
+export { safeEnv } from './platform.js';
 export { cleanupTempFiles } from './bookmarks.js';
 export { log, logInfo, logError, logWarn, logDebug, setVerbose } from './logger.js';
 export type { LogLevel, LogEntry } from './logger.js';

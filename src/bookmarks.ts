@@ -38,7 +38,7 @@ export interface HistoryHost extends BookmarkHost {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function extractHost(rawUrl: string, source: string): BookmarkHost | null {
+export function extractHost(rawUrl: string, source: string): BookmarkHost | null {
   try {
     const u = new URL(rawUrl);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
@@ -54,13 +54,13 @@ function extractHost(rawUrl: string, source: string): BookmarkHost | null {
 }
 
 // Chrome/Edge/Brave JSON format
-interface ChromeNode {
+export interface ChromeNode {
   type?: string;
   url?: string;
   children?: ChromeNode[];
 }
 
-function walkChrome(node: ChromeNode, source: string, out: BookmarkHost[]): void {
+export function walkChrome(node: ChromeNode, source: string, out: BookmarkHost[]): void {
   if (node.type === 'url' && node.url) {
     const h = extractHost(node.url, source);
     if (h) out.push(h);
@@ -70,7 +70,7 @@ function walkChrome(node: ChromeNode, source: string, out: BookmarkHost[]): void
   }
 }
 
-function readChromeLike(filePath: string, source: string): BookmarkHost[] {
+export function readChromeLike(filePath: string, source: string): BookmarkHost[] {
   if (!existsSync(filePath)) return [];
   try {
     const raw = JSON.parse(readFileSync(filePath, 'utf8')) as {
@@ -86,89 +86,63 @@ function readChromeLike(filePath: string, source: string): BookmarkHost[] {
   }
 }
 
-async function readFirefoxBookmarks(profileDir: string): Promise<BookmarkHost[]> {
-  const src = join(profileDir, 'places.sqlite');
-  if (!existsSync(src)) return [];
-  const tmp = join(tmpdir(), `cartograph_ff_bm_${Date.now()}.sqlite`);
+async function queryBrowserDb<T>(srcPath: string, tmpPrefix: string, query: string): Promise<T[]> {
+  if (!existsSync(srcPath)) return [];
+  const tmp = join(tmpdir(), `cartograph_${tmpPrefix}_${Date.now()}.sqlite`);
   try {
-    copyFileSync(src, tmp);
+    copyFileSync(srcPath, tmp);
     const { default: Database } = await import('better-sqlite3');
     const db = new Database(tmp, { readonly: true, fileMustExist: true });
-    const rows = db.prepare(`
-      SELECT DISTINCT p.url
-      FROM moz_places p
-      JOIN moz_bookmarks b ON b.fk = p.id
-      WHERE b.type = 1 AND p.url NOT LIKE 'place:%'
-      LIMIT 3000
-    `).all() as { url: string }[];
-    db.close();
-    return rows.map(r => extractHost(r.url, 'firefox')).filter((h): h is BookmarkHost => h !== null);
+    try {
+      return db.prepare(query).all() as T[];
+    } finally {
+      db.close();
+    }
   } catch {
     return [];
   } finally {
-    try { (await import('node:fs')).unlinkSync(tmp); } catch { /* ignore */ }
+    try { unlinkSync(tmp); } catch { /* ignore */ }
   }
+}
+
+async function readFirefoxBookmarks(profileDir: string): Promise<BookmarkHost[]> {
+  const rows = await queryBrowserDb<{ url: string }>(
+    join(profileDir, 'places.sqlite'), 'ff_bm',
+    `SELECT DISTINCT p.url FROM moz_places p
+     JOIN moz_bookmarks b ON b.fk = p.id
+     WHERE b.type = 1 AND p.url NOT LIKE 'place:%' LIMIT 3000`,
+  );
+  return rows.map(r => extractHost(r.url, 'firefox')).filter((h): h is BookmarkHost => h !== null);
 }
 
 export async function readFirefoxHistory(profileDir: string): Promise<HistoryHost[]> {
-  const src = join(profileDir, 'places.sqlite');
-  if (!existsSync(src)) return [];
-  const tmp = join(tmpdir(), `cartograph_ff_hist_${Date.now()}.sqlite`);
-  try {
-    copyFileSync(src, tmp);
-    const { default: Database } = await import('better-sqlite3');
-    const db = new Database(tmp, { readonly: true, fileMustExist: true });
-    const rows = db.prepare(`
-      SELECT url, visit_count
-      FROM moz_places
-      WHERE url NOT LIKE 'place:%'
-        AND visit_count > 0
-      ORDER BY visit_count DESC
-      LIMIT 5000
-    `).all() as { url: string; visit_count: number }[];
-    db.close();
-    return rows
-      .map(r => {
-        const h = extractHost(r.url, 'firefox');
-        if (!h) return null;
-        return { ...h, visitCount: r.visit_count };
-      })
-      .filter((h): h is HistoryHost => h !== null);
-  } catch {
-    return [];
-  } finally {
-    try { (await import('node:fs')).unlinkSync(tmp); } catch { /* ignore */ }
-  }
+  const rows = await queryBrowserDb<{ url: string; visit_count: number }>(
+    join(profileDir, 'places.sqlite'), 'ff_hist',
+    `SELECT url, visit_count FROM moz_places
+     WHERE url NOT LIKE 'place:%' AND visit_count > 0
+     ORDER BY visit_count DESC LIMIT 5000`,
+  );
+  return rows
+    .map(r => {
+      const h = extractHost(r.url, 'firefox');
+      return h ? { ...h, visitCount: r.visit_count } : null;
+    })
+    .filter((h): h is HistoryHost => h !== null);
 }
 
 async function readChromiumHistory(historyPath: string, source: string): Promise<HistoryHost[]> {
-  if (!existsSync(historyPath)) return [];
-  const tmp = join(tmpdir(), `cartograph_ch_hist_${Date.now()}.sqlite`);
-  try {
-    copyFileSync(historyPath, tmp);
-    const { default: Database } = await import('better-sqlite3');
-    const db = new Database(tmp, { readonly: true, fileMustExist: true });
-    const rows = db.prepare(`
-      SELECT url, visit_count
-      FROM urls
-      WHERE hidden = 0
-        AND visit_count > 0
-      ORDER BY visit_count DESC
-      LIMIT 5000
-    `).all() as { url: string; visit_count: number }[];
-    db.close();
-    return rows
-      .map(r => {
-        const h = extractHost(r.url, source);
-        if (!h) return null;
-        return { ...h, visitCount: r.visit_count };
-      })
-      .filter((h): h is HistoryHost => h !== null);
-  } catch {
-    return [];
-  } finally {
-    try { (await import('node:fs')).unlinkSync(tmp); } catch { /* ignore */ }
-  }
+  const rows = await queryBrowserDb<{ url: string; visit_count: number }>(
+    historyPath, 'ch_hist',
+    `SELECT url, visit_count FROM urls
+     WHERE hidden = 0 AND visit_count > 0
+     ORDER BY visit_count DESC LIMIT 5000`,
+  );
+  return rows
+    .map(r => {
+      const h = extractHost(r.url, source);
+      return h ? { ...h, visitCount: r.visit_count } : null;
+    })
+    .filter((h): h is HistoryHost => h !== null);
 }
 
 // ── Platform paths ────────────────────────────────────────────────────────────
@@ -177,7 +151,7 @@ async function readChromiumHistory(historyPath: string, source: string): Promise
 const IS_LINUX = !IS_MAC && !IS_WIN;
 
 // Browser bookmark file paths (multiple profiles supported)
-function chromeLikePaths(base: string): string[] {
+export function chromeLikePaths(base: string): string[] {
   const paths: string[] = [];
   const defaultPath = join(base, 'Default', 'Bookmarks');
   if (existsSync(defaultPath)) paths.push(defaultPath);
@@ -195,7 +169,7 @@ function chromeLikePaths(base: string): string[] {
   return paths;
 }
 
-function chromeLikeHistoryPaths(base: string): string[] {
+export function chromeLikeHistoryPaths(base: string): string[] {
   const paths: string[] = [];
   const defaultPath = join(base, 'Default', 'History');
   if (existsSync(defaultPath)) paths.push(defaultPath);

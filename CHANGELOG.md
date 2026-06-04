@@ -5,6 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-31
+
+### Changed
+
+- **Remove `any` type** -- `McpServer = any` replaced with typed `McpServerConfig` import (kein `any` compliance)
+- **Deduplicate browser DB reading** -- `queryBrowserDb<T>()` helper consolidates 3 copy-open-query-close patterns; `db.close()` now in `finally` for guaranteed cleanup
+- **Export bookmarks internals** -- `readChromeLike`, `chromeLikePaths`, `chromeLikeHistoryPaths` exported for direct testing
+
+### Security
+
+- **npm audit fix** -- patched vite path traversal + WebSocket vulnerabilities (nanoid, picomatch updates); 0 vulnerabilities
+
+### Added
+
+- **327 tests** across 14 test files (+24 new tests, +7 files at 100% coverage)
+  - DB migration: v1→v3 and v2→v3 migration path tests (2 tests)
+  - Hex: hexRound q/r branch coverage → 100% (2 tests)
+  - Exporter: nodeLayer branches (messaging/infra/config/other), metadata extras (6 tests)
+  - Bookmarks: readChromeLike direct tests, chromeLikePaths/chromeLikeHistoryPaths (14 tests)
+  - Platform: dbScanDirs, findFiles improvements (3 tests)
+- **7 files at 100% coverage** -- hex.ts, exporter.ts, mapper.ts, db.ts (lines), logger.ts, safety.ts, preflight.ts
+
+### Performance
+
+- **70% overall statement coverage** -- up from 62% baseline
+
+## [1.2.0] - 2026-05-31
+
+### Changed
+
+- **Provider-agnostic positioning** -- README, CLI banner, and package metadata no longer reference a specific LLM vendor; architecture designed for Claude, OpenAI, Ollama, or any compatible provider
+- **Remove unused dependencies** -- `ora` and `picocolors` removed (17 transitive packages eliminated)
+- **Dynamic CLI version** -- reads from package.json at runtime instead of hardcoded string
+- **Deduplicated color helpers** -- consolidated banner formatting functions in cli.ts
+- **Build target aligned** -- tsup target updated from node18 to node20 (matches engines field)
+- **npm keywords expanded** -- added `cmdb`, `platform-engineering`, `agentic-ai`, `mcp`, `shadow-it`
+
+### Added
+
+- **DB pagination** -- `getNodes()`/`getEdges()` accept optional `{ limit, offset }` for paginated queries
+- **`getNodeCount()`** -- efficient COUNT query without loading all rows
+- **Composite index** -- `idx_connections_lookup` on `(session_id, source_asset_id, target_asset_id)` for O(1) upsert lookups
+- **DB migration v3** -- automatically adds composite index to existing v2 databases
+- **Circuit breaker logging** -- `logDebug()` calls when breaker trips (observability)
+- **Error message sanitization** -- URLs in error messages stripped of credentials before logging
+- **Public API exports** -- `createScanRunner`, `safeEnv`, `extractHost`, `walkChrome` exported for plugin authors
+- **303 tests** across 14 test files (+59 new tests)
+  - Circuit breaker: trip threshold, reset, timeout passthrough (6 tests)
+  - safeEnv: secret filtering, AWS key exclusion (5 tests)
+  - Platform: scanListeningPorts, scanProcesses, Windows stubs (4 tests)
+  - Exporter: JGF, HTML, discoveryApp, exportAll integration (19 tests)
+  - Bookmarks: extractHost, walkChrome direct tests (15 tests)
+  - DB: pagination, getNodeCount, composite index (4 tests)
+  - stripSensitive: edge cases (4 tests)
+- **Vision & Strategy 2026-2027** -- comprehensive product strategy document with market analysis, competitive landscape, open-source revenue model, and 4-phase roadmap
+
+### Security
+
+- **stripSensitive hardened** -- trim whitespace, never return empty string for valid input
+- **Error log sanitization** -- URLs in discovery failure messages sanitized before output
+- **safeEnv secret filtering** -- verified: AWS_SECRET_ACCESS_KEY and arbitrary env vars excluded from child processes
+
+### Performance
+
+- **Hex layout optimization** -- pre-parse occupied coordinates in `findFreeOrigin()` instead of re-splitting strings per iteration
+- **Connection upsert** -- composite index reduces lookup from O(n) table scan to O(1)
+
+## [1.1.1] - 2026-03-06
+
+### Security
+
+- **npm audit CI gate** -- `npm audit --audit-level=high` as mandatory CI step; build breaks on high/critical vulnerabilities
+- **License compliance CI gate** -- `license-checker --failOn GPL/AGPL` blocks strong copyleft introductions
+- **Dependabot** -- weekly npm dependency updates with dev-dependency grouping (`.github/dependabot.yml`)
+- **.npmrc security defaults** -- `audit=true`, `engine-strict=true`, `fund=false`
+- **LGPL-3.0 legal sign-off** -- formal compliance review, `THIRD-PARTY-LICENSES` file, CI enforcement
+
+### Changed
+
+- **vitest 3.x → 4.x** -- major version upgrade, 244/244 tests pass with zero config changes
+- **postinstall ESM** -- extracted inline CJS postinstall to `scripts/postinstall.mjs`
+- **Dependency updates** -- `claude-agent-sdk` 0.2.59→0.2.70, `@types/node` patch update
+
+### Added
+
+- **SBOM generation** -- CycloneDX SBOM (`sbom.cdx.json`) generated and uploaded as CI artifact
+- **Enterprise evaluation docs** -- evaluation report, task specification, legal sign-off, spike results
+
 ## [1.1.0] - 2026-03-06
 
 ### Added
