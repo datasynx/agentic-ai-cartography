@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Das Package `@datasynx/agentic-ai-cartography` ist ein AI-gestütztes Infrastructure-Discovery-Tool auf Basis des Claude Agent SDK. Die Evaluation identifiziert **keine kritischen Sicherheitslücken** (`npm audit`: 0 Vulnerabilities), aber mehrere Conditions for Approval in den Bereichen Dependency Management, CI/CD-Hardening und License Compliance.
+The package `@datasynx/agentic-ai-cartography` is an AI-powered infrastructure discovery tool based on the Claude Agent SDK. The evaluation identifies **no critical security vulnerabilities** (`npm audit`: 0 vulnerabilities), but several Conditions for Approval in the areas of dependency management, CI/CD hardening, and license compliance.
 
 ---
 
@@ -19,59 +19,59 @@ Das Package `@datasynx/agentic-ai-cartography` ist ein AI-gestütztes Infrastruc
 |-----------|--------|---------|
 | Security (npm audit) | ✅ | 0 known vulnerabilities |
 | Dependency Freshness | ⚠️ | 4 outdated packages, 2 major versions behind |
-| CI/CD Security Gates | ❌ | Kein `npm audit` Step in CI, kein Dependency-Bot |
+| CI/CD Security Gates | ❌ | No `npm audit` step in CI, no dependency bot |
 | License Compliance | ⚠️ | 2x LGPL-3.0-or-later (transitive via sharp-libvips) |
-| Build & Tests | ✅ | 244/244 Tests pass, Build OK, Type Check OK |
-| Lockfile Hygiene | ✅ | package-lock.json vorhanden und aktuell |
-| Registry Security | ⚠️ | Keine `.npmrc` mit Security-Konfiguration |
-| SBOM / Supply Chain | ❌ | Kein SBOM-Generierung, keine Provenance |
-| Dependency Tree Size | ✅ | 7 direkte, ~90 transitive (akzeptabel) |
-| Documentation | ✅ | README, CHANGELOG, CLAUDE.md vorhanden |
+| Build & Tests | ✅ | 244/244 tests pass, build OK, type check OK |
+| Lockfile Hygiene | ✅ | package-lock.json present and up to date |
+| Registry Security | ⚠️ | No `.npmrc` with security configuration |
+| SBOM / Supply Chain | ❌ | No SBOM generation, no provenance |
+| Dependency Tree Size | ✅ | 7 direct, ~90 transitive (acceptable) |
+| Documentation | ✅ | README, CHANGELOG, CLAUDE.md present |
 
 ---
 
 ## Critical Issues
 
-Keine kritischen Vulnerabilities gefunden.
+No critical vulnerabilities found.
 
 ---
 
 ## Conditions for Approval
 
-### C1: npm audit als CI-Gate einbinden
-Die CI-Pipeline (`ci.yml`) führt **keinen** `npm audit` durch. Vulnerabilities könnten unbemerkt in Production gelangen.
+### C1: Integrate npm audit as a CI gate
+The CI pipeline (`ci.yml`) does **not** run `npm audit`. Vulnerabilities could reach production unnoticed.
 
-### C2: Dependency Update Policy etablieren
-4 Packages sind veraltet:
-- `@anthropic-ai/claude-agent-sdk`: 0.2.59 → 0.2.70 (semver-kompatibel, sofort aktualisierbar)
-- `@types/node`: 22.19.13 → 25.3.5 (Major-Version-Sprung, @types/node@22 noch mit Patches)
-- `vitest`: 3.2.4 → 4.0.18 (Major-Version-Sprung)
-- `@vitest/coverage-v8`: 3.2.4 → 4.0.18 (Major-Version-Sprung)
+### C2: Establish a dependency update policy
+4 packages are outdated:
+- `@anthropic-ai/claude-agent-sdk`: 0.2.59 → 0.2.70 (semver-compatible, can be updated immediately)
+- `@types/node`: 22.19.13 → 25.3.5 (major version jump, @types/node@22 still receiving patches)
+- `vitest`: 3.2.4 → 4.0.18 (major version jump)
+- `@vitest/coverage-v8`: 3.2.4 → 4.0.18 (major version jump)
 
-### C3: LGPL-Lizenz-Risiko bewerten
-2 transitive Dependencies (`@img/sharp-libvips-linux-x64@1.2.4`, `@img/sharp-libvips-linuxmusl-x64@1.2.4`) stehen unter LGPL-3.0-or-later. Diese kommen via `claude-agent-sdk → sharp`. LGPL erfordert ggf. spezifische Compliance-Maßnahmen in Enterprise-Umgebungen.
+### C3: Assess LGPL license risk
+2 transitive dependencies (`@img/sharp-libvips-linux-x64@1.2.4`, `@img/sharp-libvips-linuxmusl-x64@1.2.4`) are licensed under LGPL-3.0-or-later. These come in via `claude-agent-sdk → sharp`. LGPL may require specific compliance measures in enterprise environments.
 
-### C4: Automated Dependency Updates konfigurieren
-Weder Dependabot noch Renovate sind konfiguriert. Dependency-Updates erfolgen nur manuell.
+### C4: Configure automated dependency updates
+Neither Dependabot nor Renovate is configured. Dependency updates are performed manually only.
 
 ---
 
 ## Next Steps
 
-### NS1: `.npmrc` mit Security-Defaults erstellen
-Kein `.npmrc` vorhanden. Best Practices: `audit=true`, `fund=false`, `engine-strict=true`.
+### NS1: Create `.npmrc` with security defaults
+No `.npmrc` present. Best practices: `audit=true`, `fund=false`, `engine-strict=true`.
 
-### NS2: SBOM-Generierung für Supply-Chain-Transparenz
-Keine Software Bill of Materials (SBOM) wird generiert. Für Enterprise-Compliance empfohlen (CycloneDX oder SPDX).
+### NS2: SBOM generation for supply-chain transparency
+No Software Bill of Materials (SBOM) is generated. Recommended for enterprise compliance (CycloneDX or SPDX).
 
-### NS3: Semver-kompatible Dependencies aktualisieren
-`@anthropic-ai/claude-agent-sdk` und `@types/node` (Patch) können ohne Breaking Changes aktualisiert werden.
+### NS3: Update semver-compatible dependencies
+`@anthropic-ai/claude-agent-sdk` and `@types/node` (patch) can be updated without breaking changes.
 
-### NS4: Major-Version-Upgrades evaluieren (vitest 3→4)
-vitest 4.x ist ein Major-Upgrade. Migration Guide prüfen, Breaking Changes identifizieren.
+### NS4: Evaluate major version upgrades (vitest 3→4)
+vitest 4.x is a major upgrade. Review the migration guide and identify breaking changes.
 
-### NS5: postinstall-Script modernisieren
-Das `postinstall`-Script nutzt `require()` in einem ESM-Package. Funktioniert, ist aber inkonsistent.
+### NS5: Modernize the postinstall script
+The `postinstall` script uses `require()` in an ESM package. It works, but it is inconsistent.
 
 ---
 
@@ -99,5 +99,5 @@ Audit:   0 vulnerabilities
 └── zod@4.3.6
 ```
 
-Transitive Dependencies: ~90 Packages
-Lizenzen: MIT (169), ISC (17), Apache-2.0 (8), BSD-3-Clause (7), LGPL-3.0-or-later (2)
+Transitive dependencies: ~90 packages
+Licenses: MIT (169), ISC (17), Apache-2.0 (8), BSD-3-Clause (7), LGPL-3.0-or-later (2)

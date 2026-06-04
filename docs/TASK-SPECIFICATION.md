@@ -1,86 +1,86 @@
 # Task Specification — Enterprise npm Evaluation Report
 
-**Abgeleitet aus:** [EVALUATION-REPORT.md](./EVALUATION-REPORT.md)
-**Erstellt:** 2026-03-06
+**Derived from:** [EVALUATION-REPORT.md](./EVALUATION-REPORT.md)
+**Created:** 2026-03-06
 **Product Owner:** Enterprise Platform Team
-**Sprint-Ready:** Ja — alle Tasks sind eigenständig umsetzbar
+**Sprint-Ready:** Yes — all tasks are independently implementable
 
 ---
 
-## TASK-01: npm audit als Pflicht-Gate in CI-Pipeline einbinden
+## TASK-01: Add npm audit as a mandatory gate in the CI pipeline
 
-| Feld | Inhalt |
+| Field | Content |
 |------|--------|
-| **Typ** | Blocker |
-| **Priorität** | P0 – Kritisch |
-| **Komponente** | CI/CD, Security |
-| **Aufwand** | S |
-| **Abhängigkeiten** | Keine |
+| **Type** | Blocker |
+| **Priority** | P0 – Critical |
+| **Component** | CI/CD, Security |
+| **Effort** | S |
+| **Dependencies** | None |
 
 ### User Story
 
-Als **Security Engineer** möchte ich, dass die CI-Pipeline bei bekannten npm-Vulnerabilities (High/Critical) automatisch fehlschlägt, damit keine verwundbaren Dependencies in Production gelangen.
+As a **Security Engineer**, I want the CI pipeline to fail automatically on known npm vulnerabilities (High/Critical), so that no vulnerable dependencies reach production.
 
-### Hintergrund
+### Background
 
-Report-Abschnitt: **C1 — npm audit als CI-Gate einbinden** + **Dimension CI/CD Security Gates (❌)**. Die aktuelle `ci.yml` führt `npm ci`, `lint`, `test` und `build` aus, enthält jedoch keinen `npm audit`-Step. Vulnerabilities werden aktuell nicht automatisch erkannt.
+Report section: **C1 — Add npm audit as a CI gate** + **CI/CD Security Gates dimension (❌)**. The current `ci.yml` runs `npm ci`, `lint`, `test`, and `build`, but does not contain an `npm audit` step. Vulnerabilities are currently not detected automatically.
 
-### Akzeptanzkriterien
+### Acceptance Criteria
 
-- [ ] `.github/workflows/ci.yml` enthält einen Step `npm audit --audit-level=high`, der **vor** dem Build-Step ausgeführt wird
-- [ ] Der CI-Job bricht ab (Exit Code ≠ 0), wenn Vulnerabilities mit Severity `high` oder `critical` gefunden werden
-- [ ] Vulnerabilities mit Severity `low` oder `moderate` brechen den Build **nicht** ab
-- [ ] Der Step ist in der Node.js-Matrix (20, 22) eingebunden und läuft auf allen Matrix-Varianten
+- [ ] `.github/workflows/ci.yml` contains a step `npm audit --audit-level=high` that runs **before** the build step
+- [ ] The CI job aborts (exit code ≠ 0) when vulnerabilities with severity `high` or `critical` are found
+- [ ] Vulnerabilities with severity `low` or `moderate` do **not** abort the build
+- [ ] The step is integrated into the Node.js matrix (20, 22) and runs on all matrix variants
 
-### Technische Hinweise
+### Technical Notes
 
-In `.github/workflows/ci.yml` nach dem Step `Install dependencies` einfügen:
+In `.github/workflows/ci.yml`, insert after the `Install dependencies` step:
 
 ```yaml
 - name: Security audit
   run: npm audit --audit-level=high
 ```
 
-`npm audit` nutzt die lokale `package-lock.json` und benötigt keinen Netzwerkzugriff über npm hinaus. `--audit-level=high` ignoriert Low/Moderate und bricht nur bei High/Critical ab.
+`npm audit` uses the local `package-lock.json` and requires no network access beyond npm. `--audit-level=high` ignores Low/Moderate and aborts only on High/Critical.
 
 ### Definition of Done
 
-- [ ] Code reviewed & gemergt
-- [ ] CI-Pipeline läuft grün (da aktuell 0 Vulnerabilities)
-- [ ] Verifikation: Manuell eine verwundbare Dependency simuliert → Build bricht ab
+- [ ] Code reviewed & merged
+- [ ] CI pipeline runs green (since there are currently 0 vulnerabilities)
+- [ ] Verification: Manually simulate a vulnerable dependency → build aborts
 
 ---
 
-## TASK-02: Dependabot für automatische Dependency-Updates konfigurieren
+## TASK-02: Configure Dependabot for automatic dependency updates
 
-| Feld | Inhalt |
+| Field | Content |
 |------|--------|
-| **Typ** | Required |
-| **Priorität** | P0 – Kritisch |
-| **Komponente** | CI/CD, Security |
-| **Aufwand** | S |
-| **Abhängigkeiten** | Keine |
+| **Type** | Required |
+| **Priority** | P0 – Critical |
+| **Component** | CI/CD, Security |
+| **Effort** | S |
+| **Dependencies** | None |
 
 ### User Story
 
-Als **DevOps Engineer** möchte ich, dass Dependency-Updates automatisch als Pull Requests vorgeschlagen werden, damit Sicherheitspatches zeitnah eingespielt werden und keine manuelle Überwachung nötig ist.
+As a **DevOps Engineer**, I want dependency updates to be proposed automatically as pull requests, so that security patches are applied promptly and no manual monitoring is required.
 
-### Hintergrund
+### Background
 
-Report-Abschnitt: **C4 — Automated Dependency Updates konfigurieren**. Weder Dependabot noch Renovate sind konfiguriert. Aktuell 4 veraltete Packages, Updates erfolgen rein manuell.
+Report section: **C4 — Configure automated dependency updates**. Neither Dependabot nor Renovate is configured. There are currently 4 outdated packages, and updates are done purely manually.
 
-### Akzeptanzkriterien
+### Acceptance Criteria
 
-- [ ] Datei `.github/dependabot.yml` existiert im Repository
-- [ ] Ecosystem `npm` ist konfiguriert mit `directory: "/"`
-- [ ] Update-Frequenz ist auf `weekly` gesetzt
-- [ ] PR-Limit ist auf maximal 5 offene PRs konfiguriert
-- [ ] Security-Updates sind aktiviert (default bei Dependabot)
-- [ ] Target-Branch ist `main`
+- [ ] File `.github/dependabot.yml` exists in the repository
+- [ ] Ecosystem `npm` is configured with `directory: "/"`
+- [ ] Update frequency is set to `weekly`
+- [ ] PR limit is configured to a maximum of 5 open PRs
+- [ ] Security updates are enabled (default in Dependabot)
+- [ ] Target branch is `main`
 
-### Technische Hinweise
+### Technical Notes
 
-Datei `.github/dependabot.yml` erstellen:
+Create file `.github/dependabot.yml`:
 
 ```yaml
 version: 2
@@ -95,45 +95,45 @@ updates:
       - "dependencies"
 ```
 
-Optional: `groups` nutzen, um Dev-Dependencies (vitest, tsup, tsx, typescript) in einem PR zu bündeln.
+Optional: Use `groups` to bundle dev dependencies (vitest, tsup, tsx, typescript) into a single PR.
 
 ### Definition of Done
 
-- [ ] Code reviewed & gemergt
-- [ ] Dependabot erstellt innerhalb einer Woche die ersten PRs für veraltete Dependencies
-- [ ] Konfiguration validiert (YAML-Syntax korrekt, GitHub erkennt die Datei)
+- [ ] Code reviewed & merged
+- [ ] Dependabot creates the first PRs for outdated dependencies within a week
+- [ ] Configuration validated (YAML syntax correct, GitHub recognizes the file)
 
 ---
 
-## TASK-03: Semver-kompatible Dependencies aktualisieren
+## TASK-03: Update semver-compatible dependencies
 
-| Feld | Inhalt |
+| Field | Content |
 |------|--------|
-| **Typ** | Chore |
-| **Priorität** | P1 – Hoch |
-| **Komponente** | Security, Dependencies |
-| **Aufwand** | S |
-| **Abhängigkeiten** | Keine |
+| **Type** | Chore |
+| **Priority** | P1 – High |
+| **Component** | Security, Dependencies |
+| **Effort** | S |
+| **Dependencies** | None |
 
 ### User Story
 
-Als **Entwickler** möchte ich, dass alle semver-kompatiblen Dependency-Updates eingespielt werden, damit bekannte Bugfixes und Verbesserungen genutzt werden und die technische Schuld nicht wächst.
+As a **developer**, I want all semver-compatible dependency updates to be applied, so that known bug fixes and improvements are used and technical debt does not grow.
 
-### Hintergrund
+### Background
 
-Report-Abschnitt: **NS3 — Semver-kompatible Dependencies aktualisieren** + **C2 — Dependency Update Policy**. Zwei Packages haben semver-kompatible Updates:
-- `@anthropic-ai/claude-agent-sdk`: 0.2.59 → 0.2.70 (Minor/Patch innerhalb `^0.2.59`)
-- `@types/node`: 22.19.13 → 22.19.15 (Patch innerhalb `^22.10.0`)
+Report section: **NS3 — Update semver-compatible dependencies** + **C2 — Dependency Update Policy**. Two packages have semver-compatible updates:
+- `@anthropic-ai/claude-agent-sdk`: 0.2.59 → 0.2.70 (Minor/Patch within `^0.2.59`)
+- `@types/node`: 22.19.13 → 22.19.15 (Patch within `^22.10.0`)
 
-### Akzeptanzkriterien
+### Acceptance Criteria
 
-- [ ] `npm outdated` zeigt für `@anthropic-ai/claude-agent-sdk` und `@types/node` keine semver-kompatiblen Updates mehr an
-- [ ] `package-lock.json` ist aktualisiert und committet
-- [ ] Alle 244 Tests bestehen nach dem Update (`npm test`)
-- [ ] Build ist erfolgreich (`npm run build`)
-- [ ] Type-Check ist erfolgreich (`npm run lint`)
+- [ ] `npm outdated` no longer shows semver-compatible updates for `@anthropic-ai/claude-agent-sdk` and `@types/node`
+- [ ] `package-lock.json` is updated and committed
+- [ ] All 244 tests pass after the update (`npm test`)
+- [ ] Build is successful (`npm run build`)
+- [ ] Type check is successful (`npm run lint`)
 
-### Technische Hinweise
+### Technical Notes
 
 ```bash
 npm update @anthropic-ai/claude-agent-sdk @types/node
@@ -142,45 +142,45 @@ npm run lint
 npm run build
 ```
 
-`npm update` aktualisiert nur innerhalb der semver-Range aus `package.json`. Kein manuelles Editieren der `package.json` nötig.
+`npm update` updates only within the semver range from `package.json`. No manual editing of `package.json` is required.
 
 ### Definition of Done
 
-- [ ] Code reviewed & gemergt
-- [ ] CI-Pipeline grün
-- [ ] `package-lock.json` Diff reviewed (nur erwartete Versionsänderungen)
+- [ ] Code reviewed & merged
+- [ ] CI pipeline green
+- [ ] `package-lock.json` diff reviewed (only expected version changes)
 
 ---
 
-## TASK-04: .npmrc mit Security-Defaults erstellen
+## TASK-04: Create .npmrc with security defaults
 
-| Feld | Inhalt |
+| Field | Content |
 |------|--------|
-| **Typ** | Chore |
-| **Priorität** | P1 – Hoch |
-| **Komponente** | Security, Registry |
-| **Aufwand** | S |
-| **Abhängigkeiten** | Keine |
+| **Type** | Chore |
+| **Priority** | P1 – High |
+| **Component** | Security, Registry |
+| **Effort** | S |
+| **Dependencies** | None |
 
 ### User Story
 
-Als **Security Engineer** möchte ich, dass npm-Security-Defaults projektweit erzwungen werden, damit `npm install` automatisch Audits durchführt und die Engine-Constraints eingehalten werden.
+As a **Security Engineer**, I want npm security defaults to be enforced project-wide, so that `npm install` automatically performs audits and engine constraints are respected.
 
-### Hintergrund
+### Background
 
-Report-Abschnitt: **NS1 — .npmrc mit Security-Defaults erstellen** + **Dimension Registry Security (⚠️)**. Kein `.npmrc` vorhanden. Best Practices fehlen: Audit-on-Install, Engine-Strict-Mode, Fund-Disable.
+Report section: **NS1 — Create .npmrc with security defaults** + **Registry Security dimension (⚠️)**. No `.npmrc` is present. Best practices are missing: audit-on-install, engine-strict mode, fund-disable.
 
-### Akzeptanzkriterien
+### Acceptance Criteria
 
-- [ ] Datei `.npmrc` existiert im Repository-Root
-- [ ] `audit=true` ist gesetzt (automatischer Audit bei `npm install`)
-- [ ] `engine-strict=true` ist gesetzt (Installation bricht ab, wenn Node-Version nicht `>=20.0.0` erfüllt)
-- [ ] `fund=false` ist gesetzt (unterdrückt Funding-Messages im CI)
-- [ ] `.npmrc` ist in Git committed (nicht in `.gitignore`)
+- [ ] File `.npmrc` exists in the repository root
+- [ ] `audit=true` is set (automatic audit on `npm install`)
+- [ ] `engine-strict=true` is set (installation aborts when the Node version does not satisfy `>=20.0.0`)
+- [ ] `fund=false` is set (suppresses funding messages in CI)
+- [ ] `.npmrc` is committed to Git (not in `.gitignore`)
 
-### Technische Hinweise
+### Technical Notes
 
-Datei `.npmrc` im Repository-Root erstellen:
+Create file `.npmrc` in the repository root:
 
 ```ini
 audit=true
@@ -189,83 +189,83 @@ fund=false
 save-exact=false
 ```
 
-`engine-strict=true` nutzt das `engines`-Feld aus `package.json` (`>=20.0.0`). Bei Node < 20 bricht `npm install` ab.
+`engine-strict=true` uses the `engines` field from `package.json` (`>=20.0.0`). On Node < 20, `npm install` aborts.
 
 ### Definition of Done
 
-- [ ] Code reviewed & gemergt
-- [ ] `npm install` auf Node 18 bricht ab (Engine-Strict-Verifikation)
-- [ ] `npm install` auf Node 20/22 funktioniert weiterhin
+- [ ] Code reviewed & merged
+- [ ] `npm install` on Node 18 aborts (engine-strict verification)
+- [ ] `npm install` on Node 20/22 continues to work
 
 ---
 
-## TASK-05: LGPL-Lizenz-Compliance für transitive Dependencies bewerten
+## TASK-05: Assess LGPL license compliance for transitive dependencies
 
-| Feld | Inhalt |
+| Field | Content |
 |------|--------|
-| **Typ** | Spike |
-| **Priorität** | P1 – Hoch |
-| **Komponente** | Compliance, Legal |
-| **Aufwand** | M |
-| **Abhängigkeiten** | Keine |
+| **Type** | Spike |
+| **Priority** | P1 – High |
+| **Component** | Compliance, Legal |
+| **Effort** | M |
+| **Dependencies** | None |
 
 ### User Story
 
-Als **Compliance Officer** möchte ich eine dokumentierte Bewertung der LGPL-3.0-lizenzierten transitiven Dependencies, damit das Unternehmen informierte Entscheidungen über den Einsatz des Packages treffen kann.
+As a **Compliance Officer**, I want a documented assessment of the LGPL-3.0-licensed transitive dependencies, so that the company can make informed decisions about using the package.
 
-### Hintergrund
+### Background
 
-Report-Abschnitt: **C3 — LGPL-Lizenz-Risiko bewerten** + **Dimension License Compliance (⚠️)**. Zwei transitive Dependencies (`@img/sharp-libvips-linux-x64@1.2.4`, `@img/sharp-libvips-linuxmusl-x64@1.2.4`) stehen unter LGPL-3.0-or-later. Abhängigkeitskette: `claude-agent-sdk → sharp → sharp-libvips`. LGPL erfordert ggf. spezifische Compliance-Maßnahmen (z.B. dynamisches Linking, Re-Linking-Möglichkeit).
+Report section: **C3 — Assess LGPL license risk** + **License Compliance dimension (⚠️)**. Two transitive dependencies (`@img/sharp-libvips-linux-x64@1.2.4`, `@img/sharp-libvips-linuxmusl-x64@1.2.4`) are licensed under LGPL-3.0-or-later. Dependency chain: `claude-agent-sdk → sharp → sharp-libvips`. LGPL may require specific compliance measures (e.g., dynamic linking, re-linking capability).
 
-### Akzeptanzkriterien
+### Acceptance Criteria
 
-- [ ] Dokumentation erstellt, die klärt: Wie wird `sharp-libvips` gelinkt (statisch vs. dynamisch)?
-- [ ] Risikobewertung: Gilt die LGPL-Pflicht für unser Vertriebsmodell (SaaS / CLI-Tool / Library)?
-- [ ] Entscheidung dokumentiert: Akzeptieren / Mitigieren / Alternative suchen
-- [ ] Falls Mitigation nötig: Follow-up-Task erstellt
-- [ ] Dokument im `docs/` Verzeichnis abgelegt
+- [ ] Documentation created that clarifies: How is `sharp-libvips` linked (static vs. dynamic)?
+- [ ] Risk assessment: Does the LGPL obligation apply to our distribution model (SaaS / CLI tool / library)?
+- [ ] Decision documented: Accept / Mitigate / Seek alternative
+- [ ] If mitigation is required: follow-up task created
+- [ ] Document placed in the `docs/` directory
 
-### Technische Hinweise
+### Technical Notes
 
-- `sharp-libvips` ist ein Prebuilt-Binary (native Addon). LGPL-3.0 erlaubt dynamisches Linking ohne Copyleft-Auswirkung auf den Rest der Anwendung.
-- Da `sharp` als optionale Dependency von `claude-agent-sdk` geladen wird und die Prebuilt-Binaries als separate npm Packages installiert werden, ist das Risiko typischerweise gering.
-- Prüfung mit Legal/Compliance-Team abstimmen.
-- Relevante Ressource: LGPL-3.0 FAQ, sharp-libvips Lizenzierung auf GitHub.
+- `sharp-libvips` is a prebuilt binary (native addon). LGPL-3.0 permits dynamic linking without copyleft effects on the rest of the application.
+- Since `sharp` is loaded as an optional dependency of `claude-agent-sdk` and the prebuilt binaries are installed as separate npm packages, the risk is typically low.
+- Coordinate the review with the Legal/Compliance team.
+- Relevant resource: LGPL-3.0 FAQ, sharp-libvips licensing on GitHub.
 
 ### Definition of Done
 
-- [ ] Compliance-Bewertung reviewed und abgenommen (Legal + Engineering)
-- [ ] Entscheidung im `docs/LICENSE-COMPLIANCE.md` dokumentiert
-- [ ] Ggf. Follow-up-Tasks angelegt
+- [ ] Compliance assessment reviewed and approved (Legal + Engineering)
+- [ ] Decision documented in `docs/LICENSE-COMPLIANCE.md`
+- [ ] Follow-up tasks created if needed
 
 ---
 
-## TASK-06: SBOM-Generierung in CI-Pipeline integrieren
+## TASK-06: Integrate SBOM generation into the CI pipeline
 
-| Feld | Inhalt |
+| Field | Content |
 |------|--------|
-| **Typ** | Feature |
-| **Priorität** | P2 – Mittel |
-| **Komponente** | CI/CD, Compliance |
-| **Aufwand** | M |
-| **Abhängigkeiten** | TASK-01 |
+| **Type** | Feature |
+| **Priority** | P2 – Medium |
+| **Component** | CI/CD, Compliance |
+| **Effort** | M |
+| **Dependencies** | TASK-01 |
 
 ### User Story
 
-Als **Security Engineer** möchte ich, dass bei jedem CI-Build automatisch eine Software Bill of Materials (SBOM) generiert wird, damit die Supply-Chain-Transparenz gewährleistet ist und Enterprise-Compliance-Anforderungen erfüllt werden.
+As a **Security Engineer**, I want a Software Bill of Materials (SBOM) to be generated automatically on every CI build, so that supply chain transparency is ensured and enterprise compliance requirements are met.
 
-### Hintergrund
+### Background
 
-Report-Abschnitt: **NS2 — SBOM-Generierung für Supply-Chain-Transparenz** + **Dimension SBOM / Supply Chain (❌)**. Keine SBOM wird aktuell generiert. Für Enterprise-Deployments zunehmend gefordert (EO 14028, EU CRA).
+Report section: **NS2 — SBOM generation for supply chain transparency** + **SBOM / Supply Chain dimension (❌)**. No SBOM is currently generated. It is increasingly required for enterprise deployments (EO 14028, EU CRA).
 
-### Akzeptanzkriterien
+### Acceptance Criteria
 
-- [ ] CI-Pipeline generiert bei jedem Build eine SBOM im CycloneDX-Format (JSON)
-- [ ] SBOM-Datei wird als CI-Artifact hochgeladen und ist downloadbar
-- [ ] SBOM enthält alle Production-Dependencies mit Versionen und Lizenzen
-- [ ] SBOM-Generierung bricht den Build **nicht** ab (informativ, nicht blockierend)
+- [ ] CI pipeline generates an SBOM in CycloneDX format (JSON) on every build
+- [ ] The SBOM file is uploaded as a CI artifact and is downloadable
+- [ ] The SBOM contains all production dependencies with versions and licenses
+- [ ] SBOM generation does **not** abort the build (informative, non-blocking)
 
-### Technische Hinweise
+### Technical Notes
 
 Option A — `@cyclonedx/cyclonedx-npm`:
 ```bash
@@ -281,176 +281,176 @@ Option B — GitHub Actions SBOM Action:
     format: cyclonedx-json
 ```
 
-CycloneDX ist der Enterprise-Standard für npm-SBOMs. SPDX ist eine Alternative.
+CycloneDX is the enterprise standard for npm SBOMs. SPDX is an alternative.
 
 ### Definition of Done
 
-- [ ] Code reviewed & gemergt
-- [ ] CI-Pipeline generiert SBOM-Artifact bei jedem Build
-- [ ] SBOM-Datei validiert (z.B. via `cyclonedx-cli validate`)
-- [ ] Dokumentation in README unter "CI/CD" aktualisiert
+- [ ] Code reviewed & merged
+- [ ] CI pipeline generates an SBOM artifact on every build
+- [ ] SBOM file validated (e.g., via `cyclonedx-cli validate`)
+- [ ] Documentation in README under "CI/CD" updated
 
 ---
 
-## TASK-07: vitest 3.x → 4.x Major-Upgrade evaluieren
+## TASK-07: Evaluate the vitest 3.x → 4.x major upgrade
 
-| Feld | Inhalt |
+| Field | Content |
 |------|--------|
-| **Typ** | Spike |
-| **Priorität** | P2 – Mittel |
-| **Komponente** | Testing, Dependencies |
-| **Aufwand** | M |
-| **Abhängigkeiten** | TASK-03 |
+| **Type** | Spike |
+| **Priority** | P2 – Medium |
+| **Component** | Testing, Dependencies |
+| **Effort** | M |
+| **Dependencies** | TASK-03 |
 
 ### User Story
 
-Als **Entwickler** möchte ich wissen, ob ein Upgrade von vitest 3.x auf 4.x mit unserem Projekt kompatibel ist, damit wir von Bugfixes und Performance-Verbesserungen profitieren und nicht auf einem veralteten Major-Release verbleiben.
+As a **developer**, I want to know whether an upgrade from vitest 3.x to 4.x is compatible with our project, so that we benefit from bug fixes and performance improvements and do not remain on an outdated major release.
 
-### Hintergrund
+### Background
 
-Report-Abschnitt: **NS4 — Major-Version-Upgrades evaluieren (vitest 3→4)** + **C2 — Dependency Update Policy**. `vitest` und `@vitest/coverage-v8` sind bei 3.2.4, aktuell ist 4.0.18. Major-Upgrade erfordert Breaking-Changes-Analyse.
+Report section: **NS4 — Evaluate major version upgrades (vitest 3→4)** + **C2 — Dependency Update Policy**. `vitest` and `@vitest/coverage-v8` are at 3.2.4; the current version is 4.0.18. A major upgrade requires a breaking-changes analysis.
 
-### Akzeptanzkriterien
+### Acceptance Criteria
 
-- [ ] vitest 4.x Migration Guide gelesen und dokumentiert
-- [ ] Liste der Breaking Changes erstellt, die unser Projekt betreffen
-- [ ] Testlauf mit vitest 4.x durchgeführt (Feature-Branch)
-- [ ] Ergebnis dokumentiert: Upgrade möglich (ja/nein) + geschätzter Aufwand
-- [ ] Falls ja: Implementierungs-Task mit konkretem Scope erstellt
+- [ ] vitest 4.x migration guide read and documented
+- [ ] List of breaking changes that affect our project created
+- [ ] Test run with vitest 4.x performed (feature branch)
+- [ ] Result documented: upgrade possible (yes/no) + estimated effort
+- [ ] If yes: implementation task with a concrete scope created
 
-### Technische Hinweise
+### Technical Notes
 
 ```bash
-# In Feature-Branch testen:
+# Test in a feature branch:
 npm install vitest@4 @vitest/coverage-v8@4 --save-dev
 npm test
 npm run test:coverage
 ```
 
-- vitest-Changelog und Migration Guide unter https://vitest.dev prüfen
-- `vitest.config.ts` auf deprecated/entfernte Optionen prüfen
-- Coverage-Provider-Kompatibilität verifizieren (V8)
-- 244 Tests müssen weiterhin bestehen
+- Check the vitest changelog and migration guide at https://vitest.dev
+- Check `vitest.config.ts` for deprecated/removed options
+- Verify coverage provider compatibility (V8)
+- 244 tests must continue to pass
 
 ### Definition of Done
 
-- [ ] Spike-Ergebnis dokumentiert in `docs/SPIKE-VITEST-4.md`
-- [ ] Entscheidung getroffen: Upgrade durchführen / Backlog / Warten
-- [ ] Ggf. Follow-up-Task angelegt
+- [ ] Spike result documented in `docs/SPIKE-VITEST-4.md`
+- [ ] Decision made: perform upgrade / backlog / wait
+- [ ] Follow-up task created if needed
 
 ---
 
-## TASK-08: postinstall-Script auf ESM-Syntax modernisieren
+## TASK-08: Modernize the postinstall script to ESM syntax
 
-| Feld | Inhalt |
+| Field | Content |
 |------|--------|
-| **Typ** | Chore |
-| **Priorität** | P3 – Niedrig |
-| **Komponente** | Packaging |
-| **Aufwand** | S |
-| **Abhängigkeiten** | Keine |
+| **Type** | Chore |
+| **Priority** | P3 – Low |
+| **Component** | Packaging |
+| **Effort** | S |
+| **Dependencies** | None |
 
 ### User Story
 
-Als **Entwickler** möchte ich, dass das postinstall-Script konsistent mit dem ESM-Modulformat des Packages ist, damit keine Verwirrung durch gemischte CJS/ESM-Syntax entsteht und zukünftige Node.js-Versionen keine Deprecation-Warnings erzeugen.
+As a **developer**, I want the postinstall script to be consistent with the package's ESM module format, so that there is no confusion from mixed CJS/ESM syntax and future Node.js versions do not produce deprecation warnings.
 
-### Hintergrund
+### Background
 
-Report-Abschnitt: **NS5 — postinstall-Script modernisieren**. Das aktuelle Script nutzt `require('child_process')` in einem `"type": "module"` Package. Das funktioniert, weil `node -e` einen eigenen CJS-Kontext erzeugt, ist aber inkonsistent.
+Report section: **NS5 — Modernize the postinstall script**. The current script uses `require('child_process')` in a `"type": "module"` package. This works because `node -e` creates its own CJS context, but it is inconsistent.
 
-### Akzeptanzkriterien
+### Acceptance Criteria
 
-- [ ] postinstall-Script nutzt ESM-kompatible Syntax oder `node --input-type=module`
-- [ ] Script funktioniert auf Node 20 und 22
-- [ ] Script prüft weiterhin die Verfügbarkeit des `claude` CLI
-- [ ] `npm install` in einem sauberen Verzeichnis gibt die Warnung aus, wenn Claude CLI fehlt
+- [ ] postinstall script uses ESM-compatible syntax or `node --input-type=module`
+- [ ] Script works on Node 20 and 22
+- [ ] Script continues to check the availability of the `claude` CLI
+- [ ] `npm install` in a clean directory prints the warning when the Claude CLI is missing
 
-### Technische Hinweise
+### Technical Notes
 
 Option A — `node --input-type=module -e`:
 ```json
 "postinstall": "node --input-type=module -e \"import{execSync}from'child_process';try{execSync('claude --version',{stdio:'pipe'})}catch{console.warn('\\n⚠ datasynx-cartography requires Claude CLI: npm i -g @anthropic-ai/claude-code\\n')}\""
 ```
 
-Option B — Separates Script-File `scripts/postinstall.mjs`:
+Option B — Separate script file `scripts/postinstall.mjs`:
 ```js
 import { execSync } from 'child_process';
 try { execSync('claude --version', { stdio: 'pipe' }); }
 catch { console.warn('\n⚠ datasynx-cartography requires Claude CLI: npm i -g @anthropic-ai/claude-code\n'); }
 ```
 
-Option B ist lesbarer und einfacher zu warten. Die Datei muss in `"files"` in `package.json` aufgenommen werden.
+Option B is more readable and easier to maintain. The file must be added to `"files"` in `package.json`.
 
 ### Definition of Done
 
-- [ ] Code reviewed & gemergt
-- [ ] Tests bestehen (`npm test`)
-- [ ] Manuell verifiziert: `npm install` gibt korrekte Warnung aus
+- [ ] Code reviewed & merged
+- [ ] Tests pass (`npm test`)
+- [ ] Manually verified: `npm install` prints the correct warning
 
 ---
 
-## Umsetzungs-Roadmap
+## Implementation Roadmap
 
-### Phase 0 — Blocker & Pflichtbedingungen (vor Go-Live)
+### Phase 0 — Blockers & mandatory conditions (before go-live)
 
-Ohne diese Tasks ist kein Enterprise-Approval möglich.
-
-```
-├── TASK-01: npm audit als CI-Gate
-└── TASK-02: Dependabot konfigurieren
-```
-
-### Phase 1 — Stabilisierung & Qualitätssicherung
-
-Sofort umsetzbare Verbesserungen mit geringem Risiko.
+Without these tasks, no enterprise approval is possible.
 
 ```
-├── TASK-03: Semver-kompatible Dependencies aktualisieren
-├── TASK-04: .npmrc Security-Defaults
-└── TASK-05: LGPL-Compliance-Bewertung (Spike)
+├── TASK-01: npm audit as CI gate
+└── TASK-02: Configure Dependabot
 ```
 
-### Phase 2 — Integration & Optimierung
+### Phase 1 — Stabilization & quality assurance
 
-Erfordert Ergebnisse aus Phase 1 bzw. Phase 0.
-
-```
-├── TASK-06: SBOM-Generierung (abhängig von TASK-01)
-└── TASK-07: vitest 4.x Upgrade-Spike (abhängig von TASK-03)
-```
-
-### Phase 3 — Langfristige Maßnahmen (Backlog)
-
-Nice-to-have, kein Blocker für Enterprise-Betrieb.
+Immediately implementable improvements with low risk.
 
 ```
-└── TASK-08: postinstall ESM-Modernisierung
+├── TASK-03: Update semver-compatible dependencies
+├── TASK-04: .npmrc security defaults
+└── TASK-05: LGPL compliance assessment (Spike)
+```
+
+### Phase 2 — Integration & optimization
+
+Requires results from Phase 1 or Phase 0.
+
+```
+├── TASK-06: SBOM generation (depends on TASK-01)
+└── TASK-07: vitest 4.x upgrade spike (depends on TASK-03)
+```
+
+### Phase 3 — Long-term measures (backlog)
+
+Nice-to-have, not a blocker for enterprise operation.
+
+```
+└── TASK-08: postinstall ESM modernization
 ```
 
 ---
 
-## Aufwands-Übersicht
+## Effort Overview
 
-| Task | Titel | Typ | Priorität | Aufwand | Phase |
+| Task | Title | Type | Priority | Effort | Phase |
 |------|-------|-----|-----------|---------|-------|
-| TASK-01 | npm audit CI-Gate | Blocker | P0 | S | 0 |
-| TASK-02 | Dependabot konfigurieren | Required | P0 | S | 0 |
-| TASK-03 | Semver-Updates einspielen | Chore | P1 | S | 1 |
-| TASK-04 | .npmrc Security-Defaults | Chore | P1 | S | 1 |
-| TASK-05 | LGPL-Compliance-Spike | Spike | P1 | M | 1 |
-| TASK-06 | SBOM-Generierung | Feature | P2 | M | 2 |
-| TASK-07 | vitest 4.x Spike | Spike | P2 | M | 2 |
+| TASK-01 | npm audit CI gate | Blocker | P0 | S | 0 |
+| TASK-02 | Configure Dependabot | Required | P0 | S | 0 |
+| TASK-03 | Apply semver updates | Chore | P1 | S | 1 |
+| TASK-04 | .npmrc security defaults | Chore | P1 | S | 1 |
+| TASK-05 | LGPL compliance spike | Spike | P1 | M | 1 |
+| TASK-06 | SBOM generation | Feature | P2 | M | 2 |
+| TASK-07 | vitest 4.x spike | Spike | P2 | M | 2 |
 | TASK-08 | postinstall ESM | Chore | P3 | S | 3 |
-| | | | | **Gesamt** | **5S + 3M ≈ 18 SP** |
+| | | | | **Total** | **5S + 3M ≈ 18 SP** |
 
-*Schätzung: S = 2 SP, M = 5 SP*
+*Estimate: S = 2 SP, M = 5 SP*
 
 ---
 
-## Hinweise für das Dev-Team
+## Notes for the Dev Team
 
-- **Phase 0** ist Sprint-Pflicht — ohne TASK-01 und TASK-02 kein Merge in Main.
-- **TASK-05** (LGPL-Spike) erfordert Abstimmung mit Legal — frühzeitig anstoßen.
-- **TASK-03** ist risikoarm und kann als Warmup-Task zugewiesen werden.
-- Alle Tasks sind atomar und können parallel bearbeitet werden (sofern keine Abhängigkeit besteht).
-- Nach Abschluss von Phase 0+1: Enterprise-Approval erneut beantragen.
+- **Phase 0** is sprint-mandatory — without TASK-01 and TASK-02, no merge into main.
+- **TASK-05** (LGPL spike) requires coordination with Legal — kick it off early.
+- **TASK-03** is low risk and can be assigned as a warmup task.
+- All tasks are atomic and can be worked on in parallel (provided there is no dependency).
+- After completing Phase 0+1: re-request enterprise approval.
