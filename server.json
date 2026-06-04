@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-08/server.schema.json",
+  "name": "io.github.datasynx/cartography",
+  "description": "MCP-first infrastructure & agentic-AI cartography — read-only discovery of your system landscape (services, databases, SaaS tools, dependencies) exposed as MCP resources, tools and prompts.",
+  "version": "2.0.0",
+  "repository": {
+    "url": "https://github.com/datasynx/agentic-ai-cartography",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@datasynx/agentic-ai-cartography",
+      "version": "2.0.0",
+      "runtimeHint": "npx",
+      "transport": { "type": "stdio" },
+      "runtimeArguments": [
+        { "type": "named", "name": "--package", "value": "@datasynx/agentic-ai-cartography", "isRequired": true },
+        { "type": "positional", "value": "cartography-mcp", "isRequired": true }
+      ],
+      "packageArguments": [
+        { "type": "named", "name": "--db", "description": "Path to the SQLite catalog", "isRequired": false },
+        { "type": "named", "name": "--session", "description": "Session id to serve, or 'latest'", "isRequired": false }
+      ]
+    }
+  ]
+}

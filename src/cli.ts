@@ -13,6 +13,7 @@ import { IS_WIN, IS_MAC, PLATFORM, commandExists } from './platform.js';
 import { logInfo, logError, logWarn, setVerbose } from './logger.js';
 import { cleanupTempFiles } from './bookmarks.js';
 import { stripSensitive } from './tools.js';
+import { startMcp } from './mcp/start.js';
 
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
@@ -1134,6 +1135,28 @@ ${infraSummary.substring(0, 12000)}`;
       }
 
       db.close();
+    });
+
+  // ── MCP server ────────────────────────────────────────────────────────────
+
+  program
+    .command('mcp')
+    .description('Run the Model Context Protocol server (stdio by default) — the primary interface for AI agents')
+    .option('--http', 'Use Streamable HTTP transport instead of stdio', false)
+    .option('--port <n>', 'HTTP port', '3737')
+    .option('--host <h>', 'HTTP host', '127.0.0.1')
+    .option('--db <path>', 'DB path')
+    .option('--session <id>', 'Session to serve (id or "latest")', 'latest')
+    .option('--no-semantic', 'Disable semantic (vector) search')
+    .action(async (opts) => {
+      await startMcp({
+        transport: opts.http ? 'http' : 'stdio',
+        port: parseInt(opts.port, 10),
+        host: opts.host,
+        dbPath: opts.db,
+        session: opts.session,
+        semantic: opts.semantic,
+      });
     });
 
   // ── Banner (always show) ──────────────────────────────────────────────────

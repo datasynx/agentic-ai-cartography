@@ -1,20 +1,30 @@
 {
   "name": "@datasynx/agentic-ai-cartography",
-  "version": "1.2.1",
-  "description": "AI-powered infrastructure discovery CLI — autonomous topology mapping, zero-config",
+  "version": "2.0.0",
+  "description": "MCP-first infrastructure & agentic-AI cartography — install once, every AI agent knows your system landscape. Read-only discovery exposed over the Model Context Protocol.",
   "type": "module",
+  "mcpName": "io.github.datasynx/cartography",
   "bin": {
-    "datasynx-cartography": "./dist/cli.js"
+    "datasynx-cartography": "./dist/cli.js",
+    "cartography-mcp": "./dist/mcp-bin.js"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "scripts",
+    "server.json",
     "README.md",
     "LICENSE"
   ],
