@@ -9,6 +9,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Node.js >=20](https://img.shields.io/badge/Node.js-%E2%89%A520-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![CI](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/ci.yml/badge.svg)](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/ci.yml)
+[![Publish](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/publish.yml/badge.svg)](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/publish.yml)
+[![MCP](https://img.shields.io/badge/MCP-server-6E56CF?style=flat-square)](https://modelcontextprotocol.io)
+[![Provenance](https://img.shields.io/badge/npm-provenance_signed-3B7DBD?style=flat-square&logo=npm&logoColor=white)](https://docs.npmjs.com/generating-provenance-statements)
 [![Agentic AI](https://img.shields.io/badge/Agentic_AI-Provider_Agnostic-D4A017?style=flat-square)](https://github.com/datasynx/agentic-ai-cartography)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Datasynx_AI-0077B5?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/datasynx-ai/)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/datasynx/agentic-ai-cartography)
@@ -22,6 +25,22 @@
 **[📦 npm](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography) · [💼 LinkedIn](https://www.linkedin.com/company/datasynx-ai/) · [🐛 Issues](https://github.com/datasynx/agentic-ai-cartography/issues)**
 
 </div>
+
+---
+
+## Contents
+
+[MCP-first quick start](#-mcp-first--install-once-every-agent-knows-your-landscape) ·
+[Connect your client](#connect-your-client-copy-paste) ·
+[Embed in your app](#embed-in-your-own-app) ·
+[What it does](#what-it-does) ·
+[Cross-platform](#cross-platform-support) ·
+[Features](#features) ·
+[CLI commands](#commands) ·
+[Architecture](#architecture) ·
+[Safety](#safety) ·
+[Public API](#public-api) ·
+[Releasing](#releasing)
 
 ---
 
@@ -167,16 +186,20 @@ Cartography runs natively on **Linux**, **macOS**, and **Windows** — no WSL re
 | **Cloud Scanning** | AWS (EC2/RDS/EKS/S3), GCP (Compute/GKE/Cloud Run), Azure (AKS/WebApps), Kubernetes |
 | **Human-in-the-Loop** | Chat with the agent mid-discovery: type `"hubspot windsurf"` to search for specific tools |
 | **Export Formats** | Mermaid topology, D3.js interactive graph, Backstage YAML, JSON |
-| **Safety First** | `PreToolUse` hook blocks all destructive commands — Unix AND PowerShell. 100% read-only |
+| **Safety First** | Strict read-only **allowlist** (not a denylist): only known-safe commands run — shell-aware for POSIX *and* PowerShell, enforced at the command runner as defense-in-depth. 100% read-only |
 
 ---
 
 ## Requirements
 
-- **Node.js >= 20** (Linux, macOS, or Windows)
-- **LLM Provider** (one of the following):
-  - **Claude CLI** (default): `npm install -g @anthropic-ai/claude-code && claude login`
-  - OpenAI, Ollama, or any OpenAI-compatible endpoint (coming in v2.x)
+- **Node.js >= 20** (Linux, macOS, or Windows) — that's it for the MCP server and the
+  deterministic, read-only discovery. **No LLM and no API key required.**
+- **Optional — Claude CLI**, only for the richer Claude-driven discovery loop
+  (`datasynx-cartography discover`): `npm install -g @anthropic-ai/claude-code && claude login`.
+- **Optional — semantic search** auto-upgrades when `sqlite-vec` and a local embedder
+  (`@huggingface/transformers`) are present; otherwise it falls back to lexical search.
+  These ship as `optionalDependencies` and are lazy-loaded, so installs that skip them
+  pay no cost.
 
 ---
 
@@ -278,33 +301,49 @@ datasynx-output/
 
 ## Architecture
 
+The **MCP server is the headline interface** — LLM-agnostic and the same SQLite graph
+underneath every entry point. Discovery (deterministic scanners or the optional Claude
+loop) writes the graph; any MCP host reads it.
+
 ```
-CLI (Commander.js)
-  └── Preflight: LLM provider check
-      └── Platform Detection (src/platform.ts)
-          ├── Shell: /bin/sh (Unix) | PowerShell (Windows)
-          ├── Commands: which (Unix) | Get-Command (Windows)
-          └── Agent Orchestrator (src/agent.ts)
-              └── runDiscovery()     LLM Agent + Bash + MCP Tools
-                  ├── scan_bookmarks()          browser bookmark extraction (all platforms)
-                  ├── scan_browser_history()     anonymized hostname extraction
-                  ├── scan_installed_apps()      platform-native app detection
-                  ├── scan_local_databases()     DB service + file scanning
-                  ├── scan_k8s_resources()       kubectl (readonly)
-                  ├── scan_aws/gcp/azure()       cloud CLI scans (readonly)
-                  ├── ask_user()                 human-in-the-loop questions
-                  └── Custom MCP Tools → CartographyDB (SQLite WAL)
+                         ┌──────────────────────────────────────────┐
+   MCP hosts ───────────►│  MCP server (src/mcp) — primary interface │
+   (Claude Code,         │    Resources · Tools · Prompts            │
+    Cursor, Cline,       │    stdio + Streamable HTTP transports     │
+    Windsurf, VS Code,   └───────────────────┬──────────────────────┘
+    Vercel AI SDK, …)                        │
+                                             ▼
+                              CartographyDB (SQLite WAL, src/db)
+                         recursive-CTE traversal · search · summary
+                                             ▲
+                ┌────────────────────────────┴────────────────────────────┐
+                │                                                          │
+   Deterministic discovery (src/discovery, src/scanners)     Optional Claude loop (src/agent)
+     bookmarks · installed-apps · local ports · DBs            runDiscovery() — human-in-the-loop
+     LLM-free, registry-driven                                 LLM + Bash + custom MCP tools
+                │                                                          │
+                └──────────────────────────┬───────────────────────────────┘
+                                           ▼
+                    Platform layer (src/platform) + read-only allowlist (src/allowlist)
+                    Shell/commands resolved per-OS · every command vetted before it runs
 ```
 
 ### Safety
 
-Every Bash call is guarded by a `PreToolUse` hook that blocks destructive commands:
+v2.0 replaces the old "block bad commands" denylist with a **strict read-only allowlist**
+(`src/allowlist.ts`): a command runs only if it is explicitly known to be safe. The check
+is shell-aware and enforced in two places — the command runner itself (defense-in-depth)
+and the Claude loop's `PreToolUse` hook.
 
-**Unix:** `rm`, `mv`, `dd`, `chmod`, `kill`, `docker rm/run/exec`, `kubectl delete/apply/exec`, redirects (`>`), and more.
+- **POSIX:** parses the command line, resolves `sudo`/`env`/command-runners and brace
+  groups, and allows only read-only tools (`ss`, `lsof`, `ps`, `which`, `find`, DB
+  probes, cloud `describe/list/get`, `kubectl get/describe`, …). Redirections, pipes to
+  writers, and anything unrecognized are rejected.
+- **Windows/PowerShell:** allows read-only cmdlets and rejects mutating ones
+  (`Remove-Item`, `Move-Item`, `Stop-Process`, `Stop-Service`, `Restart-Computer`,
+  `Format-Volume`, `Out-File`, `Set-Content`, …).
 
-**Windows/PowerShell:** `Remove-Item`, `Move-Item`, `Stop-Process`, `Stop-Service`, `Restart-Computer`, `Format-Volume`, `Out-File`, `Set-Content`, and more.
-
-**The agent only reads — never writes, never deletes.**
+**Cartography only reads — never writes, never deletes.**
 
 ---
 
@@ -322,6 +361,27 @@ import {
 // Run a discovery pass with optional user hint
 await runDiscovery(config, db, sessionId, onEvent, onAskUser, 'hubspot windsurf');
 ```
+
+---
+
+## Releasing
+
+Publishing to npm is automated by [`.github/workflows/publish.yml`](.github/workflows/publish.yml).
+The flow is **version-driven and idempotent** — you never run `npm publish` by hand:
+
+1. Bump `version` in `package.json` (and update `CHANGELOG.md`).
+2. Merge to `main`.
+3. The workflow runs the full gate (lint · test · build), then publishes **only if that
+   version isn't already on npm** — so doc-only or refactor merges are safe no-ops. On a
+   real bump it publishes with [npm provenance](https://docs.npmjs.com/generating-provenance-statements),
+   pushes a `v<version>` tag, and cuts a matching GitHub Release.
+
+You can also trigger it manually from the **Actions → Publish → Run workflow** button.
+
+**One-time setup:** add a repository secret **`NPM_TOKEN`** (an npm *Automation* or granular
+token with publish rights for the `@datasynx` scope) under
+*Settings → Secrets and variables → Actions*. Provenance signing needs no extra secret — it
+uses the workflow's OIDC identity (`id-token: write`).
 
 ---
 
