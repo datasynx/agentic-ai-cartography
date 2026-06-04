@@ -1,4 +1,8 @@
 export { CartographyDB } from './db.js';
+export type { GraphSummary, TraversalResult } from './db.js';
+// MCP server — the headline interface
+export { createMcpServer, runStdio, runHttp } from './mcp/index.js';
+export type { CreateMcpServerOptions, SearchFn, DiscoveryFn, HttpOptions } from './mcp/index.js';
 export { createCartographyTools, stripSensitive, createScanRunner } from './tools.js';
 export { safetyHook } from './safety.js';
 export { checkReadOnly, isReadOnlyCommand, assertReadOnly, splitSegments } from './allowlist.js';
