@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-06-04
+
+Major release — **the package is now MCP-first**. The Model Context Protocol server
+is the primary interface; the Claude-driven discovery loop becomes an optional adapter.
+Backward compatible: the existing CLI commands and library API are unchanged.
+
+### Added
+
+- **Production MCP server** (`createMcpServer`, `@modelcontextprotocol/sdk`) exposing the
+  topology as **Resources** (progressive disclosure: `cartography://graph/summary`,
+  `nodes/{id}`, `services`, `databases`, `dependencies/{id}`), query **Tools**
+  (`query_infrastructure`, `search_topology`, `get_dependencies`, `list_services`,
+  `get_node`, `get_summary`, `run_discovery`) and **Prompts** (`audit-attack-surface`,
+  `map-service-dependencies`, `onboard-to-system`).
+- **Two transports**: stdio (local-first default) and Streamable HTTP (localhost-bound,
+  DNS-rebinding protection). New `cartography-mcp` binary and `datasynx-cartography mcp` command.
+- **Recursive-CTE graph traversal** (`getDependencies`, downstream/upstream/both, cycle guard),
+  plus `getGraphSummary`, `searchNodes`, `getNode`, `getNodesByType`.
+- **Semantic search** via `sqlite-vec` with pluggable embeddings (local transformer +
+  offline hash fallback) and graceful lexical degradation.
+- **Scanner plugin architecture** (`Scanner`/`ScannerRegistry`) with built-in bookmarks,
+  installed-apps and local-ports scanners, and **deterministic LLM-free discovery**
+  (`runLocalDiscovery`).
+- Official **MCP Registry** metadata (`server.json`, `mcpName`).
+
+### Changed
+
+- **Safety: denylist → strict read-only allowlist** (`src/allowlist.ts`), shell-aware
+  (POSIX allowlist + PowerShell mutating-cmdlet denylist), enforced inside command execution
+  as defense-in-depth and shared by the Claude `safetyHook`.
+- **Dual ESM/CJS** build with types-first `exports`; clean `publint`/`attw`.
+- `@anthropic-ai/claude-agent-sdk`, `@anthropic-ai/sdk`, `@huggingface/transformers` and
+  `sqlite-vec` moved to `optionalDependencies` (lazy-loaded, graceful absence).
+
+### Removed
+
+- Default export of `CartographyDB` (use the named `createMcpServer` / `CartographyDB` exports).
+
 ## [1.2.1] - 2026-05-31
 
 ### Changed

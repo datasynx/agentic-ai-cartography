@@ -15,13 +15,98 @@
 
 <br/>
 
-*An AI agent autonomously discovers your infrastructure — it decides which read-only commands to run, analyses the output, and stores results via MCP tools into SQLite. No hand-written parsers, diff logic, or decision trees. Provider-agnostic: works with Claude, OpenAI, Ollama, or any compatible LLM.*
+*A **Model Context Protocol server** that gives any AI agent read-only awareness of your complete system landscape — local services, databases, SaaS tools, installed apps and their dependencies — with progressive disclosure, recursive dependency traversal and semantic search. Discovery runs deterministically (no LLM required) or via an optional Claude-driven loop. Provider-agnostic: works with Claude, OpenAI, Ollama, or any MCP-compatible host.*
 
 <br/>
 
 **[📦 npm](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography) · [💼 LinkedIn](https://www.linkedin.com/company/datasynx-ai/) · [🐛 Issues](https://github.com/datasynx/agentic-ai-cartography/issues)**
 
 </div>
+
+---
+
+## 🤖 MCP-first — install once, every agent knows your landscape
+
+> **v2.0** inverts the architecture: the package's primary interface is now a
+> production **Model Context Protocol (MCP) server**. Any MCP host — Claude Code,
+> Cursor, Cline, Windsurf, VS Code Copilot, the Vercel AI SDK, LangGraph — connects
+> to it and gains read-only awareness of your complete system landscape. The bundled
+> Claude-driven discovery loop is now one optional turnkey adapter; the server needs
+> **no LLM dependency of its own**.
+
+The topology is exposed with **progressive disclosure** so agents never blow their
+context window:
+
+- **Resources** (read-only context): `cartography://graph/summary` (low-token index — read first), `cartography://nodes/{id}`, `cartography://services`, `cartography://databases`, `cartography://dependencies/{id}`.
+- **Tools** (parameterized queries): `query_infrastructure`, `search_topology` (semantic), `get_dependencies` (recursive graph traversal), `list_services`, `get_node`, `get_summary`, `run_discovery`.
+- **Prompts**: `audit-attack-surface`, `map-service-dependencies`, `onboard-to-system`.
+
+### Quick start
+
+```bash
+# 1. Discover your system (read-only, deterministic — no LLM required)
+npx -p @datasynx/agentic-ai-cartography cartography-mcp --help
+datasynx-cartography discover          # or the richer Claude-driven loop
+
+# 2. Run the MCP server (stdio by default)
+npx -p @datasynx/agentic-ai-cartography cartography-mcp
+```
+
+### Connect your client (copy-paste)
+
+**Claude Code**
+```bash
+claude mcp add cartography -- npx -p @datasynx/agentic-ai-cartography cartography-mcp
+```
+
+**Cursor / Windsurf / Cline** — `mcp.json` (or `~/.codeium/windsurf/mcp_config.json`):
+```json
+{
+  "mcpServers": {
+    "cartography": {
+      "command": "npx",
+      "args": ["-p", "@datasynx/agentic-ai-cartography", "cartography-mcp"]
+    }
+  }
+}
+```
+
+**VS Code (Copilot)** — `.vscode/mcp.json` (note: `servers`, not `mcpServers`):
+```json
+{
+  "servers": {
+    "cartography": { "command": "npx", "args": ["-p", "@datasynx/agentic-ai-cartography", "cartography-mcp"] }
+  }
+}
+```
+
+**Remote / team use** — Streamable HTTP (localhost-bound, DNS-rebind protected):
+```bash
+cartography-mcp --http --port 3737      # → http://127.0.0.1:3737/mcp
+```
+
+**Vercel AI SDK** (provider-agnostic):
+```ts
+import { experimental_createMCPClient } from 'ai';
+const mcp = await experimental_createMCPClient({
+  transport: { type: 'sse', url: 'http://127.0.0.1:3737/mcp' },
+});
+const tools = await mcp.tools(); // MCP tools → AI SDK tools, any model
+```
+
+### Embed in your own app
+
+```ts
+import { createMcpServer, runStdio, createSemanticSearch, localDiscoveryFn, CartographyDB } from '@datasynx/agentic-ai-cartography';
+
+const db = new CartographyDB('/path/to/cartography.db');
+const server = createMcpServer({
+  db,
+  search: await createSemanticSearch(db),   // semantic (sqlite-vec) + lexical fallback
+  discovery: localDiscoveryFn(),            // deterministic, LLM-free scanners
+});
+await runStdio(server);
+```
 
 ---
 
@@ -68,7 +153,7 @@ Cartography runs natively on **Linux**, **macOS**, and **Windows** — no WSL re
 | **DB service detection** | CLI probes (psql, mysql, etc.) | CLI probes | `Get-Service` + CLI probes |
 | **Browser bookmarks** | `~/.config/google-chrome` + Snap/Flatpak | `~/Library/Application Support/...` | `%LOCALAPPDATA%\Google\Chrome\User Data` |
 | **Firefox profiles** | `~/.mozilla/firefox` + Snap/Flatpak | `~/Library/.../Firefox/Profiles` | `%APPDATA%\Mozilla\Firefox\Profiles` |
-| **Safety hook** | Blocks `rm`, `mv`, `kill`, etc. | Blocks `rm`, `mv`, `kill`, etc. | Blocks `Remove-Item`, `Stop-Process`, etc. |
+| **Safety policy** | Read-only **allowlist** (POSIX parser) | Read-only **allowlist** (POSIX parser) | Read-only allowlist (PowerShell mutating-cmdlet denylist) |
 
 ---
 
