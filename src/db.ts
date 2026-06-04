@@ -684,6 +684,20 @@ export class CartographyDB {
     return row ? this.mapNode(row) : undefined;
   }
 
+  /** Batch-fetch nodes by id, keyed for O(1) lookup. Chunked to stay under SQLite's bind-variable limit. */
+  getNodesByIds(sessionId: string, ids: readonly string[]): Map<string, NodeRow> {
+    const out = new Map<string, NodeRow>();
+    for (let i = 0; i < ids.length; i += 900) {
+      const chunk = ids.slice(i, i + 900);
+      const placeholders = chunk.map(() => '?').join(',');
+      const rows = this.db.prepare(
+        `SELECT * FROM nodes WHERE session_id = ? AND id IN (${placeholders})`,
+      ).all(sessionId, ...chunk) as Record<string, unknown>[];
+      for (const r of rows) { const n = this.mapNode(r); out.set(n.id, n); }
+    }
+    return out;
+  }
+
   /** Fetch all nodes of one or more types. */
   getNodesByType(sessionId: string, types: readonly string[]): NodeRow[] {
     if (types.length === 0) return [];
@@ -759,8 +773,9 @@ export class CartographyDB {
     if (direction === 'both') { collect('downstream'); collect('upstream'); }
     else collect(direction);
 
+    const byId = this.getNodesByIds(sessionId, [...depthById.keys()]);
     const nodes = [...depthById.entries()]
-      .map(([id, depth]) => { const n = this.getNode(sessionId, id); return n ? { ...n, depth } : undefined; })
+      .map(([id, depth]) => { const n = byId.get(id); return n ? { ...n, depth } : undefined; })
       .filter((n): n is NodeRow & { depth: number } => n !== undefined)
       .sort((a, b) => a.depth - b.depth);
 

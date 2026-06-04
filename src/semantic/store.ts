@@ -7,6 +7,7 @@
 import type { CartographyDB } from '../db.js';
 import type { NodeRow } from '../types.js';
 import type { EmbeddingProvider } from './embeddings.js';
+import { fnv1a } from './hash.js';
 
 /** Text used to represent a node for embedding. */
 export function nodeText(n: NodeRow): string {
@@ -17,9 +18,7 @@ export function nodeText(n: NodeRow): string {
 }
 
 function hash(s: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
-  return (h >>> 0).toString(16);
+  return fnv1a(s).toString(16);
 }
 
 function toBuffer(v: Float32Array): Buffer {

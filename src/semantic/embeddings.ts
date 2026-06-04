@@ -7,6 +7,8 @@
  * semantic search pay no cost and need no native model.
  */
 
+import { fnv1a } from './hash.js';
+
 /** Produces fixed-dimension embeddings for a batch of texts. */
 export interface EmbeddingProvider {
   readonly id: string;
@@ -79,13 +81,4 @@ function trigrams(s: string): string[] {
   const out: string[] = [];
   for (let i = 0; i <= s.length - 3; i++) out.push(s.slice(i, i + 3));
   return out;
-}
-
-function fnv1a(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
 }

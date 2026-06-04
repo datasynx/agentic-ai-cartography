@@ -14,6 +14,9 @@ import { VectorStore } from './store.js';
 const lexical = (db: CartographyDB, sessionId: string, query: string, opts: { types?: readonly string[]; limit: number }) =>
   db.searchNodes(sessionId, query, { types: opts.types, limit: opts.limit }).map((node) => ({ node }));
 
+/** A lexical-only {@link SearchFn} — the fallback when no embedder/vector store is available. */
+const lexicalSearch = (): SearchFn => async (d, sid, q, opts) => lexical(d, sid, q, opts);
+
 /**
  * Build a {@link SearchFn} that prefers semantic (vector) search and falls back to
  * lexical. Pass an explicit embedder, or let it lazily load the local transformer
@@ -24,23 +27,20 @@ export async function createSemanticSearch(
   embedder?: EmbeddingProvider,
 ): Promise<SearchFn> {
   const provider = embedder ?? (await createLocalEmbedder());
-  if (!provider) {
-    return async (d, sid, q, opts) => lexical(d, sid, q, opts);
-  }
+  if (!provider) return lexicalSearch();
   const store = new VectorStore(db, provider);
   const ok = await store.init();
-  if (!ok) {
-    return async (d, sid, q, opts) => lexical(d, sid, q, opts);
-  }
+  if (!ok) return lexicalSearch();
 
   return async (d, sid, query, opts): Promise<Array<{ node: NodeRow; score?: number }>> => {
     const hits = await store.search(sid, query, opts.limit);
     if (hits.length === 0) return lexical(d, sid, query, opts);
-    const byId = new Map(d.getNodes(sid).map((n) => [n.id, n] as const));
+    // Materialize only the hit nodes, not the whole session.
+    const byId = d.getNodesByIds(sid, hits.map((h) => h.nodeId));
     const results: Array<{ node: NodeRow; score?: number }> = [];
     for (const h of hits) {
       const node = byId.get(h.nodeId);
-      if (!node) continue;
+      if (!node) continue; // vector outlived its node (deleted since last index)
       if (opts.types && opts.types.length > 0 && !opts.types.includes(node.type)) continue;
       // cosine distance → similarity score in [0,1]
       results.push({ node, score: Math.max(0, 1 - h.distance / 2) });

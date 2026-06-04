@@ -643,6 +643,22 @@ describe('CartographyDB — graph queries', () => {
     expect(db.getNodesByType(sid, [])).toEqual([]);
   });
 
+  it('getNodesByIds batch-fetches into a keyed map, skipping unknown ids', () => {
+    const byId = db.getNodesByIds(sid, ['saas_tool:app', 'cache_server:redis', 'nope:x']);
+    expect(byId.size).toBe(2);
+    expect(byId.get('saas_tool:app')?.name).toBe('App');
+    expect(byId.has('nope:x')).toBe(false);
+    expect(db.getNodesByIds(sid, []).size).toBe(0);
+  });
+
+  it('getNodesByIds returns every match across the chunk boundary', () => {
+    const ids = Array.from({ length: 1000 }, (_, i) => `host:h${i}`);
+    for (const id of ids) {
+      db.upsertNode(sid, { id, type: 'host', name: id, discoveredVia: 'test', confidence: 0.5, metadata: {}, tags: [] });
+    }
+    expect(db.getNodesByIds(sid, ids).size).toBe(1000);
+  });
+
   it('searchNodes matches id, name and domain case-insensitively', () => {
     expect(db.searchNodes(sid, 'redis').map(n => n.id)).toContain('cache_server:redis');
     expect(db.searchNodes(sid, 'POSTGRES').map(n => n.id)).toContain('database_server:pg');

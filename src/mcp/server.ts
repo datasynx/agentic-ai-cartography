@@ -12,14 +12,14 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { z } from 'zod';
 import { CartographyDB } from '../db.js';
 import type { GraphSummary } from '../db.js';
-import { defaultConfig, NODE_TYPES } from '../types.js';
+import { defaultConfig, NODE_TYPES, NODE_TYPE_GROUPS } from '../types.js';
 import type { NodeRow } from '../types.js';
 
 const SERVER_NAME = 'cartography';
 const SERVER_VERSION = '2.0.0';
 
-const SERVICE_TYPES = ['web_service', 'api_endpoint'] as const;
-const DATA_TYPES = ['database', 'database_server', 'cache_server', 'table'] as const;
+const SERVICE_TYPES = NODE_TYPE_GROUPS.web;
+const DATA_TYPES = NODE_TYPE_GROUPS.data;
 
 /** A pluggable search backend; defaults to lexical search, can be upgraded to semantic. */
 export type SearchFn = (

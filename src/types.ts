@@ -11,6 +11,20 @@ export const NODE_TYPES = [
 ] as const;
 export type NodeType = typeof NODE_TYPES[number];
 
+/**
+ * Semantic groupings of node types — the single source of truth shared by the MCP
+ * resource layer (services/databases) and the exporters (layer assignment). Each
+ * node type belongs to at most one group; anything ungrouped is treated as "other".
+ */
+export const NODE_TYPE_GROUPS = {
+  saas:      ['saas_tool'],
+  web:       ['web_service', 'api_endpoint'],
+  data:      ['database_server', 'database', 'table', 'cache_server'],
+  messaging: ['message_broker', 'queue', 'topic'],
+  infra:     ['host', 'container', 'pod', 'k8s_cluster'],
+  config:    ['config_file'],
+} as const satisfies Record<string, readonly NodeType[]>;
+
 export const EDGE_RELATIONSHIPS = [
   'connects_to', 'reads_from', 'writes_to',
   'calls', 'contains', 'depends_on',
