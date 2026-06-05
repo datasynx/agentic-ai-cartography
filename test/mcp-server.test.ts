@@ -95,6 +95,26 @@ describe('Cartography MCP server', () => {
     expect((p.messages[0].content as { text: string }).text).toContain('api');
   });
 
+  it('annotates every read-only tool with readOnlyHint and a title', async () => {
+    await connect();
+    const tools = await client.listTools();
+    const readOnly = ['get_summary', 'query_infrastructure', 'search_topology', 'list_services', 'get_node', 'get_dependencies'];
+    for (const name of readOnly) {
+      const t = tools.tools.find((x) => x.name === name);
+      expect(t, `tool ${name} present`).toBeDefined();
+      expect(t!.annotations?.readOnlyHint, `${name} readOnlyHint`).toBe(true);
+      expect(t!.annotations?.title ?? t!.title, `${name} has a title`).toBeTruthy();
+    }
+  });
+
+  it('marks run_discovery as a non-read-only, non-destructive tool', async () => {
+    await connect({ discovery: async () => ({ nodes: 1, edges: 0 }) });
+    const tools = await client.listTools();
+    const t = tools.tools.find((x) => x.name === 'run_discovery');
+    expect(t?.annotations?.readOnlyHint).toBe(false);
+    expect(t?.annotations?.destructiveHint).toBe(false);
+  });
+
   it('registers run_discovery only when a discovery backend is supplied', async () => {
     await connect({ discovery: async () => ({ nodes: 1, edges: 0 }) });
     const tools = await client.listTools();

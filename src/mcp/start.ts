@@ -22,6 +22,8 @@ export interface StartMcpOptions {
   transport?: 'stdio' | 'http';
   port?: number;
   host?: string;
+  /** Trusted Host headers when binding a non-loopback host (DNS-rebinding allowlist). */
+  allowedHosts?: string[];
   /** Enable semantic (vector) search. Default true; degrades to lexical if unavailable. */
   semantic?: boolean;
   /** Logger (stderr). */
@@ -44,7 +46,7 @@ export async function startMcp(opts: StartMcpOptions = {}): Promise<void> {
   if (opts.transport === 'http') {
     const port = opts.port ?? 3737;
     const host = opts.host ?? '127.0.0.1';
-    await runHttp(factory, { port, host });
+    await runHttp(factory, { port, host, ...(opts.allowedHosts ? { allowedHosts: opts.allowedHosts } : {}) });
     log(`Cartography MCP server (Streamable HTTP) on http://${host}:${port}/mcp`);
   } else {
     log('Cartography MCP server (stdio) ready');
