@@ -1,18 +1,28 @@
 name: Release
 
-# Fully automated release: on every push to main, semantic-release derives the
-# next version from the Conventional Commits since the last tag, updates the
-# changelog, publishes to npm (provenance-signed), tags the commit, and cuts a
-# matching GitHub Release. No manual version bumps.
+# Automated release on every push to main. Two modes, auto-selected by which
+# secrets are present:
 #
-# Required secret: NPM_TOKEN (npm "Automation"/granular token, publish rights for
-# the @datasynx scope). Optional: RELEASE_TOKEN (a PAT) if main is a protected
-# branch — semantic-release pushes the version/changelog commit and tags back, and
-# the default GITHUB_TOKEN cannot push past branch protection.
+#  • RELEASE_TOKEN present  → full semantic-release: version + CHANGELOG + git
+#    tag + GitHub Release + provenance-signed npm publish, all derived from
+#    Conventional Commits. (Matches datasynx-crm.)
+#  • RELEASE_TOKEN absent   → idempotent npm publish of the package.json version
+#    (provenance-signed), publishing only when that version isn't already on npm.
+#
+# Why two modes: every commit in this repo carries .github/workflows files, and
+# the Actions GITHUB_TOKEN may not push a git ref that touches workflow files
+# (it lacks the `workflow` scope, which Actions tokens cannot hold). semantic-
+# release pushes a tag, so it needs RELEASE_TOKEN — a PAT (classic: repo +
+# workflow) or a deploy key. Until that exists, the idempotent publish keeps
+# releases flowing with only NPM_TOKEN. Bump the package.json version + merge.
+#
+# Required secret: NPM_TOKEN. Optional: RELEASE_TOKEN (unlocks full
+# semantic-release), CODECOV_TOKEN (coverage, in ci.yml).
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   # Never cancel an in-flight publish — a fresh push must wait, not abort it.
@@ -27,11 +37,12 @@ permissions:
 
 jobs:
   release:
-    name: Semantic Release
+    name: Release
     runs-on: ubuntu-latest
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     env:
       HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+      HAS_RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,40 +71,48 @@ jobs:
           path: sbom-cyclonedx.json
           if-no-files-found: ignore
 
+      # ── Mode A: full semantic-release (RELEASE_TOKEN present) ──────────────
       - name: Bootstrap baseline tag (one-time adoption)
-        # semantic-release derives the version from git tags. This package was
-        # published manually up to 1.1.1 before adopting semantic-release, so on
-        # the very first run — when no version tag exists yet — we anchor history
-        # at v1.1.1 (the last manual npm release) on the commit just before this
-        # setup landed. The breaking-change commit that introduced it then yields
-        # 2.0.0 as the first automated release. Every later run finds tags & skips.
-        #
-        # This (and semantic-release's own tag push) uses RELEASE_TOKEN: every
-        # commit here carries .github/workflows files, and the Actions GITHUB_TOKEN
-        # is refused when creating/pushing a ref that touches workflow files
-        # (needs the `workflow` scope, which the Actions token cannot hold). The
-        # checkout above already persists these credentials.
-        if: env.HAS_NPM_TOKEN == 'true'
+        # First run only: anchor history at v1.1.1 (last manual npm release) on
+        # the commit before semantic-release adoption, so the breaking-change
+        # commit resolves the first automated release to 2.0.0. Skips once tags
+        # exist. Uses the workflow-scoped RELEASE_TOKEN persisted by checkout.
+        if: env.HAS_NPM_TOKEN == 'true' && env.HAS_RELEASE_TOKEN == 'true'
         run: |
-          if [ -n "$(git tag -l 'v*.*.*')" ]; then
-            echo "::notice::Version tags already exist — skipping baseline bootstrap."
-            exit 0
+          if [ -z "$(git tag -l 'v*.*.*')" ]; then
+            echo "::notice::No version tags — anchoring v1.1.1 at df16cbf"
+            git tag v1.1.1 df16cbf2a117ee04657cf2813f9575a4cd5cac40
+            git push origin v1.1.1
           fi
-          # Commit immediately preceding semantic-release adoption (= parent of
-          # the feat! commit), so commits since it include the breaking change.
-          BASE="df16cbf2a117ee04657cf2813f9575a4cd5cac40"
-          echo "::notice::No version tags found — anchoring v1.1.1 at $BASE"
-          git tag v1.1.1 "$BASE"
-          git push origin v1.1.1
-
 
       - name: Semantic Release
-        if: env.HAS_NPM_TOKEN == 'true'
+        if: env.HAS_NPM_TOKEN == 'true' && env.HAS_RELEASE_TOKEN == 'true'
         run: npx semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Release skipped (no NPM_TOKEN)
+      # ── Mode B: idempotent npm publish (no RELEASE_TOKEN) ──────────────────
+      - name: Idempotent npm publish
+        if: env.HAS_NPM_TOKEN == 'true' && env.HAS_RELEASE_TOKEN != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::$NAME@$VERSION already on npm — nothing to publish."
+            exit 0
+          fi
+          echo "::notice::Publishing $NAME@$VERSION (provenance-signed)."
+          npm publish
+          # Best-effort GitHub Release. Creating the tag may be refused for the
+          # Actions token (workflow-file scope); the npm publish above already
+          # succeeded, so never fail the job on this.
+          gh release create "v$VERSION" --title "v$VERSION" --generate-notes \
+            || echo "::warning::npm publish succeeded; GitHub Release/tag skipped (needs a workflow-scoped RELEASE_TOKEN)."
+
+      - name: No NPM_TOKEN
         if: env.HAS_NPM_TOKEN != 'true'
-        run: echo "::warning::NPM_TOKEN secret not set — skipping npm release. Add it under Settings → Secrets and variables → Actions."
+        run: echo "::warning::NPM_TOKEN secret not set — skipping publish. Add it under Settings → Secrets and variables → Actions."

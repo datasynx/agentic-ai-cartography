@@ -367,40 +367,37 @@ await runDiscovery(config, db, sessionId, onEvent, onAskUser, 'hubspot windsurf'
 
 ## Releasing
 
-Releases are **fully automated** with [semantic-release](https://github.com/semantic-release/semantic-release) —
-no manual version bumps, no hand-run `npm publish`. The version, `CHANGELOG.md`, git tag,
-GitHub Release and npm publish are all derived from your commit history.
+[`release.yml`](.github/workflows/release.yml) publishes to npm automatically on every push
+to `main`, in one of **two modes** — auto-selected by which secrets are present:
 
-**How it works**
+- **`RELEASE_TOKEN` present → full [semantic-release](https://github.com/semantic-release/semantic-release).**
+  Version, `CHANGELOG.md`, git tag `v<version>`, GitHub Release and the provenance-signed npm
+  publish are all derived from [Conventional Commits](https://www.conventionalcommits.org/)
+  since the last tag (`fix:` → patch, `feat:` → minor, `feat!:`/`BREAKING CHANGE:` → major;
+  `docs/chore/refactor/test/ci` → no release). No manual version bumps. PR titles are linted
+  by [`pr-title.yml`](.github/workflows/pr-title.yml) so the squash-merge commit stays analyzable.
+- **`RELEASE_TOKEN` absent → idempotent npm publish.** The `package.json` version is published
+  (provenance-signed) only when it isn't already on npm — so doc/refactor merges are no-ops.
+  Bump the version + merge to release.
 
-1. Land changes on `main` using [Conventional Commits](https://www.conventionalcommits.org/)
-   (PR titles are linted by [`pr-title.yml`](.github/workflows/pr-title.yml) since the repo
-   squash-merges, so the PR title becomes the commit on `main`):
-   - `fix: …` → **patch** (`x.y.Z`)
-   - `feat: …` → **minor** (`x.Y.0`)
-   - `feat!: …` or a `BREAKING CHANGE:` footer → **major** (`X.0.0`)
-   - `docs:`/`chore:`/`refactor:`/`test:`/`ci:` → no release
-2. [`release.yml`](.github/workflows/release.yml) runs semantic-release, which analyses the
-   commits since the last tag, computes the next version, updates the changelog, publishes
-   to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements), tags
-   the commit `v<version>`, and cuts a matching GitHub Release.
+> **Why two modes:** every commit here carries `.github/workflows/` files, and the Actions
+> `GITHUB_TOKEN` may not push a git ref that touches workflow files (it can't hold the
+> `workflow` scope). semantic-release pushes a tag, so it needs a workflow-scoped
+> `RELEASE_TOKEN`. Until one exists, the idempotent publish keeps releases flowing with only
+> `NPM_TOKEN`; adding `RELEASE_TOKEN` later upgrades to the full flow with no other changes.
 
 Quality is gated independently by [`ci.yml`](.github/workflows/ci.yml) on every PR and push:
 **lint/typecheck → test matrix (Node 20/22) + coverage → audit + license check → build &
 validate (publint, [are-the-types-wrong](https://github.com/arethetypeswrong/arethetypeswrong.github.io),
 ESM/CJS consumer smoke tests)**.
 
-**One-time setup — repository secrets** (*Settings → Secrets and variables → Actions*):
+**Repository secrets** (*Settings → Secrets and variables → Actions*):
 
 | Secret | Required | Purpose |
 |---|---|---|
 | `NPM_TOKEN` | **yes** | npm *Automation*/granular token with publish rights for the `@datasynx` scope. Provenance signing itself needs no secret (OIDC). |
-| `RELEASE_TOKEN` | **yes** | A PAT (classic: `repo` + `workflow`) so semantic-release can push the version tag and release commit. Required here because every commit carries `.github/workflows/` files, which the Actions `GITHUB_TOKEN` may not push without the `workflow` scope. |
+| `RELEASE_TOKEN` | optional | PAT (classic: `repo` + `workflow`) or deploy key. Unlocks full semantic-release (auto-versioning, changelog, tags, GitHub Releases). Without it, the idempotent npm publish is used. |
 | `CODECOV_TOKEN` | optional | Upload coverage to Codecov (non-blocking if absent). |
-
-> **First release:** npm is at `1.1.1` while this is the MCP-first 2.0 rewrite. On the first
-> run (no version tags yet) `release.yml` anchors history at `v1.1.1`; the breaking-change
-> commit that adopts this setup then makes the first automated release **`2.0.0`**.
 
 ---
 
