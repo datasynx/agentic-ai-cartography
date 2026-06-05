@@ -4,8 +4,3 @@ dist/
 .env
 .env.*
 coverage/
-docs/.vitepress/dist/
-docs/.vitepress/cache/
-docs/reference/api/
-docs/public/llms.txt
-docs/public/llms-full.txt

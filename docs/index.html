@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Datasynx Cartography — Documentation</title>
+  <meta name="description" content="MCP-first infrastructure & agentic-AI cartography. Read-only discovery of your system landscape (services, databases, SaaS tools, dependencies) exposed over the Model Context Protocol. Install once, every AI agent knows your stack." />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --orange: #ffa657;
+      --code-bg: #1f2937;
+      --sidebar-w: 260px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 12px; padding-top: 40px; scroll-margin-top: 24px; }
+    h2 { font-size: 20px; font-weight: 600; margin: 40px 0 12px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--accent); scroll-margin-top: 24px; }
+    h3 { font-size: 16px; font-weight: 600; color: var(--orange); margin: 24px 0 8px; }
+    h4 { font-size: 14px; font-weight: 600; color: var(--purple); margin: 16px 0 6px; }
+    p { margin: 10px 0; }
+    ul, ol { margin: 10px 0 10px 22px; }
+    li { margin: 4px 0; }
+
+    code { background: var(--code-bg); color: var(--green); padding: 1px 6px; border-radius: 4px; font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+    pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; overflow-x: auto; margin: 12px 0; }
+    pre code { background: none; color: var(--text); padding: 0; font-size: 12.5px; line-height: 1.55; }
+
+    .layout { display: flex; min-height: 100vh; }
+
+    nav {
+      width: var(--sidebar-w);
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      top: 0; bottom: 0; left: 0;
+      overflow-y: auto;
+      padding: 24px 0;
+      z-index: 10;
+    }
+    .nav-logo { padding: 0 20px 16px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+    .nav-logo h1 { font-size: 14px; font-weight: 700; padding-top: 0; margin-bottom: 2px; }
+    .nav-logo span { font-size: 12px; color: var(--muted); }
+    .nav-ext { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .nav-ext a {
+      display: inline-flex; align-items: center;
+      padding: 3px 9px; font-size: 11px; font-weight: 600;
+      color: var(--muted); background: var(--bg3);
+      border: 1px solid var(--border); border-radius: 12px;
+    }
+    .nav-ext a:hover { color: var(--text); border-color: var(--accent); text-decoration: none; }
+    .nav-section { padding: 12px 20px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    nav a.nav-link { display: block; padding: 5px 20px; font-size: 13px; color: var(--muted); border-left: 3px solid transparent; transition: all .15s; }
+    nav a.nav-link:hover, nav a.nav-link.active { color: var(--text); border-left-color: var(--accent); background: rgba(88, 166, 255, .06); text-decoration: none; }
+
+    main { margin-left: var(--sidebar-w); padding: 40px 48px; max-width: 980px; width: 100%; }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+    th { background: var(--bg3); text-align: left; padding: 8px 12px; border: 1px solid var(--border); font-weight: 600; color: var(--muted); }
+    td { padding: 8px 12px; border: 1px solid var(--border); vertical-align: top; }
+    tr:hover td { background: rgba(255, 255, 255, .02); }
+
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin: 12px 0; }
+    .card h3 { margin-top: 0; }
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    @media (max-width: 700px) { .card-grid { grid-template-columns: 1fr; } }
+
+    .alert { padding: 12px 16px; border-radius: 6px; margin: 16px 0; font-size: 13px; }
+    .alert-blue { background: rgba(88, 166, 255, .1); border-left: 3px solid var(--accent); }
+    .alert-green { background: rgba(63, 185, 80, .1); border-left: 3px solid var(--green); }
+    .alert-yellow { background: rgba(210, 153, 34, .1); border-left: 3px solid var(--yellow); }
+    .alert-red { background: rgba(248, 81, 73, .1); border-left: 3px solid var(--red); }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+    .badge-green { background: rgba(63, 185, 80, .15); color: var(--green); border: 1px solid rgba(63, 185, 80, .3); }
+    .badge-blue { background: rgba(88, 166, 255, .15); color: var(--accent); border: 1px solid rgba(88, 166, 255, .3); }
+    .badge-yellow { background: rgba(210, 153, 34, .15); color: var(--yellow); border: 1px solid rgba(210, 153, 34, .3); }
+    .badge-red { background: rgba(248, 81, 73, .15); color: var(--red); border: 1px solid rgba(248, 81, 73, .3); }
+    .badge-purple { background: rgba(188, 140, 255, .15); color: var(--purple); border: 1px solid rgba(188, 140, 255, .3); }
+
+    .hero-tagline { font-size: 17px; color: var(--muted); margin: 6px 0 18px; }
+
+    details { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 10px 0; }
+    details summary { cursor: pointer; font-weight: 600; color: var(--text); }
+    details[open] summary { margin-bottom: 8px; }
+
+    footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+    footer a { color: var(--muted); }
+
+    .menu-toggle { display: none; }
+    @media (max-width: 900px) {
+      nav { transform: translateX(-100%); transition: transform .2s; }
+      nav.open { transform: translateX(0); }
+      main { margin-left: 0; padding: 24px; }
+      .menu-toggle {
+        display: block; position: fixed; top: 12px; right: 12px; z-index: 20;
+        background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 8px 12px; cursor: pointer; font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <button class="menu-toggle" onclick="document.querySelector('nav').classList.toggle('open')">☰ Menu</button>
+  <div class="layout">
+    <nav>
+      <div class="nav-logo">
+        <h1>🗺️ Datasynx Cartography</h1>
+        <span>cartography · MCP-first</span>
+        <div class="nav-ext">
+          <a href="https://www.npmjs.com/package/@datasynx/agentic-ai-cartography">npm</a>
+          <a href="https://github.com/datasynx/agentic-ai-cartography">GitHub</a>
+          <a href="https://www.linkedin.com/company/datasynx-ai/">LinkedIn</a>
+        </div>
+      </div>
+
+      <div class="nav-section">Getting Started</div>
+      <a class="nav-link" href="#overview">Overview</a>
+      <a class="nav-link" href="#quickstart">Quickstart</a>
+      <a class="nav-link" href="#install">Install into a client</a>
+      <a class="nav-link" href="#architecture">Architecture</a>
+
+      <div class="nav-section">MCP Interface</div>
+      <a class="nav-link" href="#resources">Resources</a>
+      <a class="nav-link" href="#tools">Tools</a>
+      <a class="nav-link" href="#prompts">Prompts</a>
+      <a class="nav-link" href="#remote">Remote / HTTP</a>
+
+      <div class="nav-section">Reference</div>
+      <a class="nav-link" href="#clients">Supported clients</a>
+      <a class="nav-link" href="#cli">CLI</a>
+      <a class="nav-link" href="#adapters">Non-MCP frameworks</a>
+
+      <div class="nav-section">Ecosystem</div>
+      <a class="nav-link" href="#suite">Datasynx Agentic Suite</a>
+      <a class="nav-link" href="#faq">FAQ</a>
+    </nav>
+
+    <main>
+      <section id="overview">
+        <h1>Datasynx Cartography</h1>
+        <p class="hero-tagline">Install once — every AI agent knows your system landscape.</p>
+        <p>
+          <span class="badge badge-green">100% local</span>
+          <span class="badge badge-blue">MCP-native</span>
+          <span class="badge badge-purple">Provider-agnostic</span>
+          <span class="badge badge-yellow">Read-only</span>
+        </p>
+        <p>
+          <strong>Cartography</strong> discovers your system landscape — local services, databases, SaaS
+          tools, installed apps and their dependencies — and exposes it as a <strong>Model Context
+          Protocol</strong> server with progressive disclosure, recursive dependency traversal and semantic
+          search. Discovery runs deterministically (no LLM required) or via an optional Claude-driven loop.
+          Any MCP host — Claude Code, Cursor, VS Code, Cline, Windsurf — drives the same server.
+        </p>
+        <div class="alert alert-green">
+          <strong>2-minute quickstart.</strong>
+          <code>npx -p @datasynx/agentic-ai-cartography datasynx-cartography discover</code> →
+          <code>datasynx-cartography install --client claude-code</code>. Restart the host and ask it to
+          read <code>cartography://graph/summary</code>.
+        </div>
+      </section>
+
+      <section id="quickstart">
+        <h2>Quickstart</h2>
+        <pre><code># 1. Discover your system (read-only, deterministic — no LLM required)
+npx -p @datasynx/agentic-ai-cartography datasynx-cartography discover
+
+# 2. Register the MCP server into your AI client (parse-merge, never clobber)
+datasynx-cartography install --client claude-code
+
+# 3. (optional) run the MCP server directly
+npx -p @datasynx/agentic-ai-cartography cartography-mcp</code></pre>
+
+        <div class="card-grid">
+          <div class="card">
+            <h3>One MCP server</h3>
+            <p>Read-only discovery exposed as MCP <em>resources</em>, <em>tools</em> and <em>prompts</em> over
+            stdio or Streamable HTTP. Start at <code>cartography://graph/summary</code> — a low-token index —
+            then drill in.</p>
+          </div>
+          <div class="card">
+            <h3>Install anywhere</h3>
+            <p>A single <code>install --client &lt;id&gt;</code> harness writes the correct config for
+            <strong>13 hosts</strong>, parse-merging into existing files without clobbering your other servers.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="install">
+        <h2>Install into a client</h2>
+        <p>The harness parses your host's existing config and merges in the Cartography server entry
+        <strong>without clobbering</strong> your other servers.</p>
+        <pre><code>datasynx-cartography list-clients                 # supported hosts
+datasynx-cartography install --client &lt;id&gt;        # write the config
+datasynx-cartography install --client &lt;id&gt; --dry-run   # preview the merge diff</code></pre>
+        <table>
+          <tr><th>Flag</th><th>Purpose</th></tr>
+          <tr><td><code>--global</code> / <code>--project</code></td><td>User-level (default) or project-local config.</td></tr>
+          <tr><td><code>--dry-run</code></td><td>Print the merge diff; write nothing.</td></tr>
+          <tr><td><code>--name &lt;server&gt;</code></td><td>Server key to register (default <code>cartography</code>).</td></tr>
+          <tr><td><code>--http</code> / <code>--url &lt;url&gt;</code></td><td>Register the Streamable HTTP endpoint instead of stdio.</td></tr>
+          <tr><td><code>--db &lt;path&gt;</code> / <code>--session &lt;id&gt;</code></td><td>Serve a specific catalog / discovery session.</td></tr>
+          <tr><td><code>--deeplink</code></td><td>Print a one-click Cursor/VS Code install link instead of writing.</td></tr>
+        </table>
+        <h3>One-click deeplinks</h3>
+        <pre><code>datasynx-cartography install --client cursor --deeplink   # cursor://… one-click
+datasynx-cartography install --client vscode --deeplink   # vscode://… + `code --add-mcp`</code></pre>
+        <h3>Claude Desktop one-click bundle</h3>
+        <pre><code>npm run build:mcpb     # → dist/cartography.mcpb (validated against the mcpb v0.3 schema)</code></pre>
+      </section>
+
+      <section id="architecture">
+        <h2>Architecture</h2>
+        <pre><code>MCP hosts ───────────►  MCP server (src/mcp) — primary interface
+  Claude Code, Cursor,    │  stdio + Streamable HTTP transports
+  VS Code, Cline, …       │
+                          ├─ Resources   graph/summary, nodes, services, dependencies
+                          ├─ Tools       query_infrastructure, get_dependencies, …
+                          ├─ Prompts     audit-attack-surface, onboard-to-system, …
+                          │
+  install harness ───────►├─ Installer   13 hosts · parse-merge JSON/TOML/YAML
+                          │
+  discovery ─────────────►├─ Scanners    installed apps, ports, bookmarks (read-only)
+                          ├─ Semantic    sqlite-vec vectors + lexical fallback
+                          └─ CartographDB SQLite catalog (recursive-CTE graph)</code></pre>
+        <div class="alert alert-blue">
+          The CLI and the embeddable library are thin adapters over the same core — the MCP server is the
+          headline. Every tool is annotated <code>readOnlyHint: true</code>; a command allowlist rejects
+          anything that mutates.
+        </div>
+      </section>
+
+      <section id="resources">
+        <h2>Resources</h2>
+        <p>Read-only context with progressive disclosure — read <code>cartography://graph/summary</code> first.</p>
+        <table>
+          <tr><th>URI</th><th>Description</th></tr>
+          <tr><td><code>cartography://graph/summary</code></td><td>Low-token aggregate index — read this first.</td></tr>
+          <tr><td><code>cartography://nodes</code></td><td>Lightweight list of all nodes.</td></tr>
+          <tr><td><code>cartography://nodes/{id}</code></td><td>Full node record plus incident edges.</td></tr>
+          <tr><td><code>cartography://services</code></td><td>Service-type nodes.</td></tr>
+          <tr><td><code>cartography://databases</code></td><td>Data-store nodes.</td></tr>
+          <tr><td><code>cartography://dependencies/{id}</code></td><td>Transitive downstream dependencies.</td></tr>
+          <tr><td><code>cartography://sessions</code></td><td>Discovery sessions in the catalog.</td></tr>
+        </table>
+      </section>
+
+      <section id="tools">
+        <h2>Tools</h2>
+        <table>
+          <tr><th>Tool</th><th>Read-only</th><th>Description</th></tr>
+          <tr><td><code>get_summary</code></td><td><span class="badge badge-green">yes</span></td><td>Low-token overview of the whole landscape.</td></tr>
+          <tr><td><code>query_infrastructure</code></td><td><span class="badge badge-green">yes</span></td><td>Search the topology by name/id/domain.</td></tr>
+          <tr><td><code>search_topology</code></td><td><span class="badge badge-green">yes</span></td><td>Semantic search over the topology.</td></tr>
+          <tr><td><code>list_services</code></td><td><span class="badge badge-green">yes</span></td><td>List discovered services or data stores.</td></tr>
+          <tr><td><code>get_node</code></td><td><span class="badge badge-green">yes</span></td><td>Fetch a single node with its incident edges.</td></tr>
+          <tr><td><code>get_dependencies</code></td><td><span class="badge badge-green">yes</span></td><td>Recursive dependency-graph traversal.</td></tr>
+          <tr><td><code>run_discovery</code></td><td><span class="badge badge-yellow">writes catalog</span></td><td>Scan the local system and update the catalog.</td></tr>
+        </table>
+      </section>
+
+      <section id="prompts">
+        <h2>Prompts</h2>
+        <table>
+          <tr><th>Prompt</th><th>Description</th></tr>
+          <tr><td><code>audit-attack-surface</code></td><td>Review externally-reachable services and risky dependencies.</td></tr>
+          <tr><td><code>map-service-dependencies</code></td><td>Produce a dependency map for a given service.</td></tr>
+          <tr><td><code>onboard-to-system</code></td><td>Explain the system landscape to a new engineer.</td></tr>
+        </table>
+      </section>
+
+      <section id="remote">
+        <h2>Remote / HTTP</h2>
+        <pre><code>cartography-mcp --http --port 3737      # → http://127.0.0.1:3737/mcp
+
+# Exposing beyond loopback requires an explicit Host allowlist (CVE-2025-66414):
+cartography-mcp --http --host 0.0.0.0 --port 3737 --allowed-hosts cartography.internal:3737</code></pre>
+        <div class="alert alert-yellow">
+          Binding a non-loopback <code>--host</code> <strong>without</strong> <code>--allowed-hosts</code> is
+          refused on purpose — it would leave the server open to DNS-rebinding attacks. Put it behind TLS / a
+          reverse proxy for real deployments.
+        </div>
+      </section>
+
+      <section id="clients">
+        <h2>Supported clients</h2>
+        <p>Run <code>datasynx-cartography list-clients</code> for the live list. The harness writes the exact
+        config for each host (parse-merge, never clobber).</p>
+        <table>
+          <tr><th>id</th><th>Host</th><th>Format</th><th>Notes</th></tr>
+          <tr><td><code>claude-code</code></td><td>Claude Code</td><td>json</td><td></td></tr>
+          <tr><td><code>cursor</code></td><td>Cursor</td><td>json</td><td></td></tr>
+          <tr><td><code>vscode</code></td><td>VS Code (Copilot)</td><td>json</td><td>Uses the <code>servers</code> key, not <code>mcpServers</code>.</td></tr>
+          <tr><td><code>codex</code></td><td>Codex CLI</td><td>toml</td><td>Project scope loads only in "trusted" projects.</td></tr>
+          <tr><td><code>windsurf</code></td><td>Windsurf</td><td>json</td><td></td></tr>
+          <tr><td><code>cline</code></td><td>Cline</td><td>json</td><td>Adds <code>alwaysAllow</code>/<code>disabled</code>.</td></tr>
+          <tr><td><code>roo</code></td><td>Roo Code</td><td>json</td><td>Project <code>.roo/mcp.json</code> takes precedence.</td></tr>
+          <tr><td><code>zed</code></td><td>Zed</td><td>json</td><td>Key <code>context_servers</code>; needs <code>"source": "custom"</code>.</td></tr>
+          <tr><td><code>junie</code></td><td>JetBrains / Junie</td><td>json</td><td></td></tr>
+          <tr><td><code>gemini</code></td><td>Gemini CLI</td><td>json</td><td>HTTP via <code>httpUrl</code>.</td></tr>
+          <tr><td><code>goose</code></td><td>Goose</td><td>yaml</td><td>Built-ins left untouched.</td></tr>
+          <tr><td><code>openhands</code></td><td>OpenHands</td><td>toml</td><td><code>[mcp]</code> arrays; SHTTP preferred.</td></tr>
+          <tr><td><code>claude-desktop</code></td><td>Claude Desktop</td><td>json</td><td>One-click via the <code>.mcpb</code> bundle.</td></tr>
+        </table>
+      </section>
+
+      <section id="cli">
+        <h2>CLI</h2>
+        <table>
+          <tr><th>Command</th><th>Description</th></tr>
+          <tr><td><code>discover</code></td><td>Scan and map your infrastructure.</td></tr>
+          <tr><td><code>seed</code></td><td>Manually add known tools/DBs/APIs.</td></tr>
+          <tr><td><code>install --client &lt;id&gt;</code></td><td>Register the MCP server into a host's config.</td></tr>
+          <tr><td><code>list-clients</code></td><td>List supported hosts.</td></tr>
+          <tr><td><code>mcp [--http]</code></td><td>Run the MCP server (stdio by default).</td></tr>
+          <tr><td><code>export [session]</code></td><td>Export Mermaid / JSON / YAML / HTML.</td></tr>
+          <tr><td><code>show / sessions / overview</code></td><td>Inspect discovery sessions.</td></tr>
+          <tr><td><code>doctor</code></td><td>Check requirements (kubectl, aws, gcloud, az).</td></tr>
+        </table>
+      </section>
+
+      <section id="adapters">
+        <h2>Non-MCP frameworks</h2>
+        <p>Frameworks without a config file load MCP tools via their own adapters — point them at the standard
+        stdio command. Full snippets in
+        <a href="https://github.com/datasynx/agentic-ai-cartography/blob/main/docs/adapters.md">docs/adapters.md</a>.</p>
+        <pre><code>npx -y --package @datasynx/agentic-ai-cartography cartography-mcp</code></pre>
+        <p>
+          <span class="badge badge-blue">LangGraph</span>
+          <span class="badge badge-blue">CrewAI</span>
+          <span class="badge badge-blue">AutoGen / MAF</span>
+          <span class="badge badge-blue">Pydantic AI</span>
+          <span class="badge badge-blue">OpenAI Agents SDK</span>
+          <span class="badge badge-blue">Smolagents</span>
+          <span class="badge badge-blue">Vercel AI SDK</span>
+        </p>
+      </section>
+
+      <section id="suite">
+        <h2>Datasynx Agentic Suite</h2>
+        <p>Cartography is one of three composable, local-first, MCP-native tools. They work standalone, but
+        compound when combined: Cartography maps the systems, Shadowing documents the work, CRM runs the
+        customer relationships.</p>
+        <div class="card-grid">
+          <div class="card">
+            <h3>🗺️ Cartography <span class="badge badge-blue">you are here</span></h3>
+            <p><code>@datasynx/agentic-ai-cartography</code></p>
+            <p>Maps your infrastructure into a graph of systems, services, and dependencies — exposed over MCP.</p>
+            <p>
+              <a href="https://www.npmjs.com/package/@datasynx/agentic-ai-cartography">npm</a> ·
+              <a href="https://github.com/datasynx/agentic-ai-cartography">GitHub</a>
+            </p>
+          </div>
+          <div class="card">
+            <h3>👁️ Shadowing</h3>
+            <p><code>@datasynx/agentic-ai-shadowing</code></p>
+            <p>Observes daily workflows and generates anonymized SOPs via Claude. Fully local, fully anonymized.</p>
+            <p>
+              <a href="https://www.npmjs.com/package/@datasynx/agentic-ai-shadowing">npm</a> ·
+              <a href="https://github.com/datasynx/agentic-ai-shadowing">GitHub</a> ·
+              <a href="https://datasynx.github.io/agentic-ai-shadowing/">Docs</a>
+            </p>
+          </div>
+          <div class="card">
+            <h3>🤝 CRM</h3>
+            <p><code>@datasynx/agentic-crm</code></p>
+            <p>The CRM your AI agents actually run — local-first, MCP-native, one autonomous agent per customer.</p>
+            <p>
+              <a href="https://www.npmjs.com/package/@datasynx/agentic-crm">npm</a> ·
+              <a href="https://datasynx-ai.github.io/datasynx-crm/">Docs</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq">
+        <h2>FAQ</h2>
+        <details>
+          <summary>Where does my data live?</summary>
+          <p>In a local SQLite catalog. Discovery is read-only and deterministic — no cloud, no daemon. The
+          optional Claude-driven discovery loop is the only thing that calls an LLM.</p>
+        </details>
+        <details>
+          <summary>Which AI tools can use it?</summary>
+          <p>Anything that speaks MCP — Claude Code, Cursor, VS Code/Copilot, Cline, Roo, Windsurf, Zed,
+          JetBrains/Junie, Gemini CLI, Codex, Goose, OpenHands, Claude Desktop. Frameworks like LangGraph,
+          CrewAI and the Vercel AI SDK load the tools via their own adapters.</p>
+        </details>
+        <details>
+          <summary>Is it really read-only?</summary>
+          <p>Yes. Every tool is annotated <code>readOnlyHint: true</code> and a strict command allowlist
+          rejects anything that mutates the system. Cartography describes your landscape; it never changes it.</p>
+        </details>
+        <details>
+          <summary>Do I need an API key?</summary>
+          <p>No for deterministic discovery and the MCP server. An <code>ANTHROPIC_API_KEY</code> is only
+          needed for the optional Claude-driven discovery loop.</p>
+        </details>
+        <details>
+          <summary>Is it free?</summary>
+          <p>Yes. MIT-licensed and self-hosted. No seats, no metering, no telemetry.</p>
+        </details>
+      </section>
+
+      <footer>
+        <p>
+          <a href="https://www.npmjs.com/package/@datasynx/agentic-ai-cartography">npm</a> ·
+          <a href="https://github.com/datasynx/agentic-ai-cartography">GitHub</a> ·
+          <a href="https://github.com/datasynx/agentic-ai-cartography/issues">Issues</a> ·
+          <a href="https://www.linkedin.com/company/datasynx-ai/">LinkedIn</a>
+        </p>
+        <p>© 2026 Datasynx AI · MIT License · Built with TypeScript &amp; the Model Context Protocol</p>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    // Highlight the active nav link as you scroll.
+    const links = [...document.querySelectorAll('nav a.nav-link')];
+    const sections = links
+      .map((l) => document.querySelector(l.getAttribute('href')))
+      .filter(Boolean);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            links.forEach((l) => l.classList.toggle('active', l.getAttribute('href') === '#' + id));
+          }
+        });
+      },
+      { rootMargin: '-20% 0px -70% 0px' }
+    );
+    sections.forEach((s) => observer.observe(s));
+  </script>
+</body>
+</html>

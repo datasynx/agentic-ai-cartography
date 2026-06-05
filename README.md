@@ -158,9 +158,9 @@ const tools = await mcp.tools(); // MCP tools → AI SDK tools, any model
 OpenAI Agents SDK, Smolagents, Vercel AI SDK) load MCP tools via their own adapters —
 copy-paste snippets in **[docs/adapters.md](docs/adapters.md)**.
 
-> Full documentation (Diátaxis) lives under [`docs/`](docs/) — per-client quickstarts,
-> an auto-generated tool table and a client matrix. Drop **[AGENTS.md](AGENTS.md)** into
-> a repo to give coding agents the standard config block.
+> Full documentation lives at **[datasynx.github.io/agentic-ai-cartography](https://datasynx.github.io/agentic-ai-cartography/)**
+> — quickstart, the client matrix, MCP tools and CLI reference. Drop **[AGENTS.md](AGENTS.md)**
+> into a repo to give coding agents the standard config block.
 
 ### Embed in your own app
 
