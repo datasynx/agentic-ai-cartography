@@ -13,3 +13,5 @@ export type { EntryOptions } from './entry.js';
 export { planInstall, applyInstall, renderDiff, defaultContext, currentOs } from './install.js';
 export type { InstallPlan, PlanOptions } from './install.js';
 export { CLIENTS, getClient, listClients } from './registry.js';
+export { cursorDeeplink, vscodeDeeplink, codeAddMcpCommand } from './deeplinks.js';
+export type { VscodeDeeplinkOptions } from './deeplinks.js';

@@ -14,7 +14,7 @@ import { logInfo, logError, logWarn, setVerbose } from './logger.js';
 import { cleanupTempFiles } from './bookmarks.js';
 import { stripSensitive } from './tools.js';
 import { startMcp } from './mcp/start.js';
-import { getClient, listClients, planInstall, applyInstall, renderDiff, defaultContext, defaultServerEntry, DEFAULT_SERVER_NAME } from './installer/index.js';
+import { getClient, listClients, planInstall, applyInstall, renderDiff, defaultContext, defaultServerEntry, DEFAULT_SERVER_NAME, cursorDeeplink, vscodeDeeplink, codeAddMcpCommand } from './installer/index.js';
 
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
@@ -1159,6 +1159,7 @@ ${infraSummary.substring(0, 12000)}`;
     .option('--global', 'Write the global/user config (default)', false)
     .option('--project', 'Write the project-local config instead', false)
     .option('--dry-run', 'Show the merge diff without writing', false)
+    .option('--deeplink', 'Print a one-click install deeplink instead of writing (Cursor / VS Code)', false)
     .option('--name <name>', 'Server name to register', DEFAULT_SERVER_NAME)
     .option('--http', 'Register the Streamable HTTP endpoint instead of stdio', false)
     .option('--url <url>', 'HTTP endpoint (with --http)')
@@ -1180,6 +1181,17 @@ ${infraSummary.substring(0, 12000)}`;
         ...(opts.url ? { url: opts.url } : {}),
         ...(packageArgs.length ? { packageArgs } : {}),
       });
+      if (opts.deeplink) {
+        if (opts.client === 'cursor') {
+          o('\n' + bold('  Cursor one-click:') + '\n  ' + cyan(cursorDeeplink(opts.name, entry)) + '\n\n');
+        } else if (opts.client === 'vscode') {
+          o('\n' + bold('  VS Code one-click:') + '\n  ' + cyan(vscodeDeeplink(opts.name, entry)) + '\n');
+          o('  ' + dim('or: ') + codeAddMcpCommand(opts.name, entry) + '\n\n');
+        } else {
+          logWarn(`No deeplink available for "${opts.client}". Deeplinks exist for: cursor, vscode.`);
+        }
+        return;
+      }
       try {
         const plan = planInstall(spec, defaultContext(scope), { serverName: opts.name, entry });
         o('\n' + bold(`  ${plan.label}`) + dim(` (${plan.format}, ${scope})`) + '\n');
