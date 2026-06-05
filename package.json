@@ -30,6 +30,7 @@
     "scripts",
     "server.json",
     "README.md",
+    "AGENTS.md",
     "LICENSE",
     "llms.txt",
     "llms-full.txt"
@@ -43,8 +44,9 @@
     "test:coverage": "vitest run --coverage",
     "docs:api": "typedoc",
     "docs:llms": "node scripts/build-llms.mjs",
+    "docs:tables": "tsx scripts/gen-docs.ts",
     "docs:dev": "vitepress dev docs",
-    "docs:build": "npm run docs:llms && typedoc && vitepress build docs",
+    "docs:build": "npm run docs:tables && npm run docs:llms && typedoc && vitepress build docs",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "release": "semantic-release",
