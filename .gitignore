@@ -4,3 +4,6 @@ dist/
 .env
 .env.*
 coverage/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/reference/api/
