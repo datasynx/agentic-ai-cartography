@@ -6,6 +6,9 @@ export default defineConfig({
   title: 'Cartography',
   description: 'MCP-first infrastructure & agentic-AI cartography',
   lang: 'en-US',
+  // Project Pages are served from a sub-path; without this, CSS/JS 404 and the
+  // site renders unstyled. Matches https://datasynx.github.io/agentic-ai-cartography/.
+  base: '/agentic-ai-cartography/',
   cleanUrls: true,
   lastUpdated: true,
   // tasks.md is an internal build checklist, not documentation.
@@ -43,6 +46,10 @@ export default defineConfig({
       '/explanation/': [{ text: 'Explanation', items: [{ text: 'Why MCP-first', link: '/explanation/' }] }],
     },
     socialLinks: [{ icon: 'github', link: 'https://github.com/datasynx/agentic-ai-cartography' }],
+    editLink: {
+      pattern: 'https://github.com/datasynx/agentic-ai-cartography/edit/main/docs/:path',
+      text: 'Edit this page on GitHub',
+    },
     search: { provider: 'local' },
   },
 });

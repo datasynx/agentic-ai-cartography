@@ -12,6 +12,7 @@
 [![Release](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/release.yml/badge.svg)](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/release.yml)
 [![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg?style=flat-square)](https://github.com/semantic-release/semantic-release)
 [![MCP](https://img.shields.io/badge/MCP-server-6E56CF?style=flat-square)](https://modelcontextprotocol.io)
+[![Docs](https://img.shields.io/badge/docs-live-2E8555?style=flat-square&logo=readthedocs&logoColor=white)](https://datasynx.github.io/agentic-ai-cartography/)
 [![Provenance](https://img.shields.io/badge/npm-provenance_signed-3B7DBD?style=flat-square&logo=npm&logoColor=white)](https://docs.npmjs.com/generating-provenance-statements)
 [![Agentic AI](https://img.shields.io/badge/Agentic_AI-Provider_Agnostic-D4A017?style=flat-square)](https://github.com/datasynx/agentic-ai-cartography)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Datasynx_AI-0077B5?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/datasynx-ai/)
@@ -23,7 +24,7 @@
 
 <br/>
 
-**[📦 npm](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography) · [💼 LinkedIn](https://www.linkedin.com/company/datasynx-ai/) · [🐛 Issues](https://github.com/datasynx/agentic-ai-cartography/issues)**
+**[📖 Documentation](https://datasynx.github.io/agentic-ai-cartography/) · [📦 npm](https://www.npmjs.com/package/@datasynx/agentic-ai-cartography) · [💼 LinkedIn](https://www.linkedin.com/company/datasynx-ai/) · [🐛 Issues](https://github.com/datasynx/agentic-ai-cartography/issues)**
 
 </div>
 
