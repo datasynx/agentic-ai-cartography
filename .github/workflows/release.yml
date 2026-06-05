@@ -1,0 +1,90 @@
+name: Release
+
+# Fully automated release: on every push to main, semantic-release derives the
+# next version from the Conventional Commits since the last tag, updates the
+# changelog, publishes to npm (provenance-signed), tags the commit, and cuts a
+# matching GitHub Release. No manual version bumps.
+#
+# Required secret: NPM_TOKEN (npm "Automation"/granular token, publish rights for
+# the @datasynx scope). Optional: RELEASE_TOKEN (a PAT) if main is a protected
+# branch — semantic-release pushes the version/changelog commit and tags back, and
+# the default GITHUB_TOKEN cannot push past branch protection.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  # Never cancel an in-flight publish — a fresh push must wait, not abort it.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write        # push the release commit + tag, create the GitHub Release
+  issues: write          # semantic-release comments on released issues/PRs
+  pull-requests: write
+  id-token: write        # npm provenance (Sigstore OIDC)
+
+jobs:
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    env:
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Generate SBOM (CycloneDX)
+        run: npm sbom --sbom-format cyclonedx --omit dev > sbom-cyclonedx.json || true
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom-cyclonedx.json
+          if-no-files-found: ignore
+
+      - name: Bootstrap baseline tag (one-time adoption)
+        # semantic-release derives the version from git tags. This package was
+        # published manually up to 1.1.1 before adopting semantic-release, so on
+        # the very first run — when no version tag exists yet — anchor history at
+        # v1.1.1 (the last manual npm release) on the previous commit. The
+        # breaking-change commit that introduces this setup then yields 2.0.0 as
+        # the first automated release. Every subsequent run finds tags and skips.
+        if: env.HAS_NPM_TOKEN == 'true'
+        run: |
+          if [ -z "$(git tag -l 'v*.*.*')" ]; then
+            BASE=$(git rev-parse HEAD~1)
+            echo "::notice::No version tags found — anchoring v1.1.1 at $BASE"
+            git tag v1.1.1 "$BASE"
+            git push origin v1.1.1
+          else
+            echo "::notice::Version tags already exist — skipping baseline bootstrap."
+          fi
+
+      - name: Semantic Release
+        if: env.HAS_NPM_TOKEN == 'true'
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Release skipped (no NPM_TOKEN)
+        if: env.HAS_NPM_TOKEN != 'true'
+        run: echo "::warning::NPM_TOKEN secret not set — skipping npm release. Add it under Settings → Secrets and variables → Actions."

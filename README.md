@@ -9,7 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Node.js >=20](https://img.shields.io/badge/Node.js-%E2%89%A520-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![CI](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/ci.yml/badge.svg)](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/ci.yml)
-[![Publish](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/publish.yml/badge.svg)](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/publish.yml)
+[![Release](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/release.yml/badge.svg)](https://github.com/datasynx/agentic-ai-cartography/actions/workflows/release.yml)
+[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg?style=flat-square)](https://github.com/semantic-release/semantic-release)
 [![MCP](https://img.shields.io/badge/MCP-server-6E56CF?style=flat-square)](https://modelcontextprotocol.io)
 [![Provenance](https://img.shields.io/badge/npm-provenance_signed-3B7DBD?style=flat-square&logo=npm&logoColor=white)](https://docs.npmjs.com/generating-provenance-statements)
 [![Agentic AI](https://img.shields.io/badge/Agentic_AI-Provider_Agnostic-D4A017?style=flat-square)](https://github.com/datasynx/agentic-ai-cartography)
@@ -366,22 +367,40 @@ await runDiscovery(config, db, sessionId, onEvent, onAskUser, 'hubspot windsurf'
 
 ## Releasing
 
-Publishing to npm is automated by [`.github/workflows/publish.yml`](.github/workflows/publish.yml).
-The flow is **version-driven and idempotent** — you never run `npm publish` by hand:
+Releases are **fully automated** with [semantic-release](https://github.com/semantic-release/semantic-release) —
+no manual version bumps, no hand-run `npm publish`. The version, `CHANGELOG.md`, git tag,
+GitHub Release and npm publish are all derived from your commit history.
 
-1. Bump `version` in `package.json` (and update `CHANGELOG.md`).
-2. Merge to `main`.
-3. The workflow runs the full gate (lint · test · build), then publishes **only if that
-   version isn't already on npm** — so doc-only or refactor merges are safe no-ops. On a
-   real bump it publishes with [npm provenance](https://docs.npmjs.com/generating-provenance-statements),
-   pushes a `v<version>` tag, and cuts a matching GitHub Release.
+**How it works**
 
-You can also trigger it manually from the **Actions → Publish → Run workflow** button.
+1. Land changes on `main` using [Conventional Commits](https://www.conventionalcommits.org/)
+   (PR titles are linted by [`pr-title.yml`](.github/workflows/pr-title.yml) since the repo
+   squash-merges, so the PR title becomes the commit on `main`):
+   - `fix: …` → **patch** (`x.y.Z`)
+   - `feat: …` → **minor** (`x.Y.0`)
+   - `feat!: …` or a `BREAKING CHANGE:` footer → **major** (`X.0.0`)
+   - `docs:`/`chore:`/`refactor:`/`test:`/`ci:` → no release
+2. [`release.yml`](.github/workflows/release.yml) runs semantic-release, which analyses the
+   commits since the last tag, computes the next version, updates the changelog, publishes
+   to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements), tags
+   the commit `v<version>`, and cuts a matching GitHub Release.
 
-**One-time setup:** add a repository secret **`NPM_TOKEN`** (an npm *Automation* or granular
-token with publish rights for the `@datasynx` scope) under
-*Settings → Secrets and variables → Actions*. Provenance signing needs no extra secret — it
-uses the workflow's OIDC identity (`id-token: write`).
+Quality is gated independently by [`ci.yml`](.github/workflows/ci.yml) on every PR and push:
+**lint/typecheck → test matrix (Node 20/22) + coverage → audit + license check → build &
+validate (publint, [are-the-types-wrong](https://github.com/arethetypeswrong/arethetypeswrong.github.io),
+ESM/CJS consumer smoke tests)**.
+
+**One-time setup — repository secrets** (*Settings → Secrets and variables → Actions*):
+
+| Secret | Required | Purpose |
+|---|---|---|
+| `NPM_TOKEN` | **yes** | npm *Automation*/granular token with publish rights for the `@datasynx` scope. Provenance signing itself needs no secret (OIDC). |
+| `RELEASE_TOKEN` | only if `main` is protected | A PAT so semantic-release can push the release commit + tags past branch protection; otherwise the default `GITHUB_TOKEN` is used. |
+| `CODECOV_TOKEN` | optional | Upload coverage to Codecov (non-blocking if absent). |
+
+> **First release:** npm is at `1.1.1` while this is the MCP-first 2.0 rewrite. On the first
+> run (no version tags yet) `release.yml` anchors history at `v1.1.1`; the breaking-change
+> commit that adopts this setup then makes the first automated release **`2.0.0`**.
 
 ---
 
