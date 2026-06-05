@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -125,6 +125,65 @@ describe('parse-merge engine across TOML and YAML (synthetic specs)', () => {
     const parsed = parseConfig(readFileSync(file, 'utf8'), 'yaml') as any;
     expect(parsed.extensions.keep.command).toBe('foo');
     expect(parsed.extensions.cartography.command).toBe('npx');
+  });
+});
+
+describe('top-5 client specs', () => {
+  const entry = defaultServerEntry();
+  const httpEntry = defaultServerEntry({ transport: 'http', url: 'http://127.0.0.1:3737/mcp' });
+
+  it('Cursor: mcpServers in ~/.cursor/mcp.json (global) and .cursor/mcp.json (project)', () => {
+    const spec = getClient('cursor')!;
+    const g = planInstall(spec, ctx(), { entry });
+    expect(g.path).toBe(join(dir, '.cursor', 'mcp.json'));
+    expect((parseConfig(g.after, 'json') as any).mcpServers.cartography.command).toBe('npx');
+    const p = planInstall(spec, ctx({ scope: 'project' }), { entry });
+    expect(p.path).toBe(join(dir, '.cursor', 'mcp.json'));
+  });
+
+  it('VS Code: uses `servers` (not mcpServers) with explicit stdio type', () => {
+    const spec = getClient('vscode')!;
+    const p = planInstall(spec, ctx({ scope: 'project' }), { entry });
+    expect(p.path).toBe(join(dir, '.vscode', 'mcp.json'));
+    const parsed = parseConfig(p.after, 'json') as any;
+    expect(parsed.mcpServers).toBeUndefined();
+    expect(parsed.servers.cartography.type).toBe('stdio');
+    expect(parsed.servers.cartography.command).toBe('npx');
+  });
+
+  it('VS Code: http entry carries type http and url', () => {
+    const spec = getClient('vscode')!;
+    const p = planInstall(spec, ctx({ scope: 'project' }), { entry: httpEntry });
+    const parsed = parseConfig(p.after, 'json') as any;
+    expect(parsed.servers.cartography).toEqual({ type: 'http', url: 'http://127.0.0.1:3737/mcp' });
+  });
+
+  it('Codex CLI: TOML [mcp_servers.<name>] in ~/.codex/config.toml', () => {
+    const spec = getClient('codex')!;
+    const g = planInstall(spec, ctx(), { entry });
+    expect(g.path).toBe(join(dir, '.codex', 'config.toml'));
+    expect(g.format).toBe('toml');
+    const parsed = parseConfig(g.after, 'toml') as any;
+    expect(parsed.mcp_servers.cartography.command).toBe('npx');
+    // merges with an existing server
+    mkdirSync(join(dir, '.codex'), { recursive: true });
+    writeFileSync(g.path, '[mcp_servers.keep]\ncommand = "foo"\n');
+    const merged = planInstall(spec, ctx(), { entry });
+    const p2 = parseConfig(merged.after, 'toml') as any;
+    expect(p2.mcp_servers.keep.command).toBe('foo');
+    expect(p2.mcp_servers.cartography.command).toBe('npx');
+  });
+
+  it('Windsurf: mcpServers in ~/.codeium/windsurf/mcp_config.json', () => {
+    const spec = getClient('windsurf')!;
+    const g = planInstall(spec, ctx(), { entry });
+    expect(g.path).toBe(join(dir, '.codeium', 'windsurf', 'mcp_config.json'));
+    expect((parseConfig(g.after, 'json') as any).mcpServers.cartography.command).toBe('npx');
+  });
+
+  it('exposes all five hosts in list-clients', () => {
+    const ids = listClients().map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining(['claude-code', 'cursor', 'vscode', 'codex', 'windsurf']));
   });
 });
 
