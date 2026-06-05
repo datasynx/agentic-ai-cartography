@@ -1,0 +1,32 @@
+name: Publish to MCP Registry
+
+# Publishes server.json to the official MCP Registry after an npm release.
+# The npm package must already be published (the registry hosts metadata only).
+# Authentication uses GitHub OIDC for the io.github.* namespace — no PAT needed.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for `mcp-publisher login github-oidc`
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64.tar.gz" \
+            | tar -xz mcp-publisher
+          ./mcp-publisher --version || true
+
+      - name: Authenticate (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json
+        run: ./mcp-publisher publish
