@@ -63,20 +63,32 @@ jobs:
       - name: Bootstrap baseline tag (one-time adoption)
         # semantic-release derives the version from git tags. This package was
         # published manually up to 1.1.1 before adopting semantic-release, so on
-        # the very first run — when no version tag exists yet — anchor history at
-        # v1.1.1 (the last manual npm release) on the previous commit. The
-        # breaking-change commit that introduces this setup then yields 2.0.0 as
-        # the first automated release. Every subsequent run finds tags and skips.
+        # the very first run — when no version tag exists yet — we anchor history
+        # at v1.1.1 (the last manual npm release) on the commit just before this
+        # setup landed. The breaking-change commit that introduced it then yields
+        # 2.0.0 as the first automated release. Every later run finds tags & skips.
+        #
+        # The tag is created via the REST API rather than `git push`, so the
+        # default GITHUB_TOKEN is enough: pushing a tag ref over git is refused
+        # here because every commit in this repo carries .github/workflows files
+        # (needs the `workflow` scope), whereas creating a ref via the API does
+        # not. This keeps the setup PAT-free — only NPM_TOKEN is required.
         if: env.HAS_NPM_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$(git tag -l 'v*.*.*')" ]; then
-            BASE=$(git rev-parse HEAD~1)
-            echo "::notice::No version tags found — anchoring v1.1.1 at $BASE"
-            git tag v1.1.1 "$BASE"
-            git push origin v1.1.1
-          else
+          if [ -n "$(git tag -l 'v*.*.*')" ]; then
             echo "::notice::Version tags already exist — skipping baseline bootstrap."
+            exit 0
           fi
+          # Commit immediately preceding semantic-release adoption (= parent of
+          # the feat! commit), so commits since it include the breaking change.
+          BASE="df16cbf2a117ee04657cf2813f9575a4cd5cac40"
+          echo "::notice::No version tags found — anchoring v1.1.1 at $BASE via REST API"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/v1.1.1" -f sha="$BASE"
+          git fetch --tags --force origin
+
 
       - name: Semantic Release
         if: env.HAS_NPM_TOKEN == 'true'
