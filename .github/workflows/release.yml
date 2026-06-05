@@ -68,14 +68,12 @@ jobs:
         # setup landed. The breaking-change commit that introduced it then yields
         # 2.0.0 as the first automated release. Every later run finds tags & skips.
         #
-        # The tag is created via the REST API rather than `git push`, so the
-        # default GITHUB_TOKEN is enough: pushing a tag ref over git is refused
-        # here because every commit in this repo carries .github/workflows files
-        # (needs the `workflow` scope), whereas creating a ref via the API does
-        # not. This keeps the setup PAT-free — only NPM_TOKEN is required.
+        # This (and semantic-release's own tag push) uses RELEASE_TOKEN: every
+        # commit here carries .github/workflows files, and the Actions GITHUB_TOKEN
+        # is refused when creating/pushing a ref that touches workflow files
+        # (needs the `workflow` scope, which the Actions token cannot hold). The
+        # checkout above already persists these credentials.
         if: env.HAS_NPM_TOKEN == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "$(git tag -l 'v*.*.*')" ]; then
             echo "::notice::Version tags already exist — skipping baseline bootstrap."
@@ -84,10 +82,9 @@ jobs:
           # Commit immediately preceding semantic-release adoption (= parent of
           # the feat! commit), so commits since it include the breaking change.
           BASE="df16cbf2a117ee04657cf2813f9575a4cd5cac40"
-          echo "::notice::No version tags found — anchoring v1.1.1 at $BASE via REST API"
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-            -f ref="refs/tags/v1.1.1" -f sha="$BASE"
-          git fetch --tags --force origin
+          echo "::notice::No version tags found — anchoring v1.1.1 at $BASE"
+          git tag v1.1.1 "$BASE"
+          git push origin v1.1.1
 
 
       - name: Semantic Release

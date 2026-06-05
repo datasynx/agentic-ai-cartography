@@ -395,7 +395,7 @@ ESM/CJS consumer smoke tests)**.
 | Secret | Required | Purpose |
 |---|---|---|
 | `NPM_TOKEN` | **yes** | npm *Automation*/granular token with publish rights for the `@datasynx` scope. Provenance signing itself needs no secret (OIDC). |
-| `RELEASE_TOKEN` | only if `main` is protected | A PAT so semantic-release can push the release commit + tags past branch protection; otherwise the default `GITHUB_TOKEN` is used. |
+| `RELEASE_TOKEN` | **yes** | A PAT (classic: `repo` + `workflow`) so semantic-release can push the version tag and release commit. Required here because every commit carries `.github/workflows/` files, which the Actions `GITHUB_TOKEN` may not push without the `workflow` scope. |
 | `CODECOV_TOKEN` | optional | Upload coverage to Codecov (non-blocking if absent). |
 
 > **First release:** npm is at `1.1.1` while this is the MCP-first 2.0 rewrite. On the first
