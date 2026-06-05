@@ -38,9 +38,23 @@ async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
  * Start a Streamable HTTP server. A fresh MCP server instance is created per
  * session via `factory`, so multiple clients can connect concurrently.
  */
+/** Loopback hosts are safe to bind without an explicit Host allowlist. */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
 export async function runHttp(factory: () => McpServer, opts: HttpOptions = {}): Promise<http.Server> {
   const host = opts.host ?? '127.0.0.1';
   const port = opts.port ?? 3737;
+
+  // CVE-2025-66414: a server reachable beyond loopback must declare which Host
+  // headers it trusts, or DNS-rebinding protection cannot do its job. Refuse to
+  // start an exposed server with the permissive localhost defaults.
+  if (!LOOPBACK_HOSTS.has(host) && opts.allowedHosts === undefined) {
+    throw new Error(
+      `Refusing to bind a non-loopback host (${host}) without an explicit allowedHosts allowlist. ` +
+        `Pass { allowedHosts: ['your.public.host:port'] } to opt in, or bind 127.0.0.1 for local-only use.`,
+    );
+  }
+
   const allowedHosts = opts.allowedHosts ?? [`${host}:${port}`, `localhost:${port}`, `127.0.0.1:${port}`];
   const transports = new Map<string, StreamableHTTPServerTransport>();
 

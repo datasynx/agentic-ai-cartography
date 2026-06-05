@@ -103,7 +103,12 @@ claude mcp add cartography -- npx -p @datasynx/agentic-ai-cartography cartograph
 **Remote / team use** — Streamable HTTP (localhost-bound, DNS-rebind protected):
 ```bash
 cartography-mcp --http --port 3737      # → http://127.0.0.1:3737/mcp
+
+# Exposing beyond loopback requires an explicit Host allowlist (CVE-2025-66414):
+cartography-mcp --http --host 0.0.0.0 --port 3737 --allowed-hosts cartography.internal:3737
 ```
+> Binding a non-loopback `--host` **without** `--allowed-hosts` is refused on purpose — it would
+> leave the server open to DNS-rebinding attacks. Put it behind TLS/a reverse proxy for real deployments.
 
 **Vercel AI SDK** (provider-agnostic):
 ```ts

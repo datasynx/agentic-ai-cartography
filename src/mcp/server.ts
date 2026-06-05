@@ -185,9 +185,12 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
 
   // ── Tools (model-controlled queries) ───────────────────────────────────────
 
+  /** Annotations shared by every read-only query tool (untrusted hints, never a security boundary). */
+  const readOnly = { readOnlyHint: true, openWorldHint: false } as const;
+
   server.registerTool(
     'get_summary',
-    { title: 'Get topology summary', description: 'Low-token overview of the whole landscape (counts, types, domains, most-connected).', inputSchema: {} },
+    { title: 'Get topology summary', description: 'Low-token overview of the whole landscape (counts, types, domains, most-connected).', inputSchema: {}, annotations: readOnly },
     () => {
       const sid = resolveSession();
       if (!sid) return json({ error: 'No discovery session found.' });
@@ -205,6 +208,7 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
         types: z.array(z.enum(NODE_TYPES)).optional().describe('Restrict to these node types'),
         limit: z.number().int().min(1).max(200).default(25).optional(),
       },
+      annotations: readOnly,
     },
     async (args) => {
       const sid = resolveSession();
@@ -220,6 +224,7 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
       title: 'Search topology (semantic)',
       description: 'Find nodes related to a concept by meaning (semantic search when available, lexical otherwise).',
       inputSchema: { query: z.string(), limit: z.number().int().min(1).max(100).default(10).optional() },
+      annotations: readOnly,
     },
     async (args) => {
       const sid = resolveSession();
@@ -235,6 +240,7 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
       title: 'List services',
       description: 'List discovered services or data stores.',
       inputSchema: { kind: z.enum(['services', 'databases', 'all']).default('all').optional() },
+      annotations: readOnly,
     },
     (args) => {
       const sid = resolveSession();
@@ -247,7 +253,7 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
 
   server.registerTool(
     'get_node',
-    { title: 'Get node', description: 'Fetch a single node with its incident edges.', inputSchema: { id: z.string() } },
+    { title: 'Get node', description: 'Fetch a single node with its incident edges.', inputSchema: { id: z.string() }, annotations: readOnly },
     (args) => {
       const sid = resolveSession();
       if (!sid) return json({ error: 'No discovery session found.' });
@@ -268,6 +274,7 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
         direction: z.enum(['downstream', 'upstream', 'both']).default('downstream').optional(),
         maxDepth: z.number().int().min(1).max(64).default(8).optional(),
       },
+      annotations: readOnly,
     },
     (args) => {
       const sid = resolveSession();
@@ -291,6 +298,8 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
         title: 'Run discovery',
         description: 'Scan the local system (read-only) and update the catalog. Returns counts of nodes/edges found.',
         inputSchema: { hint: z.string().optional().describe('Optional focus, e.g. tool names to look for') },
+        // Scans read-only but writes results to the local catalog, so not a read-only tool; never destructive.
+        annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
       },
       async (args) => {
         let sid = resolveSession();

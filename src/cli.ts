@@ -1145,18 +1145,25 @@ ${infraSummary.substring(0, 12000)}`;
     .option('--http', 'Use Streamable HTTP transport instead of stdio', false)
     .option('--port <n>', 'HTTP port', '3737')
     .option('--host <h>', 'HTTP host', '127.0.0.1')
+    .option('--allowed-hosts <list>', 'Comma-separated Host allowlist (required for non-loopback --host)')
     .option('--db <path>', 'DB path')
     .option('--session <id>', 'Session to serve (id or "latest")', 'latest')
     .option('--no-semantic', 'Disable semantic (vector) search')
     .action(async (opts) => {
-      await startMcp({
-        transport: opts.http ? 'http' : 'stdio',
-        port: parseInt(opts.port, 10),
-        host: opts.host,
-        dbPath: opts.db,
-        session: opts.session,
-        semantic: opts.semantic,
-      });
+      try {
+        await startMcp({
+          transport: opts.http ? 'http' : 'stdio',
+          port: parseInt(opts.port, 10),
+          host: opts.host,
+          allowedHosts: opts.allowedHosts ? String(opts.allowedHosts).split(',').map((h: string) => h.trim()).filter(Boolean) : undefined,
+          dbPath: opts.db,
+          session: opts.session,
+          semantic: opts.semantic,
+        });
+      } catch (err) {
+        process.stderr.write(`\nerror: ${err instanceof Error ? err.message : String(err)}\n`);
+        process.exitCode = 1;
+      }
     });
 
   // ── Banner (always show) ──────────────────────────────────────────────────
