@@ -35,7 +35,9 @@ export class VectorStore {
     if (this.loaded) return true;
     try {
       const conn = this.db.rawConnection();
-      const sqliteVec = await import('sqlite-vec');
+      // Cast the specifier so the type build doesn't require this optional native
+      // dep to be installed; runtime import is unchanged.
+      const sqliteVec = (await import('sqlite-vec' as string)) as { load(db: unknown): void };
       sqliteVec.load(conn);
       conn.exec(`
         CREATE TABLE IF NOT EXISTS vec_index (

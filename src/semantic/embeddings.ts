@@ -25,7 +25,15 @@ export async function createLocalEmbedder(
   model = 'Xenova/all-MiniLM-L6-v2',
 ): Promise<EmbeddingProvider | undefined> {
   try {
-    const tf = await import('@huggingface/transformers');
+    // Cast the specifier to defeat static module resolution: the type build must
+    // not require this optional native dep to be installed. We assert the minimal
+    // surface we use instead — the runtime import is unchanged.
+    const tf = (await import('@huggingface/transformers' as string)) as {
+      pipeline(
+        task: string,
+        model: string,
+      ): Promise<(text: string, opts: { pooling: string; normalize: boolean }) => Promise<{ data: unknown }>>;
+    };
     const extractor = await tf.pipeline('feature-extraction', model);
     return {
       id: `local:${model}`,
