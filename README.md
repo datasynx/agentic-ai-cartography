@@ -152,6 +152,10 @@ const mcp = await experimental_createMCPClient({
 const tools = await mcp.tools(); // MCP tools → AI SDK tools, any model
 ```
 
+**Frameworks without a config file** (CrewAI, AutoGen/MAF, LangGraph, Pydantic AI,
+OpenAI Agents SDK, Smolagents, Vercel AI SDK) load MCP tools via their own adapters —
+copy-paste snippets in **[docs/adapters.md](docs/adapters.md)**.
+
 ### Embed in your own app
 
 ```ts
