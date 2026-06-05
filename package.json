@@ -42,11 +42,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "docs:api": "typedoc",
     "docs:llms": "node scripts/build-llms.mjs",
     "docs:tables": "tsx scripts/gen-docs.ts",
-    "docs:dev": "vitepress dev docs",
-    "docs:build": "npm run docs:tables && npm run docs:llms && typedoc && vitepress build docs",
+    "docs:build": "npm run docs:tables && npm run docs:llms",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "release": "semantic-release",
@@ -119,10 +117,7 @@
     "semantic-release": "^24.2.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
-    "typedoc": "^0.28.19",
-    "typedoc-plugin-markdown": "^4.12.0",
     "typescript": "^5.7.2",
-    "vitepress": "^1.6.4",
     "vitest": "^4.1.0"
   }
 }
