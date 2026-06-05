@@ -187,6 +187,59 @@ describe('top-5 client specs', () => {
   });
 });
 
+describe('stage-2 JSON host specs (#30)', () => {
+  const entry = defaultServerEntry();
+  const httpEntry = defaultServerEntry({ transport: 'http', url: 'http://127.0.0.1:3737/mcp' });
+
+  it('Cline: mcpServers with alwaysAllow/disabled in VS Code globalStorage', () => {
+    const spec = getClient('cline')!;
+    const g = planInstall(spec, ctx(), { entry });
+    expect(g.path).toBe(join(dir, '.config', 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'settings', 'cline_mcp_settings.json'));
+    const s = (parseConfig(g.after, 'json') as any).mcpServers.cartography;
+    expect(s.command).toBe('npx');
+    expect(s.alwaysAllow).toEqual([]);
+    expect(s.disabled).toBe(false);
+  });
+
+  it('Roo Code: project .roo/mcp.json and global rooveterinaryinc storage', () => {
+    const spec = getClient('roo')!;
+    expect(planInstall(spec, ctx({ scope: 'project' }), { entry }).path).toBe(join(dir, '.roo', 'mcp.json'));
+    expect(planInstall(spec, ctx(), { entry }).path).toContain(join('globalStorage', 'rooveterinaryinc.roo-cline'));
+  });
+
+  it('Zed: context_servers with source custom in ~/.config/zed/settings.json', () => {
+    const spec = getClient('zed')!;
+    const g = planInstall(spec, ctx(), { entry });
+    expect(g.path).toBe(join(dir, '.config', 'zed', 'settings.json'));
+    const parsed = parseConfig(g.after, 'json') as any;
+    expect(parsed.mcpServers).toBeUndefined();
+    expect(parsed.context_servers.cartography.source).toBe('custom');
+    expect(parsed.context_servers.cartography.command).toBe('npx');
+    expect(planInstall(spec, ctx({ scope: 'project' }), { entry }).path).toBe(join(dir, '.zed', 'settings.json'));
+  });
+
+  it('JetBrains/Junie: mcpServers in .junie/mcp/mcp.json (project)', () => {
+    const spec = getClient('junie')!;
+    const p = planInstall(spec, ctx({ scope: 'project' }), { entry });
+    expect(p.path).toBe(join(dir, '.junie', 'mcp', 'mcp.json'));
+    expect((parseConfig(p.after, 'json') as any).mcpServers.cartography.command).toBe('npx');
+  });
+
+  it('Gemini CLI: mcpServers in ~/.gemini/settings.json; http uses httpUrl', () => {
+    const spec = getClient('gemini')!;
+    const g = planInstall(spec, ctx(), { entry });
+    expect(g.path).toBe(join(dir, '.gemini', 'settings.json'));
+    expect((parseConfig(g.after, 'json') as any).mcpServers.cartography.command).toBe('npx');
+    const h = planInstall(spec, ctx(), { entry: httpEntry });
+    expect((parseConfig(h.after, 'json') as any).mcpServers.cartography).toEqual({ httpUrl: 'http://127.0.0.1:3737/mcp' });
+  });
+
+  it('lists all stage-2 JSON hosts', () => {
+    const ids = listClients().map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining(['cline', 'roo', 'zed', 'junie', 'gemini']));
+  });
+});
+
 describe('registry', () => {
   it('lists at least the reference client', () => {
     expect(listClients().map((c) => c.id)).toContain('claude-code');
