@@ -1,0 +1,7 @@
+# Smithery deployment descriptor.
+# https://smithery.ai/docs — TypeScript runtime: Smithery builds and hosts the
+# server from the default export in `src/smithery.ts` (createServer + configSchema).
+runtime: typescript
+env:
+  # No secrets required — read-only discovery over an in-memory catalog by default.
+  {}
