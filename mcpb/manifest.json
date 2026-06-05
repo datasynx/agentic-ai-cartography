@@ -1,0 +1,34 @@
+{
+  "manifest_version": "0.3",
+  "name": "agentic-ai-cartography",
+  "display_name": "Cartography",
+  "version": "2.0.0",
+  "description": "MCP-first infrastructure & agentic-AI cartography — read-only discovery of your system landscape exposed as MCP resources, tools and prompts.",
+  "long_description": "Cartography discovers your services, databases, SaaS tools and their dependencies (read-only, deterministic) and exposes the topology over the Model Context Protocol. This bundle launches the published npm server via npx; run a discovery first with `datasynx-cartography discover`.",
+  "author": {
+    "name": "Datasynx AI",
+    "url": "https://github.com/datasynx"
+  },
+  "homepage": "https://github.com/datasynx/agentic-ai-cartography#readme",
+  "documentation": "https://github.com/datasynx/agentic-ai-cartography#readme",
+  "support": "https://github.com/datasynx/agentic-ai-cartography/issues",
+  "license": "MIT",
+  "keywords": ["mcp", "cartography", "infrastructure", "discovery", "agentic-ai"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/launch.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/launch.mjs"]
+    }
+  },
+  "tools": [
+    { "name": "get_summary", "description": "Low-token overview of the whole landscape." },
+    { "name": "query_infrastructure", "description": "Search the topology by name/id/domain." },
+    { "name": "search_topology", "description": "Semantic search over the topology." },
+    { "name": "get_dependencies", "description": "Recursive dependency-graph traversal." },
+    { "name": "list_services", "description": "List discovered services or data stores." },
+    { "name": "get_node", "description": "Fetch a single node with its incident edges." }
+  ],
+  "tools_generated": false
+}

@@ -34,6 +34,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:mcpb": "node scripts/build-mcpb.mjs",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -96,6 +97,7 @@
     "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
     "@arethetypeswrong/cli": "^0.18.2",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",

@@ -293,6 +293,20 @@ describe('Goose (YAML) + OpenHands (TOML) (#31)', () => {
   });
 });
 
+describe('Claude Desktop (#32)', () => {
+  const entry = defaultServerEntry();
+  it('mcpServers in the OS-specific claude_desktop_config.json', () => {
+    const spec = getClient('claude-desktop')!;
+    expect(planInstall(spec, ctx({ os: 'linux' }), { entry }).path).toBe(join(dir, '.config', 'Claude', 'claude_desktop_config.json'));
+    expect(planInstall(spec, ctx({ os: 'mac' }), { entry }).path).toBe(join(dir, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'));
+    const parsed = parseConfig(planInstall(spec, ctx(), { entry }).after, 'json') as any;
+    expect(parsed.mcpServers.cartography.command).toBe('npx');
+  });
+  it('is listed', () => {
+    expect(listClients().map((c) => c.id)).toContain('claude-desktop');
+  });
+});
+
 describe('registry', () => {
   it('lists at least the reference client', () => {
     expect(listClients().map((c) => c.id)).toContain('claude-code');

@@ -79,7 +79,8 @@ file and merges in the server entry **without clobbering** your other servers:
 
 ```bash
 datasynx-cartography list-clients                          # supported hosts
-# claude-code · cursor · vscode · codex · windsurf · cline · roo · zed · junie · gemini · goose · openhands
+# claude-code · cursor · vscode · codex · windsurf · cline · roo
+# zed · junie · gemini · goose · openhands · claude-desktop
 datasynx-cartography install --client claude-code          # global/user config
 datasynx-cartography install --client claude-code --project # project-local (.mcp.json)
 datasynx-cartography install --client claude-code --dry-run # preview the merge diff
@@ -88,8 +89,13 @@ datasynx-cartography install --client claude-code --dry-run # preview the merge 
 Flags: `--global` (default) / `--project` scope, `--dry-run` (no write), `--name <server>`,
 `--http`/`--url <url>` (register the HTTP endpoint), `--db <path>`, `--session <id>`.
 
-> Twelve hosts are supported today (see `list-clients`). Claude Desktop one-click
-> (`.mcpb` bundle) is being added; until then use the copy-paste blocks below.
+> Thirteen hosts are supported today (see `list-clients`).
+
+**Claude Desktop one-click** — build the portable bundle and double-click it
+(Settings → Extensions → Install), or drag it onto the window:
+```bash
+npm run build:mcpb     # → dist/cartography.mcpb (validated against the mcpb v0.3 schema)
+```
 
 ### Connect your client (copy-paste)
 
