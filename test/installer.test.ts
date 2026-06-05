@@ -240,6 +240,59 @@ describe('stage-2 JSON host specs (#30)', () => {
   });
 });
 
+describe('Goose (YAML) + OpenHands (TOML) (#31)', () => {
+  const entry = defaultServerEntry();
+  const httpEntry = defaultServerEntry({ transport: 'http', url: 'http://127.0.0.1:3737/mcp' });
+
+  it('Goose: extensions entry in ~/.config/goose/config.yaml, preserving builtins', () => {
+    const spec = getClient('goose')!;
+    const file = join(dir, '.config', 'goose', 'config.yaml');
+    mkdirSync(join(dir, '.config', 'goose'), { recursive: true });
+    writeFileSync(file, 'extensions:\n  developer:\n    type: builtin\n    enabled: true\n');
+    const g = planInstall(spec, ctx(), { entry });
+    expect(g.path).toBe(file);
+    expect(g.format).toBe('yaml');
+    const parsed = parseConfig(g.after, 'yaml') as any;
+    expect(parsed.extensions.developer.type).toBe('builtin'); // builtin untouched
+    expect(parsed.extensions.cartography.command).toBe('npx');
+    expect(parsed.extensions.cartography.type).toBe('stdio');
+    expect(parsed.extensions.cartography.enabled).toBe(true);
+  });
+
+  it('OpenHands: appends to [mcp].stdio_servers, idempotent, preserving existing', () => {
+    const spec = getClient('openhands')!;
+    const g = planInstall(spec, ctx(), { entry });
+    expect(g.format).toBe('toml');
+    const parsed = parseConfig(g.after, 'toml') as any;
+    expect(Array.isArray(parsed.mcp.stdio_servers)).toBe(true);
+    expect(parsed.mcp.stdio_servers[0].name).toBe('cartography');
+    expect(parsed.mcp.stdio_servers[0].command).toBe('npx');
+
+    // pre-existing array entry is preserved; re-install does not duplicate
+    mkdirSync(join(dir, '.openhands'), { recursive: true });
+    writeFileSync(g.path, '[mcp]\nstdio_servers = [{ name = "fetch", command = "uvx", args = ["mcp-server-fetch"] }]\n');
+    const merged = planInstall(spec, ctx(), { entry });
+    const p2 = parseConfig(merged.after, 'toml') as any;
+    const names = p2.mcp.stdio_servers.map((s: any) => s.name);
+    expect(names).toEqual(expect.arrayContaining(['fetch', 'cartography']));
+    applyInstall(merged);
+    const again = planInstall(spec, ctx(), { entry });
+    expect(again.changed).toBe(false); // idempotent
+  });
+
+  it('OpenHands: http entry goes to shttp_servers', () => {
+    const spec = getClient('openhands')!;
+    const h = planInstall(spec, ctx(), { entry: httpEntry });
+    const parsed = parseConfig(h.after, 'toml') as any;
+    expect(parsed.mcp.shttp_servers[0].url).toBe('http://127.0.0.1:3737/mcp');
+  });
+
+  it('lists goose and openhands', () => {
+    const ids = listClients().map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining(['goose', 'openhands']));
+  });
+});
+
 describe('registry', () => {
   it('lists at least the reference client', () => {
     expect(listClients().map((c) => c.id)).toContain('claude-code');

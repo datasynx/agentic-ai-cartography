@@ -160,8 +160,59 @@ const gemini: ClientSpec = {
   },
 };
 
+// ── Goose (Block) ────────────────────────────────────────────────────────────
+// YAML under `extensions:`. Built-ins (`type: builtin`) are preserved by the merge.
+const goose: ClientSpec = {
+  id: 'goose',
+  label: 'Goose',
+  format: 'yaml',
+  note: 'Verify the extension shape against current Goose docs; built-ins are left untouched.',
+  path: (ctx) => {
+    if (ctx.os === 'win') return join(ctx.env.APPDATA ?? join(ctx.home, 'AppData', 'Roaming'), 'Block', 'goose', 'config', 'config.yaml');
+    return join(ctx.home, '.config', 'goose', 'config.yaml');
+  },
+  apply: (existing, name, entry) => {
+    const inner = entry.url
+      ? { name, type: 'streamable_http', enabled: true, uri: entry.url, ...(entry.env ? { env: entry.env } : {}) }
+      : { name, type: 'stdio', enabled: true, command: entry.command, args: entry.args ?? [], ...(entry.env ? { env: entry.env } : {}) };
+    return deepMerge(existing, { extensions: { [name]: inner } });
+  },
+};
+
+// ── OpenHands (All-Hands-AI) ─────────────────────────────────────────────────
+// `[mcp]` holds arrays (stdio_servers / shttp_servers / sse_servers), not a keyed
+// object — so entries are appended/replaced by identity, not deep-merged.
+function isObj(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+const openhands: ClientSpec = {
+  id: 'openhands',
+  label: 'OpenHands',
+  format: 'toml',
+  note: 'SHTTP is preferred; SSE is legacy. Only api_key is supported (no arbitrary headers).',
+  path: (ctx) => (ctx.scope === 'project' ? join(ctx.cwd, 'config.toml') : join(ctx.home, '.openhands', 'config.toml')),
+  apply: (existing, name, entry) => {
+    const mcp = isObj(existing.mcp) ? { ...existing.mcp } : {};
+    const key = entry.url ? 'shttp_servers' : 'stdio_servers';
+    const arr = Array.isArray(mcp[key]) ? [...(mcp[key] as Record<string, unknown>[])] : [];
+    const item: Record<string, unknown> = entry.url
+      ? { url: entry.url, ...(entry.env ? { env: entry.env } : {}) }
+      : { name, command: entry.command, args: entry.args ?? [], ...(entry.env ? { env: entry.env } : {}) };
+    const matches = (s: Record<string, unknown>) => (entry.url ? s.url === entry.url : s.name === name);
+    const idx = arr.findIndex(matches);
+    if (idx >= 0) arr[idx] = item;
+    else arr.push(item);
+    mcp[key] = arr;
+    return { ...existing, mcp };
+  },
+};
+
 /** All registered clients, in display order. Extended by later milestones. */
-export const CLIENTS: ClientSpec[] = [claudeCode, cursor, vscode, codex, windsurf, cline, roo, zed, junie, gemini];
+export const CLIENTS: ClientSpec[] = [
+  claudeCode, cursor, vscode, codex, windsurf,
+  cline, roo, zed, junie, gemini,
+  goose, openhands,
+];
 
 export function getClient(id: string): ClientSpec | undefined {
   return CLIENTS.find((c) => c.id === id);
