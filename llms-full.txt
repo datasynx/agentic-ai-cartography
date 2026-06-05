@@ -1,0 +1,385 @@
+# @datasynx/agentic-ai-cartography — full documentation
+
+> MCP-first infrastructure & agentic-AI cartography — install once, every AI agent knows your system landscape. Read-only discovery exposed over the Model Context Protocol.
+
+
+---
+
+<!-- source: docs/tutorials/index.md -->
+
+# Tutorial: from zero to an agent that knows your system
+
+A guided, first-run walkthrough. By the end you'll have discovered your local
+landscape and queried it from an AI client.
+
+## 1. Discover (read-only, no LLM required)
+
+```bash
+npx -y --package @datasynx/agentic-ai-cartography datasynx-cartography discover
+```
+
+This scans your machine deterministically — installed apps, listening ports,
+browser bookmarks — and writes a catalog. Nothing leaves your machine.
+
+## 2. Run the MCP server
+
+```bash
+npx -y --package @datasynx/agentic-ai-cartography cartography-mcp
+```
+
+The server speaks the Model Context Protocol over stdio.
+
+## 3. Connect a client
+
+Let the harness write the config for you:
+
+```bash
+datasynx-cartography install --client claude-code
+```
+
+Restart the host, then ask it: *"Read cartography://graph/summary and describe my system."*
+
+Next: the [How-to guides](/how-to/) for specific tasks, or the [Reference](/reference/).
+
+
+---
+
+<!-- source: docs/how-to/install.md -->
+
+# How to install Cartography into a client
+
+The `install` command parses your host's existing config and merges in the
+Cartography MCP server **without clobbering** your other servers.
+
+```bash
+datasynx-cartography list-clients                 # see supported hosts
+datasynx-cartography install --client <id>        # write the config
+datasynx-cartography install --client <id> --dry-run   # preview the merge diff
+```
+
+## Scopes
+
+- `--global` (default) — your user-level config.
+- `--project` — a project-local config (e.g. `.mcp.json`, `.vscode/mcp.json`).
+
+## Options
+
+| Flag | Purpose |
+| --- | --- |
+| `--dry-run` | Print the merge diff; write nothing. |
+| `--name <server>` | Server key to register (default `cartography`). |
+| `--http` / `--url <url>` | Register the Streamable HTTP endpoint instead of stdio. |
+| `--db <path>` | Serve a specific catalog. |
+| `--session <id>` | Serve a specific discovery session. |
+| `--deeplink` | Print a one-click Cursor/VS Code install link instead of writing. |
+
+## One-click deeplinks
+
+```bash
+datasynx-cartography install --client cursor --deeplink
+datasynx-cartography install --client vscode --deeplink
+```
+
+See the full host matrix in the [Reference → Supported clients](/reference/clients).
+
+
+---
+
+<!-- source: docs/adapters.md -->
+
+# Native adapters for non-MCP frameworks
+
+Some agent frameworks don't read a config file — they load MCP tools through their
+own adapter classes. Cartography needs **no special support** for these; point them
+at the standard stdio command and they'll pick up every tool, just like an MCP host.
+
+Standard launch command (used in every snippet below):
+
+```
+npx -y --package @datasynx/agentic-ai-cartography cartography-mcp
+```
+
+> Run a discovery first (`datasynx-cartography discover`) so the catalog has a
+> topology to serve. Cartography's MCP **prompts** and **resources** are available
+> in full MCP hosts; some adapters below load **tools only** (noted inline).
+
+---
+
+## LangGraph / LangChain (Python)
+
+```bash
+pip install langchain-mcp-adapters
+```
+
+```python
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
+client = MultiServerMCPClient({
+    "cartography": {
+        "command": "npx",
+        "args": ["-y", "--package", "@datasynx/agentic-ai-cartography", "cartography-mcp"],
+        "transport": "stdio",
+    },
+    # or a remote Streamable HTTP server:
+    # "cartography": {"url": "http://127.0.0.1:3737/mcp", "transport": "streamable_http"},
+})
+tools = await client.get_tools()  # hand `tools` to create_react_agent / create_agent
+```
+
+`MultiServerMCPClient` is stateless by default (a new session per tool call); use
+`client.session("cartography")` for a stateful session. JS: `@langchain/mcp-adapters`.
+
+## Microsoft AutoGen (Python)
+
+```bash
+pip install "autogen-ext[mcp]"
+```
+
+```python
+from autogen_ext.tools.mcp import McpWorkbench, StdioServerParams
+
+params = StdioServerParams(
+    command="npx",
+    args=["-y", "--package", "@datasynx/agentic-ai-cartography", "cartography-mcp"],
+    read_timeout_seconds=60,
+)
+async with McpWorkbench(params) as mcp:
+    agent = AssistantAgent("assistant", model_client=..., workbench=mcp)
+```
+
+> AutoGen is in maintenance mode; for new projects Microsoft points to the
+> **Microsoft Agent Framework (MAF)**, which speaks MCP + A2A.
+
+## CrewAI (Python)
+
+```bash
+pip install "crewai-tools[mcp]"
+```
+
+```python
+from crewai_tools import MCPServerAdapter
+from mcp import StdioServerParameters
+
+server_params = StdioServerParameters(
+    command="npx",
+    args=["-y", "--package", "@datasynx/agentic-ai-cartography", "cartography-mcp"],
+)
+with MCPServerAdapter(server_params) as tools:
+    agent = Agent(role="SRE", goal="Map the system", backstory="...", tools=tools)
+```
+
+> `MCPServerAdapter` exposes **tools only** (no prompts/resources).
+
+## Pydantic AI (Python)
+
+```bash
+pip install "pydantic-ai-slim[mcp]"
+```
+
+```python
+from pydantic_ai import Agent
+from pydantic_ai.mcp import MCPServerStdio
+
+server = MCPServerStdio("npx", args=["-y", "--package", "@datasynx/agentic-ai-cartography", "cartography-mcp"])
+agent = Agent("openai:gpt-5.2", toolsets=[server])
+```
+
+`load_mcp_servers("config.json")` also reads an `mcpServers` JSON block directly.
+
+## OpenAI Agents SDK (Python)
+
+MCP support is built in:
+
+```python
+from agents import Agent
+from agents.mcp import MCPServerStdio
+
+async with MCPServerStdio(
+    name="Cartography",
+    params={"command": "npx", "args": ["-y", "--package", "@datasynx/agentic-ai-cartography", "cartography-mcp"]},
+) as server:
+    agent = Agent(name="Assistant", instructions="...", mcp_servers=[server])
+```
+
+Options: `cache_tools_list`, `tool_filter`, `max_retry_attempts`, `require_approval`.
+
+## Smolagents (Python)
+
+```bash
+pip install "smolagents[mcp]"
+```
+
+```python
+from smolagents import ToolCollection, CodeAgent
+from mcp import StdioServerParameters
+
+params = StdioServerParameters(
+    command="npx",
+    args=["-y", "--package", "@datasynx/agentic-ai-cartography", "cartography-mcp"],
+)
+with ToolCollection.from_mcp(params, trust_remote_code=True) as tc:
+    agent = CodeAgent(tools=[*tc.tools], model=...)
+```
+
+## Vercel AI SDK (TypeScript)
+
+```ts
+import { experimental_createMCPClient as createMCPClient } from 'ai';
+import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
+
+const mcp = await createMCPClient({
+  transport: new StdioMCPTransport({
+    command: 'npx',
+    args: ['-y', '--package', '@datasynx/agentic-ai-cartography', 'cartography-mcp'],
+  }),
+});
+const tools = await mcp.tools(); // MCP tools → AI SDK tools, any model
+```
+
+> Define your **own** tools with `inputSchema` (renamed from `parameters` in AI SDK
+> **v5** — using `parameters` yields an empty schema / 400 errors). The MCP client
+> is lightweight: **tools only**, no session management or resources.
+
+
+---
+
+<!-- source: docs/reference/mcp.md -->
+
+# MCP tools & resources
+
+The Cartography MCP server exposes read-only **resources**, query **tools** and
+reusable **prompts**.
+
+## Resources
+
+| URI | Description |
+| --- | --- |
+| `cartography://graph/summary` | Low-token aggregate index — read this first. |
+| `cartography://nodes` | Lightweight list of all nodes. |
+| `cartography://nodes/{id}` | Full node record plus incident edges. |
+| `cartography://services` | Service-type nodes. |
+| `cartography://databases` | Data-store nodes. |
+| `cartography://dependencies/{id}` | Transitive downstream dependencies. |
+| `cartography://sessions` | Discovery sessions in the catalog. |
+
+## Tools
+
+<!-- AUTO-GENERATED:tools START — regenerated by `npm run docs:tools` -->
+| Tool | Read-only | Description |
+| --- | --- | --- |
+| `get_summary` | ✅ | Low-token overview of the whole landscape. |
+| `query_infrastructure` | ✅ | Search the topology by name/id/domain. |
+| `search_topology` | ✅ | Semantic search over the topology. |
+| `list_services` | ✅ | List discovered services or data stores. |
+| `get_node` | ✅ | Fetch a single node with its incident edges. |
+| `get_dependencies` | ✅ | Recursive dependency-graph traversal. |
+| `run_discovery` | — | Scan the local system and update the catalog. |
+<!-- AUTO-GENERATED:tools END -->
+
+## Prompts
+
+| Prompt | Description |
+| --- | --- |
+| `audit-attack-surface` | Review externally-reachable services and risky dependencies. |
+| `map-service-dependencies` | Produce a dependency map for a given service. |
+| `onboard-to-system` | Explain the system landscape to a new engineer. |
+
+
+---
+
+<!-- source: docs/reference/cli.md -->
+
+# CLI reference
+
+`datasynx-cartography <command>` (the discovery/management CLI) and
+`cartography-mcp` (the MCP server binary).
+
+| Command | Purpose |
+| --- | --- |
+| `discover` | Scan and map your infrastructure. |
+| `seed` | Manually add known tools/DBs/APIs. |
+| `install --client <id>` | Register the MCP server into a host's config. |
+| `list-clients` | List supported hosts. |
+| `mcp` | Run the MCP server (stdio by default; `--http` for Streamable HTTP). |
+| `export [session]` | Export Mermaid / JSON / YAML / HTML. |
+| `show [session]` | Show session details. |
+| `sessions` | List all sessions. |
+| `overview` | Aggregate overview across sessions. |
+| `bookmarks` | View browser bookmarks. |
+| `doctor` | Check requirements (kubectl, aws, gcloud, az). |
+| `prune` | Remove old sessions. |
+| `docs` | Full in-terminal feature reference. |
+
+## `mcp` flags
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `--http` | off | Use Streamable HTTP instead of stdio. |
+| `--port <n>` | `3737` | HTTP port. |
+| `--host <h>` | `127.0.0.1` | HTTP host. |
+| `--allowed-hosts <list>` | — | Host allowlist (required for non-loopback `--host`). |
+| `--db <path>` | default catalog | Catalog to serve. |
+| `--session <id>` | `latest` | Session to serve. |
+| `--no-semantic` | — | Disable semantic (vector) search. |
+
+
+---
+
+<!-- source: docs/reference/clients.md -->
+
+# Supported clients
+
+The `install` harness writes the correct config for each host. Run
+`datasynx-cartography list-clients` for the live list.
+
+<!-- AUTO-GENERATED:clients START — regenerated by `npm run docs:clients` -->
+| id | Host | Format | Notes |
+| --- | --- | --- | --- |
+| `claude-code` | Claude Code | json | |
+| `cursor` | Cursor | json | |
+| `vscode` | VS Code (Copilot) | json | Uses the `servers` key (not `mcpServers`). |
+| `codex` | Codex CLI | toml | Project scope only loads in "trusted" projects. |
+| `windsurf` | Windsurf | json | |
+| `cline` | Cline | json | |
+| `roo` | Roo Code | json | Project `.roo/mcp.json` takes precedence. |
+| `zed` | Zed | json | Manual servers need `"source": "custom"`. |
+| `junie` | JetBrains / Junie | json | |
+| `gemini` | Gemini CLI | json | |
+| `goose` | Goose | yaml | Built-ins are left untouched. |
+| `openhands` | OpenHands | toml | SHTTP preferred; SSE legacy. |
+| `claude-desktop` | Claude Desktop | json | One-click via the `.mcpb` bundle. |
+<!-- AUTO-GENERATED:clients END -->
+
+
+---
+
+<!-- source: docs/explanation/index.md -->
+
+# Why MCP-first?
+
+Cartography's primary interface is a **Model Context Protocol** server, not a CLI or
+a library. That choice is deliberate.
+
+## One integration surface, every host
+
+The [Model Context Protocol](https://modelcontextprotocol.io) is the common
+denominator across AI hosts and agent frameworks. By exposing discovery as an MCP
+server, Cartography works in Claude Code, Cursor, VS Code, Cline, Windsurf, Zed,
+LangGraph, CrewAI and more — without bespoke integrations for each.
+
+## Read-only by construction
+
+Every tool is annotated `readOnlyHint: true`; the command allowlist rejects anything
+that mutates. The server *describes* your landscape — it never changes it.
+
+## Progressive disclosure
+
+Agents read `cartography://graph/summary` first (a low-token index), then drill into
+specific nodes. This keeps token usage bounded even for large landscapes — important
+where hosts cap tool output or total tool count.
+
+## The CLI and SDK are adapters
+
+The `datasynx-cartography` CLI and the embeddable library are thin layers over the
+same core. The MCP server is the headline; everything else is convenience.
+

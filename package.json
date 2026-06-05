@@ -30,7 +30,9 @@
     "scripts",
     "server.json",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "llms.txt",
+    "llms-full.txt"
   ],
   "scripts": {
     "build": "tsup",
@@ -40,8 +42,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "docs:api": "typedoc",
+    "docs:llms": "node scripts/build-llms.mjs",
     "docs:dev": "vitepress dev docs",
-    "docs:build": "typedoc && vitepress build docs",
+    "docs:build": "npm run docs:llms && typedoc && vitepress build docs",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "release": "semantic-release",

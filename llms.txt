@@ -1,0 +1,26 @@
+# @datasynx/agentic-ai-cartography
+
+> MCP-first infrastructure & agentic-AI cartography — install once, every AI agent knows your system landscape. Read-only discovery exposed over the Model Context Protocol.
+
+Cartography discovers your services, databases, SaaS tools and dependencies
+(read-only, deterministic) and exposes the topology over the Model Context
+Protocol. Install once and any MCP host or agent framework can query it.
+
+## Tutorials
+
+- [Get started](https://datasynx.github.io/agentic-ai-cartography/tutorials/): From zero to an agent that knows your system.
+
+## How-to guides
+
+- [Install into a client](https://datasynx.github.io/agentic-ai-cartography/how-to/install): Write the MCP config for any supported host.
+- [Non-MCP frameworks](https://datasynx.github.io/agentic-ai-cartography/adapters): LangGraph, CrewAI, Vercel AI SDK and more.
+
+## Reference
+
+- [MCP tools & resources](https://datasynx.github.io/agentic-ai-cartography/reference/mcp): Resources, tools and prompts the server exposes.
+- [CLI](https://datasynx.github.io/agentic-ai-cartography/reference/cli): datasynx-cartography commands and flags.
+- [Supported clients](https://datasynx.github.io/agentic-ai-cartography/reference/clients): The host install matrix.
+
+## Explanation
+
+- [Why MCP-first](https://datasynx.github.io/agentic-ai-cartography/explanation/): The design rationale.
