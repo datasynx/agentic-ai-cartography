@@ -207,11 +207,27 @@ const openhands: ClientSpec = {
   },
 };
 
+// ── Claude Desktop ───────────────────────────────────────────────────────────
+// JSON `mcpServers`. (One-click installs are also available via the .mcpb bundle.)
+const claudeDesktop: ClientSpec = {
+  id: 'claude-desktop',
+  label: 'Claude Desktop',
+  format: 'json',
+  note: 'One-click install is also available via the .mcpb bundle (npm run build:mcpb).',
+  path: (ctx) => {
+    if (ctx.scope === 'project') return undefined;
+    if (ctx.os === 'win') return join(ctx.env.APPDATA ?? join(ctx.home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json');
+    if (ctx.os === 'mac') return join(ctx.home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+    return join(ctx.home, '.config', 'Claude', 'claude_desktop_config.json');
+  },
+  apply: (existing, name, entry) => deepMerge(existing, { mcpServers: { [name]: mcpServerObject(entry) } }),
+};
+
 /** All registered clients, in display order. Extended by later milestones. */
 export const CLIENTS: ClientSpec[] = [
   claudeCode, cursor, vscode, codex, windsurf,
   cline, roo, zed, junie, gemini,
-  goose, openhands,
+  goose, openhands, claudeDesktop,
 ];
 
 export function getClient(id: string): ClientSpec | undefined {
