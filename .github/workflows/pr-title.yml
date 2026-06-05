@@ -1,0 +1,34 @@
+name: PR Title
+
+# semantic-release derives versions from Conventional Commits. This repo merges
+# PRs via squash, so the PR title becomes the commit on main — validate it here
+# so every merge produces a release-analyzable commit (feat → minor, fix → patch,
+# feat!/BREAKING CHANGE → major).
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  lint-title:
+    name: Validate PR title (Conventional Commits)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            test
+            build
+            ci
+            chore
+            revert
