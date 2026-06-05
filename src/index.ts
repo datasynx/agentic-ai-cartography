@@ -11,6 +11,17 @@ export type { LocalDiscoveryOptions } from './discovery/local.js';
 // Semantic search
 export { createSemanticSearch, createLocalEmbedder, createHashEmbedder, VectorStore } from './semantic/search.js';
 export type { EmbeddingProvider } from './semantic/search.js';
+// Install harness — register the MCP server into any host's native config
+export {
+  planInstall, applyInstall, renderDiff, defaultContext, currentOs,
+  parseConfig, serializeConfig, deepMerge, mcpServerObject,
+  defaultServerEntry, DEFAULT_SERVER_NAME, PACKAGE_NAME, MCP_BIN,
+  CLIENTS, getClient, listClients,
+} from './installer/index.js';
+export type {
+  ClientSpec, ConfigFormat, OsKind, ResolveContext, Scope, ServerEntry,
+  InstallPlan, PlanOptions, EntryOptions,
+} from './installer/index.js';
 export { createCartographyTools, stripSensitive, createScanRunner } from './tools.js';
 export { safetyHook } from './safety.js';
 export { checkReadOnly, isReadOnlyCommand, assertReadOnly, splitSegments } from './allowlist.js';

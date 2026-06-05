@@ -72,6 +72,25 @@ datasynx-cartography discover          # or the richer Claude-driven loop
 npx -p @datasynx/agentic-ai-cartography cartography-mcp
 ```
 
+### Auto-install into your client
+
+Let the harness write the correct config for your host — it parses the existing
+file and merges in the server entry **without clobbering** your other servers:
+
+```bash
+datasynx-cartography list-clients                          # supported hosts
+datasynx-cartography install --client claude-code          # global/user config
+datasynx-cartography install --client claude-code --project # project-local (.mcp.json)
+datasynx-cartography install --client claude-code --dry-run # preview the merge diff
+```
+
+Flags: `--global` (default) / `--project` scope, `--dry-run` (no write), `--name <server>`,
+`--http`/`--url <url>` (register the HTTP endpoint), `--db <path>`, `--session <id>`.
+
+> More hosts (Cursor, VS Code, Codex, Windsurf, Cline, Roo, Zed, JetBrains, Goose,
+> Gemini CLI, OpenHands, Claude Desktop) are being added to `list-clients`. Until then,
+> use the copy-paste blocks below.
+
 ### Connect your client (copy-paste)
 
 **Claude Code**

@@ -14,6 +14,7 @@ import { logInfo, logError, logWarn, setVerbose } from './logger.js';
 import { cleanupTempFiles } from './bookmarks.js';
 import { stripSensitive } from './tools.js';
 import { startMcp } from './mcp/start.js';
+import { getClient, listClients, planInstall, applyInstall, renderDiff, defaultContext, defaultServerEntry, DEFAULT_SERVER_NAME } from './installer/index.js';
 
 
 // ── Shared color helpers ─────────────────────────────────────────────────────
@@ -1138,6 +1139,68 @@ ${infraSummary.substring(0, 12000)}`;
     });
 
   // ── MCP server ────────────────────────────────────────────────────────────
+
+  program
+    .command('list-clients')
+    .description('List the AI hosts the installer can configure')
+    .action(() => {
+      o('\n' + bold('  Supported MCP hosts:') + '\n\n');
+      for (const c of listClients()) {
+        o(`  ${green(c.id.padEnd(16))} ${bold(c.label.padEnd(20))} ${dim(c.format)}\n`);
+        if (c.note) o(`  ${' '.repeat(16)} ${dim('↳ ' + c.note)}\n`);
+      }
+      o('\n' + dim(`  Install:  ${CMD} install --client <id>  [--project] [--dry-run]`) + '\n\n');
+    });
+
+  program
+    .command('install')
+    .description('Register the Cartography MCP server into an AI host\'s config (parse-merge, never clobber)')
+    .requiredOption('--client <id>', 'Target host id (see `list-clients`)')
+    .option('--global', 'Write the global/user config (default)', false)
+    .option('--project', 'Write the project-local config instead', false)
+    .option('--dry-run', 'Show the merge diff without writing', false)
+    .option('--name <name>', 'Server name to register', DEFAULT_SERVER_NAME)
+    .option('--http', 'Register the Streamable HTTP endpoint instead of stdio', false)
+    .option('--url <url>', 'HTTP endpoint (with --http)')
+    .option('--db <path>', 'Pass --db <path> to the server')
+    .option('--session <id>', 'Pass --session <id> to the server')
+    .action((opts) => {
+      const spec = getClient(opts.client);
+      if (!spec) {
+        logError(`Unknown client "${opts.client}". Run \`${CMD} list-clients\` to see options.`);
+        process.exitCode = 1;
+        return;
+      }
+      const scope = opts.project ? 'project' : 'global';
+      const packageArgs: string[] = [];
+      if (opts.db) packageArgs.push('--db', opts.db);
+      if (opts.session) packageArgs.push('--session', opts.session);
+      const entry = defaultServerEntry({
+        transport: opts.http ? 'http' : 'stdio',
+        ...(opts.url ? { url: opts.url } : {}),
+        ...(packageArgs.length ? { packageArgs } : {}),
+      });
+      try {
+        const plan = planInstall(spec, defaultContext(scope), { serverName: opts.name, entry });
+        o('\n' + bold(`  ${plan.label}`) + dim(` (${plan.format}, ${scope})`) + '\n');
+        o(dim(`  ${plan.path}`) + '\n');
+        if (plan.note) o(yellow(`  ⚠ ${plan.note}`) + '\n');
+        o('\n' + renderDiff(plan.before, plan.after) + '\n\n');
+        if (!plan.changed) {
+          o(green('  ✓ Already up to date — nothing to write.') + '\n\n');
+          return;
+        }
+        if (opts.dryRun) {
+          o(yellow('  Dry run — no file written.') + '\n\n');
+          return;
+        }
+        applyInstall(plan);
+        o(green(`  ✓ Wrote ${plan.fileExists ? 'updated' : 'new'} config.`) + ' ' + dim('Restart the host to pick it up.') + '\n\n');
+      } catch (err) {
+        logError(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+    });
 
   program
     .command('mcp')
