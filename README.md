@@ -42,7 +42,8 @@
 [Architecture](#architecture) ·
 [Safety](#safety) ·
 [Public API](#public-api) ·
-[Releasing](#releasing)
+[Releasing](#releasing) ·
+[Star History](#star-history)
 
 ---
 
@@ -445,6 +446,22 @@ ESM/CJS consumer smoke tests)**.
 | `NPM_TOKEN` | **yes** | npm *Automation*/granular token with publish rights for the `@datasynx` scope. Provenance signing itself needs no secret (OIDC). |
 | `RELEASE_TOKEN` | optional | PAT (classic: `repo` + `workflow`) or deploy key. Unlocks full semantic-release (auto-versioning, changelog, tags, GitHub Releases). Without it, the idempotent npm publish is used. |
 | `CODECOV_TOKEN` | optional | Upload coverage to Codecov (non-blocking if absent). |
+
+---
+
+## Star History
+
+<div align="center">
+
+<a href="https://star-history.com/#datasynx/agentic-ai-cartography&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=datasynx/agentic-ai-cartography&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=datasynx/agentic-ai-cartography&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=datasynx/agentic-ai-cartography&type=Date" width="640" />
+  </picture>
+</a>
+
+</div>
 
 ---
 
