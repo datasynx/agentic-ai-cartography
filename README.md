@@ -95,7 +95,9 @@ datasynx-cartography install --client cursor --deeplink   # cursor://… one-cli
 datasynx-cartography install --client vscode --deeplink   # vscode://… + `code --add-mcp`
 ```
 
-> Thirteen hosts are supported today (see `list-clients`).
+> Thirteen hosts are supported today (see `list-clients`). The server is also
+> deployable on [Smithery](https://smithery.ai) (TypeScript runtime, `smithery.yaml`)
+> and published to the official MCP Registry (`server.json`).
 
 **Claude Desktop one-click** — build the portable bundle and double-click it
 (Settings → Extensions → Install), or drag it onto the window:
