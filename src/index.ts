@@ -17,6 +17,7 @@ export {
   parseConfig, serializeConfig, deepMerge, mcpServerObject,
   defaultServerEntry, DEFAULT_SERVER_NAME, PACKAGE_NAME, MCP_BIN,
   CLIENTS, getClient, listClients,
+  cursorDeeplink, vscodeDeeplink, codeAddMcpCommand,
 } from './installer/index.js';
 export type {
   ClientSpec, ConfigFormat, OsKind, ResolveContext, Scope, ServerEntry,

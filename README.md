@@ -87,7 +87,13 @@ datasynx-cartography install --client claude-code --dry-run # preview the merge 
 ```
 
 Flags: `--global` (default) / `--project` scope, `--dry-run` (no write), `--name <server>`,
-`--http`/`--url <url>` (register the HTTP endpoint), `--db <path>`, `--session <id>`.
+`--http`/`--url <url>` (register the HTTP endpoint), `--db <path>`, `--session <id>`,
+`--deeplink` (print a one-click Cursor/VS Code install link instead of writing).
+
+```bash
+datasynx-cartography install --client cursor --deeplink   # cursor://… one-click link
+datasynx-cartography install --client vscode --deeplink   # vscode://… + `code --add-mcp`
+```
 
 > Thirteen hosts are supported today (see `list-clients`).
 
