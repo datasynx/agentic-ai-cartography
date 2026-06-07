@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Datasynx Cartography — Documentation</title>
   <meta name="description" content="MCP-first infrastructure & agentic-AI cartography. Read-only discovery of your system landscape (services, databases, SaaS tools, dependencies) exposed over the Model Context Protocol. Install once, every AI agent knows your stack." />
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <meta property="og:title" content="Datasynx Cartography — Documentation" />
+  <meta property="og:description" content="MCP-first infrastructure & agentic-AI cartography. Install once, every AI agent knows your stack." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://datasynx.github.io/agentic-ai-cartography/" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/datasynx/agentic-ai-cartography/main/docs/assets/datasynx-logo.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/datasynx/agentic-ai-cartography/main/docs/assets/datasynx-logo.png" />
   <style>
     :root {
       --bg: #0d1117;
@@ -59,6 +68,7 @@
       z-index: 10;
     }
     .nav-logo { padding: 0 20px 16px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+    .nav-logo .brand-logo { display: block; width: 170px; max-width: 100%; height: auto; margin-bottom: 10px; }
     .nav-logo h1 { font-size: 14px; font-weight: 700; padding-top: 0; margin-bottom: 2px; }
     .nav-logo span { font-size: 12px; color: var(--muted); }
     .nav-ext { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
@@ -98,6 +108,7 @@
     .badge-red { background: rgba(248, 81, 73, .15); color: var(--red); border: 1px solid rgba(248, 81, 73, .3); }
     .badge-purple { background: rgba(188, 140, 255, .15); color: var(--purple); border: 1px solid rgba(188, 140, 255, .3); }
 
+    .hero-logo { display: block; width: 280px; max-width: 70%; height: auto; margin: 8px 0 20px; }
     .hero-tagline { font-size: 17px; color: var(--muted); margin: 6px 0 18px; }
 
     details { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 10px 0; }
@@ -125,7 +136,10 @@
   <div class="layout">
     <nav>
       <div class="nav-logo">
-        <h1>🗺️ Datasynx Cartography</h1>
+        <a href="https://github.com/datasynx/agentic-ai-cartography">
+          <img class="brand-logo" src="assets/datasynx-logo.png" alt="Datasynx" />
+        </a>
+        <h1>Cartography</h1>
         <span>cartography · MCP-first</span>
         <div class="nav-ext">
           <a href="https://www.npmjs.com/package/@datasynx/agentic-ai-cartography">npm</a>
@@ -158,6 +172,7 @@
 
     <main>
       <section id="overview">
+        <img class="hero-logo" src="assets/datasynx-logo.png" alt="Datasynx" />
         <h1>Datasynx Cartography</h1>
         <p class="hero-tagline">Install once — every AI agent knows your system landscape.</p>
         <p>
@@ -424,6 +439,11 @@ cartography-mcp --http --host 0.0.0.0 --port 3737 --allowed-hosts cartography.in
       </section>
 
       <footer>
+        <p>
+          <a href="https://github.com/datasynx/agentic-ai-cartography">
+            <img src="assets/datasynx-mark.png" alt="Datasynx" width="44" style="vertical-align: middle; margin-bottom: 8px;" />
+          </a>
+        </p>
         <p>
           <a href="https://www.npmjs.com/package/@datasynx/agentic-ai-cartography">npm</a> ·
           <a href="https://github.com/datasynx/agentic-ai-cartography">GitHub</a> ·

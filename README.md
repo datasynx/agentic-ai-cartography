@@ -1,6 +1,10 @@
 <div align="center">
 
-# 🗺️ Datasynx Cartography
+<a href="https://github.com/datasynx/agentic-ai-cartography">
+  <img src="https://raw.githubusercontent.com/datasynx/agentic-ai-cartography/main/docs/assets/datasynx-logo.png" alt="Datasynx" width="340" />
+</a>
+
+# Datasynx Cartography
 
 **AI-powered Infrastructure Discovery & Agentic AI Cartography**
 
@@ -468,6 +472,12 @@ ESM/CJS consumer smoke tests)**.
 ## Built by
 
 <div align="center">
+
+<a href="https://www.linkedin.com/company/datasynx-ai/">
+  <img src="https://raw.githubusercontent.com/datasynx/agentic-ai-cartography/main/docs/assets/datasynx-mark.png" alt="Datasynx" width="72" />
+</a>
+
+<br/>
 
 [![Datasynx AI on LinkedIn](https://img.shields.io/badge/Datasynx_AI-Follow_on_LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/datasynx-ai/)
 
