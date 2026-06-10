@@ -104,6 +104,13 @@ datasynx-cartography install --client vscode --deeplink   # vscode://… + `code
 > Thirteen hosts are supported today (see `list-clients`). The server is also
 > deployable on [Smithery](https://smithery.ai) (TypeScript runtime, `smithery.yaml`)
 > and published to the official MCP Registry (`server.json`).
+>
+> **Smithery scope:** the hosted runtime needs no secrets (`smithery.yaml` declares
+> `env: {}`) because it serves a read-only catalog from an in-memory or supplied
+> SQLite database. The cloud scanners (`scan_aws_resources`, `scan_gcp_resources`,
+> `scan_azure_resources`, `scan_k8s_resources`) require the respective CLI and its
+> credentials on the host, so they are intended for local/self-hosted runs, not the
+> managed Smithery instance.
 
 **Claude Desktop one-click** — build the portable bundle and double-click it
 (Settings → Extensions → Install), or drag it onto the window:
@@ -141,13 +148,18 @@ claude mcp add cartography -- npx -p @datasynx/agentic-ai-cartography cartograph
 
 **Remote / team use** — Streamable HTTP (localhost-bound, DNS-rebind protected):
 ```bash
-cartography-mcp --http --port 3737      # → http://127.0.0.1:3737/mcp
+cartography-mcp --http --port 3737      # → http://127.0.0.1:3737/mcp (loopback, no auth)
 
-# Exposing beyond loopback requires an explicit Host allowlist (CVE-2025-66414):
-cartography-mcp --http --host 0.0.0.0 --port 3737 --allowed-hosts cartography.internal:3737
+# Exposing beyond loopback requires BOTH an explicit Host allowlist (CVE-2025-66414)
+# AND a bearer token — clients must send `Authorization: Bearer <token>`:
+export CARTOGRAPHY_HTTP_TOKEN=$(openssl rand -hex 32)
+cartography-mcp --http --host 0.0.0.0 --port 3737 \
+  --allowed-hosts cartography.internal:3737 --token "$CARTOGRAPHY_HTTP_TOKEN"
 ```
-> Binding a non-loopback `--host` **without** `--allowed-hosts` is refused on purpose — it would
-> leave the server open to DNS-rebinding attacks. Put it behind TLS/a reverse proxy for real deployments.
+> Binding a non-loopback `--host` **without** `--allowed-hosts` (DNS-rebinding) **or without
+> `--token`** (`CARTOGRAPHY_HTTP_TOKEN`) is refused on purpose — it would leave the scanning
+> tools open to anyone who can reach the host. Put it behind TLS / a reverse proxy for real
+> deployments. The same flags work on `datasynx-cartography mcp` and the Smithery deployment.
 
 **Vercel AI SDK** (provider-agnostic):
 ```ts

@@ -14,6 +14,7 @@ Build: tsup | Test: vitest | Dev: tsx
 
 Named exports, 2-Space, no `any`, ISO 8601 UTC, IDs: "{type}:{id}"
 Terminal to stderr, process.exitCode instead of exit(), .js Extensions
+Exception: `src/smithery.ts` has one default export, required by Smithery's TypeScript runtime (re-exported from a named `createServer`).
 
 ## Commands
 
