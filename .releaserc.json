@@ -10,7 +10,15 @@
       }
     ],
     "@semantic-release/npm",
-    "@semantic-release/github",
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          { "path": "dist/cartography.mcpb", "label": "Claude Desktop bundle (.mcpb)" },
+          { "path": "sbom-cyclonedx.json", "label": "SBOM (CycloneDX)" }
+        ]
+      }
+    ],
     [
       "@semantic-release/git",
       {

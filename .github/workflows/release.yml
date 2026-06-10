@@ -61,6 +61,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Build Claude Desktop bundle (.mcpb)
+        run: npm run build:mcpb
+
       - name: Generate SBOM (CycloneDX)
         run: npm sbom --sbom-format cyclonedx --omit dev > sbom-cyclonedx.json || true
 
@@ -70,6 +73,13 @@ jobs:
           name: sbom
           path: sbom-cyclonedx.json
           if-no-files-found: ignore
+
+      - name: Upload .mcpb build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpb
+          path: dist/cartography.mcpb
+          if-no-files-found: warn
 
       # ── Mode A: full semantic-release (RELEASE_TOKEN present) ──────────────
       - name: Bootstrap baseline tag (one-time adoption)
@@ -111,6 +121,7 @@ jobs:
           # Actions token (workflow-file scope); the npm publish above already
           # succeeded, so never fail the job on this.
           gh release create "v$VERSION" --title "v$VERSION" --generate-notes \
+            dist/cartography.mcpb sbom-cyclonedx.json \
             || echo "::warning::npm publish succeeded; GitHub Release/tag skipped (needs a workflow-scoped RELEASE_TOKEN)."
 
       - name: No NPM_TOKEN
