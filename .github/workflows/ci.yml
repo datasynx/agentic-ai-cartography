@@ -105,6 +105,20 @@ jobs:
         run: node test/e2e/consumer-cjs.cjs
       - name: Dry-run pack
         run: npm pack --dry-run
+      - name: Build Claude Desktop bundle (.mcpb)
+        # Catches breakage in the mcpb manifest/bundler on every PR. The asset is
+        # attached to releases by release.yml, not shipped in the npm tarball.
+        run: npm run build:mcpb
+      - name: Validate server.json (version parity + JSON)
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          SERVER_VERSION=$(node -p "require('./server.json').version")
+          if [ "$PKG_VERSION" != "$SERVER_VERSION" ]; then
+            echo "::error::server.json version ($SERVER_VERSION) != package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+          node -e "JSON.parse(require('fs').readFileSync('server.json','utf8'))"
+          echo "server.json valid JSON; version parity OK ($PKG_VERSION)"
       - name: Generate SBOM (CycloneDX)
         run: npm sbom --sbom-format cyclonedx --omit dev > sbom-cyclonedx.json || true
       - name: Upload Build Artifact

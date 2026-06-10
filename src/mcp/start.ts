@@ -24,10 +24,39 @@ export interface StartMcpOptions {
   host?: string;
   /** Trusted Host headers when binding a non-loopback host (DNS-rebinding allowlist). */
   allowedHosts?: string[];
+  /** Bearer token required on HTTP requests. Mandatory for a non-loopback bind. */
+  token?: string;
   /** Enable semantic (vector) search. Default true; degrades to lexical if unavailable. */
   semantic?: boolean;
   /** Logger (stderr). */
   log?: (msg: string) => void;
+}
+
+export interface ParsedMcpArgs extends StartMcpOptions {
+  /** `--help`/`-h` was passed; the caller should print usage and exit 0. */
+  help?: boolean;
+}
+
+/**
+ * Parse the `cartography-mcp` argv into StartMcpOptions. Kept here (not in the
+ * binary) so it can be unit-tested without triggering the binary's side effects.
+ */
+export function parseMcpArgs(argv: string[]): ParsedMcpArgs {
+  const opts: ParsedMcpArgs = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--http') opts.transport = 'http';
+    else if (a === '--stdio') opts.transport = 'stdio';
+    else if (a === '--no-semantic') opts.semantic = false;
+    else if (a === '--port') opts.port = Number(argv[++i]);
+    else if (a === '--host') opts.host = argv[++i];
+    else if (a === '--allowed-hosts') opts.allowedHosts = (argv[++i] ?? '').split(',').map((h) => h.trim()).filter(Boolean);
+    else if (a === '--token') opts.token = argv[++i];
+    else if (a === '--db') opts.dbPath = argv[++i];
+    else if (a === '--session') opts.session = argv[++i];
+    else if (a === '--help' || a === '-h') opts.help = true;
+  }
+  return opts;
 }
 
 export async function startMcp(opts: StartMcpOptions = {}): Promise<void> {
@@ -46,8 +75,14 @@ export async function startMcp(opts: StartMcpOptions = {}): Promise<void> {
   if (opts.transport === 'http') {
     const port = opts.port ?? 3737;
     const host = opts.host ?? '127.0.0.1';
-    await runHttp(factory, { port, host, ...(opts.allowedHosts ? { allowedHosts: opts.allowedHosts } : {}) });
-    log(`Cartography MCP server (Streamable HTTP) on http://${host}:${port}/mcp`);
+    const token = opts.token ?? process.env['CARTOGRAPHY_HTTP_TOKEN'];
+    await runHttp(factory, {
+      port,
+      host,
+      ...(opts.allowedHosts ? { allowedHosts: opts.allowedHosts } : {}),
+      ...(token ? { token } : {}),
+    });
+    log(`Cartography MCP server (Streamable HTTP) on http://${host}:${port}/mcp${token ? ' (auth: bearer token required)' : ''}`);
   } else {
     log('Cartography MCP server (stdio) ready');
     await runStdio(factory());

@@ -8,6 +8,15 @@ import type {
   NodeRow, EdgeRow, SessionRow, Connection,
 } from './types.js';
 
+/** Parse a JSON column, falling back to `fallback` if the stored value is corrupt. */
+function safeJsonParse<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 // ── Row validation schemas ──────────────────────────────────────────────────
 
 const SessionRowSchema = z.object({
@@ -421,8 +430,8 @@ export class CartographyDB {
       discoveredAt: v.discovered_at,
       depth: v.depth,
       confidence: v.confidence,
-      metadata: JSON.parse(v.metadata) as Record<string, unknown>,
-      tags: JSON.parse(v.tags) as string[],
+      metadata: safeJsonParse<Record<string, unknown>>(v.metadata, {}),
+      tags: safeJsonParse<string[]>(v.tags, []),
       pathId: v.path_id ?? undefined,
       domain: v.domain ?? undefined,
       subDomain: v.sub_domain ?? undefined,

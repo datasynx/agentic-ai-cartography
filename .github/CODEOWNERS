@@ -1,0 +1,8 @@
+# Default owners for everything in the repo.
+* @datasynx
+
+# Security-sensitive areas warrant extra scrutiny.
+/src/allowlist.ts   @datasynx
+/src/tools.ts       @datasynx
+/src/mcp/           @datasynx
+/.github/           @datasynx

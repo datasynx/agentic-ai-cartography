@@ -305,7 +305,9 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
         let sid = resolveSession();
         if (!sid) sid = db.createSession('discover', defaultConfig());
         const result = await discovery(db, sid, { hint: args.hint });
-        server.server.sendResourceUpdated({ uri: 'cartography://graph/summary' }).catch(() => {});
+        server.server.sendResourceUpdated({ uri: 'cartography://graph/summary' }).catch((err: unknown) => {
+          process.stderr.write(`[cartography-mcp] resource update notification failed: ${err instanceof Error ? err.message : String(err)}\n`);
+        });
         server.server.sendResourceListChanged?.();
         return json({ session: sid, ...result });
       },
