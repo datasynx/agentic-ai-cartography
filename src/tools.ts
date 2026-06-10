@@ -65,6 +65,51 @@ export function stripSensitive(target: string): string {
   }
 }
 
+// ── Argument hardening for shell-backed scan tools ───────────────────────────
+
+/**
+ * Strict patterns for the cloud/k8s scan parameters that get spliced into a
+ * shell command. `run()` re-checks the final command against the read-only
+ * allowlist, but values are validated here first so an injection payload never
+ * reaches the shell — not even a read-only one (e.g. `; cat ~/.ssh/id_rsa`)
+ * that the allowlist would otherwise permit and which could disclose files.
+ */
+export const SCAN_ARG_PATTERNS = {
+  'k8s-namespace': /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/,
+  'aws-region': /^[A-Za-z0-9-]+$/,
+  'aws-profile': /^[A-Za-z0-9_.-]+$/,
+  'gcp-project': /^[a-z0-9][a-z0-9.-]*(:[a-z0-9][a-z0-9-]*)?$/,
+  'azure-subscription': /^[0-9a-fA-F-]+$/,
+  'azure-resource-group': /^[A-Za-z0-9_.()-]+$/,
+} as const;
+
+export type ScanArgKind = keyof typeof SCAN_ARG_PATTERNS;
+
+/** Throw if `value` fails the strict pattern for `kind`; otherwise return it. */
+export function assertSafeScanArg(kind: ScanArgKind, value: string): string {
+  if (!SCAN_ARG_PATTERNS[kind].test(value)) {
+    throw new Error(`Invalid ${kind} "${value}": contains characters that are not allowed`);
+  }
+  return value;
+}
+
+/** Redact `user:password@` credentials embedded in any URL/DSN-like string. */
+export function redactSecrets(value: string): string {
+  return value.replace(/([a-z][a-z0-9+.-]*:\/\/[^:@/\s]+):[^@/\s]+@/gi, '$1:***@');
+}
+
+/** Recursively redact secrets from arbitrary metadata before persistence. */
+export function redactValue(value: unknown): unknown {
+  if (typeof value === 'string') return redactSecrets(value);
+  if (Array.isArray(value)) return value.map(redactValue);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = redactValue(v);
+    return out;
+  }
+  return value;
+}
+
 export async function createCartographyTools(
   db: CartographyDB,
   sessionId: string,
@@ -92,7 +137,7 @@ export async function createCartographyTools(
         name: args['name'] as string,
         discoveredVia: args['discoveredVia'] as string,
         confidence: args['confidence'] as number,
-        metadata: (args['metadata'] as Record<string, unknown>) ?? {},
+        metadata: redactValue((args['metadata'] as Record<string, unknown>) ?? {}) as Record<string, unknown>,
         tags: (args['tags'] as string[]) ?? [],
         domain: args['domain'] as string | undefined,
         subDomain: args['subDomain'] as string | undefined,
@@ -113,7 +158,7 @@ export async function createCartographyTools(
         sourceId: args['sourceId'] as string,
         targetId: args['targetId'] as string,
         relationship: args['relationship'] as typeof EDGE_RELATIONSHIPS[number],
-        evidence: args['evidence'] as string,
+        evidence: redactSecrets(args['evidence'] as string),
         confidence: args['confidence'] as number,
       });
       return { content: [{ type: 'text', text: `✓ ${args['sourceId']}→${args['targetId']}` }] };
@@ -291,9 +336,10 @@ export async function createCartographyTools(
     }),
 
     tool('scan_k8s_resources', 'Scan Kubernetes cluster via kubectl — 100% readonly (get, describe)', {
-      namespace: z.string().optional().describe('Filter by namespace — empty = all namespaces'),
+      namespace: z.string().regex(SCAN_ARG_PATTERNS['k8s-namespace'], 'invalid Kubernetes namespace').optional().describe('Filter by namespace — empty = all namespaces'),
     }, async (args) => {
       const ns = args['namespace'] as string | undefined;
+      if (ns) assertSafeScanArg('k8s-namespace', ns);
       const nsFlag = ns ? `-n ${ns}` : '--all-namespaces';
       const runK = createScanRunner(run, { timeout: 15_000, threshold: 3 });
       const sections: [string, string][] = IS_WIN
@@ -324,11 +370,13 @@ export async function createCartographyTools(
     }),
 
     tool('scan_aws_resources', 'Scan AWS infrastructure via AWS CLI — 100% readonly (describe, list)', {
-      region: z.string().optional().describe('AWS Region — default: AWS_DEFAULT_REGION or profile'),
-      profile: z.string().optional().describe('AWS CLI profile'),
+      region: z.string().regex(SCAN_ARG_PATTERNS['aws-region'], 'invalid AWS region').optional().describe('AWS Region — default: AWS_DEFAULT_REGION or profile'),
+      profile: z.string().regex(SCAN_ARG_PATTERNS['aws-profile'], 'invalid AWS profile').optional().describe('AWS CLI profile'),
     }, async (args) => {
       const region = args['region'] as string | undefined;
       const profile = args['profile'] as string | undefined;
+      if (region) assertSafeScanArg('aws-region', region);
+      if (profile) assertSafeScanArg('aws-profile', profile);
       const env: NodeJS.ProcessEnv = { ...process.env };
       if (region) env['AWS_DEFAULT_REGION'] = region;
       const pf = profile ? `--profile ${profile}` : '';
@@ -349,9 +397,10 @@ export async function createCartographyTools(
     }),
 
     tool('scan_gcp_resources', 'Scan Google Cloud Platform via gcloud CLI — 100% readonly (list, describe)', {
-      project: z.string().optional().describe('GCP Project ID — default: current gcloud project'),
+      project: z.string().regex(SCAN_ARG_PATTERNS['gcp-project'], 'invalid GCP project id').optional().describe('GCP Project ID — default: current gcloud project'),
     }, async (args) => {
       const project = args['project'] as string | undefined;
+      if (project) assertSafeScanArg('gcp-project', project);
       const pf = project ? `--project ${project}` : '';
       const runGcp = createScanRunner(run, { timeout: 20_000, threshold: 3 });
       // gcloud CLI is cross-platform
@@ -371,11 +420,13 @@ export async function createCartographyTools(
     }),
 
     tool('scan_azure_resources', 'Scan Azure infrastructure via az CLI — 100% readonly (list, show)', {
-      subscription: z.string().optional().describe('Azure Subscription ID'),
-      resourceGroup: z.string().optional().describe('Filter by resource group'),
+      subscription: z.string().regex(SCAN_ARG_PATTERNS['azure-subscription'], 'invalid Azure subscription id').optional().describe('Azure Subscription ID'),
+      resourceGroup: z.string().regex(SCAN_ARG_PATTERNS['azure-resource-group'], 'invalid Azure resource group').optional().describe('Filter by resource group'),
     }, async (args) => {
       const sub = args['subscription'] as string | undefined;
       const rg = args['resourceGroup'] as string | undefined;
+      if (sub) assertSafeScanArg('azure-subscription', sub);
+      if (rg) assertSafeScanArg('azure-resource-group', rg);
       const sf = sub ? `--subscription ${sub}` : '';
       const rf = rg ? `--resource-group ${rg}` : '';
       const runAz = createScanRunner(run, { timeout: 20_000, threshold: 3 });

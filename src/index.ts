@@ -23,7 +23,8 @@ export type {
   ClientSpec, ConfigFormat, OsKind, ResolveContext, Scope, ServerEntry,
   InstallPlan, PlanOptions, EntryOptions,
 } from './installer/index.js';
-export { createCartographyTools, stripSensitive, createScanRunner } from './tools.js';
+export { createCartographyTools, stripSensitive, createScanRunner, assertSafeScanArg, redactSecrets, redactValue, SCAN_ARG_PATTERNS } from './tools.js';
+export type { ScanArgKind } from './tools.js';
 export { safetyHook } from './safety.js';
 export { checkReadOnly, isReadOnlyCommand, assertReadOnly, splitSegments } from './allowlist.js';
 export type { PolicyResult, ShellKind } from './allowlist.js';

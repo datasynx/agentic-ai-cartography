@@ -31,16 +31,20 @@ main();
 function main(): void {
   // ── Graceful shutdown ──
   let activeDb: CartographyDB | null = null;
-  const shutdown = (signal: string) => {
+  const shutdown = (signal: NodeJS.Signals) => {
     logWarn(`Received ${signal}, shutting down gracefully…`);
     if (activeDb) {
       try { activeDb.close(); } catch { /* already closed */ }
       activeDb = null;
     }
-    process.exit(signal === 'SIGINT' ? 130 : 0);
+    // Re-raise with the default disposition so the process terminates with the
+    // correct signal exit status (e.g. 130 for SIGINT) without process.exit().
+    process.removeListener('SIGTERM', shutdown);
+    process.removeListener('SIGINT', shutdown);
+    process.kill(process.pid, signal);
   };
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 
   // Clean up orphaned temp files from previous bookmark/history scans
   cleanupTempFiles();
@@ -49,7 +53,12 @@ function main(): void {
 
   const CMD = 'datasynx-cartography';
   const __dirname = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
-  const { version: VERSION } = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8'));
+  let VERSION = '0.0.0';
+  try {
+    VERSION = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8')).version ?? VERSION;
+  } catch {
+    logWarn('Could not read package.json version; falling back to 0.0.0');
+  }
 
   program
     .name(CMD)
@@ -1221,6 +1230,7 @@ ${infraSummary.substring(0, 12000)}`;
     .option('--port <n>', 'HTTP port', '3737')
     .option('--host <h>', 'HTTP host', '127.0.0.1')
     .option('--allowed-hosts <list>', 'Comma-separated Host allowlist (required for non-loopback --host)')
+    .option('--token <secret>', 'Bearer token required on HTTP requests (or CARTOGRAPHY_HTTP_TOKEN); mandatory for non-loopback --host')
     .option('--db <path>', 'DB path')
     .option('--session <id>', 'Session to serve (id or "latest")', 'latest')
     .option('--no-semantic', 'Disable semantic (vector) search')
@@ -1231,6 +1241,7 @@ ${infraSummary.substring(0, 12000)}`;
           port: parseInt(opts.port, 10),
           host: opts.host,
           allowedHosts: opts.allowedHosts ? String(opts.allowedHosts).split(',').map((h: string) => h.trim()).filter(Boolean) : undefined,
+          token: opts.token,
           dbPath: opts.db,
           session: opts.session,
           semantic: opts.semantic,

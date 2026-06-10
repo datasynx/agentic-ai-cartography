@@ -18,11 +18,18 @@ export const configSchema = z.object({
 
 export type SmitheryConfig = z.infer<typeof configSchema>;
 
-/** Default export consumed by Smithery's TypeScript runtime. */
-export default function createServer({ config }: { config?: SmitheryConfig } = {}) {
+/**
+ * Build the MCP server Smithery hosts. Exported as a named function (per the
+ * project's named-exports rule) and re-exported as default because Smithery's
+ * TypeScript runtime imports the default binding — the one sanctioned default
+ * export in the codebase.
+ */
+export function createServer({ config }: { config?: SmitheryConfig } = {}) {
   const server = createMcpServer({
     dbPath: config?.db ?? ':memory:',
     ...(config?.session ? { session: config.session } : {}),
   });
   return server.server;
 }
+
+export default createServer;
