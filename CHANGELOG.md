@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (default 100 000) caps each scan tool's response; oversized output is truncated
   with an explicit notice instead of silently flooding the agent's context window.
   Exposed as the pure `clampText(raw, max)` helper.
+- **Session names** — discovery sessions now get a deterministic, human-friendly
+  label (e.g. `"infra+data · 42 nodes · 2026-06-11"`) instead of a bare UUID,
+  derived from the topology with no LLM call (`deriveSessionName`). Override with
+  `discover --name <name>`. Shown in `sessions`, `show`, `overview` and the
+  `cartography://sessions` MCP resource. Backed by a new `name` column
+  (**schema migration v5**, additive — existing catalogs upgrade in place).
 
 ### Security
 

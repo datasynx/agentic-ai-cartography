@@ -141,6 +141,8 @@ export interface SessionRow {
   startedAt: string;
   completedAt?: string;
   config: string;
+  /** Human-friendly, deterministically-derived label (e.g. "infra+data · 42 nodes · 2026-06-11"). */
+  name?: string;
 }
 
 // ── Diff / Drift ─────────────────────────

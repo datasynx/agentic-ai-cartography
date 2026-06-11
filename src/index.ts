@@ -1,4 +1,4 @@
-export { CartographyDB } from './db.js';
+export { CartographyDB, deriveSessionName } from './db.js';
 export type { GraphSummary, TraversalResult } from './db.js';
 // MCP server — the headline interface
 export { createMcpServer, runStdio, runHttp } from './mcp/index.js';

@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { checkPrerequisites } from './preflight.js';
-import { CartographyDB } from './db.js';
+import { CartographyDB, deriveSessionName } from './db.js';
 import { defaultConfig } from './types.js';
 import type { TopologyDiff } from './types.js';
 import { runDiscovery } from './agent.js';
@@ -78,6 +78,7 @@ function main(): void {
     .option('--org <name>', 'Organization name (for Backstage)')
     .option('-o, --output <dir>', 'Output directory', './datasynx-output')
     .option('--db <path>', 'DB path')
+    .option('--name <name>', 'Custom session name (default: auto-derived from the topology)')
     .option('--output-format <fmt>', 'Progress/result format: text, json, stream-json', 'text')
     .option('-v, --verbose', 'Show agent reasoning', false)
     .action(async (opts) => {
@@ -285,6 +286,10 @@ function main(): void {
 
       stopSpinner();
       db.endSession(sessionId);
+      // Deterministic, human-friendly session label (override with --name).
+      const sessionName = (opts.name as string | undefined)?.trim()
+        || deriveSessionName(db.getGraphSummary(sessionId), db.getSession(sessionId)?.startedAt ?? new Date().toISOString());
+      db.setSessionName(sessionId, sessionName);
       const stats = db.getStats(sessionId);
       const totalSec = ((Date.now() - startTime) / 1000).toFixed(1);
 
@@ -551,6 +556,7 @@ function main(): void {
       const nodes = db.getNodes(session.id);
 
       process.stdout.write(`\nSession: ${session.id}\n`);
+      if (session.name) process.stdout.write(`  Name:    ${session.name}\n`);
       process.stdout.write(`  Mode:    ${session.mode}\n`);
       process.stdout.write(`  Started: ${session.startedAt}\n`);
       if (session.completedAt) process.stdout.write(`  Ended:   ${session.completedAt}\n`);
@@ -593,7 +599,8 @@ function main(): void {
         process.stdout.write(
           `${status} ${session.id.substring(0, 8)}  [${session.mode}]  ` +
           `${session.startedAt.substring(0, 19)}  ` +
-          `nodes:${stats.nodes} edges:${stats.edges}\n`
+          `nodes:${stats.nodes} edges:${stats.edges}` +
+          `${session.name ? `  ${session.name}` : ''}\n`
         );
       }
 
@@ -641,7 +648,7 @@ function main(): void {
         const age = session.startedAt.substring(0, 16).replace('T', ' ');
         const sid = cyan(session.id.substring(0, 8));
 
-        w(`  ${status} ${sid}  ${b('[' + session.mode + ']')}  ${d(age)}\n`);
+        w(`  ${status} ${sid}  ${b('[' + session.mode + ']')}  ${d(age)}${session.name ? `  ${d(session.name)}` : ''}\n`);
         w(`    ${d('Nodes: ' + stats.nodes + '  Edges: ' + stats.edges)}\n`);
 
         // Node type breakdown

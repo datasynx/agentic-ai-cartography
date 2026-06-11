@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { CartographyDB } from '../src/db.js';
+import { CartographyDB, deriveSessionName } from '../src/db.js';
+import type { GraphSummary } from '../src/db.js';
 import { defaultConfig } from '../src/types.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -37,6 +38,14 @@ describe('CartographyDB', () => {
     db.endSession(id);
     const session = db.getSession(id);
     expect(session?.completedAt).toBeTruthy();
+  });
+
+  it('stores and retrieves a session name', () => {
+    const id = db.createSession('discover', defaultConfig());
+    expect(db.getSession(id)?.name).toBeUndefined();
+    db.setSessionName(id, 'infra+data · 5 nodes · 2026-06-11');
+    expect(db.getSession(id)?.name).toBe('infra+data · 5 nodes · 2026-06-11');
+    expect(db.getSessions()[0]?.name).toBe('infra+data · 5 nodes · 2026-06-11');
   });
 
   it('sanitizes invisible/control characters in node and edge fields on write', () => {
@@ -616,7 +625,11 @@ describe('CartographyDB', () => {
       expect(conns).toHaveLength(1);
 
       const version = (migDb as unknown as { db: Database.Database }).db.pragma('user_version', { simple: true });
-      expect(version).toBe(4);
+      expect(version).toBe(5);
+
+      // v4 → v5 added the sessions.name column on the pre-existing DB.
+      migDb.setSessionName(sessionId, 'migrated · 0 nodes · 2026-06-11');
+      expect(migDb.getSession(sessionId)?.name).toBe('migrated · 0 nodes · 2026-06-11');
 
       migDb.close();
     } finally {
@@ -725,5 +738,43 @@ describe('CartographyDB — graph queries', () => {
     expect(s.edgesByRelationship['calls']).toBe(1);
     expect(s.topConnected[0].id).toBeTruthy();
     expect(s.topConnected[0].degree).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('deriveSessionName', () => {
+  const summary = (totals: number, nodesByType: Record<string, number>): GraphSummary => ({
+    sessionId: 's',
+    totals: { nodes: totals, edges: 0 },
+    nodesByType,
+    nodesByDomain: {},
+    edgesByRelationship: {},
+    topConnected: [],
+  });
+
+  it('names an empty session', () => {
+    expect(deriveSessionName(summary(0, {}), '2026-06-11T10:00:00Z')).toBe('empty · 0 nodes · 2026-06-11');
+  });
+
+  it('derives the top two semantic groups, node count and date', () => {
+    const s = summary(5, { host: 2, pod: 1, database_server: 1, saas_tool: 1 });
+    // infra = host+pod = 3, data = 1, saas = 1 → top groups infra, then data (tie broken alphabetically)
+    expect(deriveSessionName(s, '2026-06-11T10:00:00Z')).toBe('infra+data · 5 nodes · 2026-06-11');
+  });
+
+  it('uses singular noun for a single node', () => {
+    expect(deriveSessionName(summary(1, { saas_tool: 1 }), '2026-01-02T00:00:00Z')).toBe('saas · 1 node · 2026-01-02');
+  });
+
+  it('is deterministic for the same input', () => {
+    const s = summary(3, { web_service: 2, queue: 1 });
+    const a = deriveSessionName(s, '2026-06-11T10:00:00Z');
+    const b = deriveSessionName(s, '2026-06-11T10:00:00Z');
+    expect(a).toBe(b);
+  });
+
+  it('breaks group-count ties alphabetically for stability', () => {
+    // web=1, messaging=1 → tie → alphabetical: messaging before web
+    const s = summary(2, { web_service: 1, queue: 1 });
+    expect(deriveSessionName(s, '2026-06-11T00:00:00Z')).toBe('messaging+web · 2 nodes · 2026-06-11');
   });
 });

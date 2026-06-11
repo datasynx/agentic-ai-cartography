@@ -10,7 +10,7 @@
 
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { CartographyDB } from '../db.js';
+import { CartographyDB, deriveSessionName } from '../db.js';
 import type { GraphSummary } from '../db.js';
 import { defaultConfig, NODE_TYPES, NODE_TYPE_GROUPS } from '../types.js';
 import type { NodeRow } from '../types.js';
@@ -343,6 +343,9 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
         let sid = resolveSession();
         if (!sid) sid = db.createSession('discover', defaultConfig());
         const result = await discovery(db, sid, { hint: args.hint });
+        // Give the session a deterministic, human-friendly name once it has content.
+        const sess = db.getSession(sid);
+        if (sess && !sess.name) db.setSessionName(sid, deriveSessionName(db.getGraphSummary(sid), sess.startedAt));
         server.server.sendResourceUpdated({ uri: 'cartography://graph/summary' }).catch((err: unknown) => {
           process.stderr.write(`[cartography-mcp] resource update notification failed: ${err instanceof Error ? err.message : String(err)}\n`);
         });
