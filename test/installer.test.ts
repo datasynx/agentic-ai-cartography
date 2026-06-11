@@ -27,6 +27,12 @@ describe('format roundtrip', () => {
     expect(parseConfig('   \n', 'toml')).toEqual({});
     expect(parseConfig('', 'yaml')).toEqual({});
   });
+  it('throws an actionable error on corrupt JSON instead of crashing (#46)', () => {
+    expect(() => parseConfig('{ "mcpServers": ', 'json')).toThrow(/Failed to parse existing JSON config/);
+  });
+  it('throws an actionable error on corrupt TOML/YAML', () => {
+    expect(() => parseConfig('this = = broken', 'toml')).toThrow(/Failed to parse existing TOML config/);
+  });
 });
 
 describe('deepMerge', () => {
