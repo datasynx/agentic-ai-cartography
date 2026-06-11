@@ -185,6 +185,8 @@ export interface CartographyConfig {
   outputDir: string;
   dbPath: string;
   verbose: boolean;
+  /** Max characters of a single scan-tool response returned to the agent (guards the context window). */
+  maxToolResponseBytes: number;
 }
 
 export function defaultConfig(overrides: Partial<CartographyConfig> = {}): CartographyConfig {
@@ -197,6 +199,7 @@ export function defaultConfig(overrides: Partial<CartographyConfig> = {}): Carto
     outputDir: './cartography-output',
     dbPath: `${home}/.cartography/cartography.db`,
     verbose: false,
+    maxToolResponseBytes: 100_000,
     ...overrides,
   };
 }

@@ -8,6 +8,7 @@ import type {
   NodeRow, EdgeRow, SessionRow, Connection, TopologyDiff,
 } from './types.js';
 import { diffTopology } from './diff.js';
+import { sanitizeUntrusted, sanitizeValue } from './sanitize.js';
 
 /** Parse a JSON column, falling back to `fallback` if the stored value is corrupt. */
 function safeJsonParse<T>(raw: string, fallback: T): T {
@@ -411,18 +412,20 @@ export class CartographyDB {
   // ── Nodes ───────────────────────────────
 
   upsertNode(sessionId: string, node: DiscoveryNode, depth = 0): void {
+    // Sanitize untrusted free-text before it enters the catalog (and later an LLM
+    // context): strip invisible/control characters that could hide prompt injection.
     this.db.prepare(`
       INSERT OR REPLACE INTO nodes
         (id, session_id, type, name, discovered_via, discovered_at, depth, confidence, metadata, tags,
          domain, sub_domain, quality_score)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      node.id, sessionId, node.type, node.name, node.discoveredVia,
+      node.id, sessionId, node.type, sanitizeUntrusted(node.name), node.discoveredVia,
       new Date().toISOString(), depth, node.confidence,
-      JSON.stringify(node.metadata ?? {}),
-      JSON.stringify(node.tags ?? []),
-      node.domain ?? null,
-      node.subDomain ?? null,
+      JSON.stringify(sanitizeValue(node.metadata ?? {})),
+      JSON.stringify((node.tags ?? []).map(sanitizeUntrusted)),
+      node.domain != null ? sanitizeUntrusted(node.domain) : null,
+      node.subDomain != null ? sanitizeUntrusted(node.subDomain) : null,
       node.qualityScore ?? null,
     );
   }
@@ -480,7 +483,7 @@ export class CartographyDB {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, sessionId, edge.sourceId, edge.targetId,
-      edge.relationship, edge.evidence, edge.confidence,
+      edge.relationship, sanitizeUntrusted(edge.evidence), edge.confidence,
       new Date().toISOString(),
     );
   }

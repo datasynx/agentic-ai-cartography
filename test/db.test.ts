@@ -39,6 +39,33 @@ describe('CartographyDB', () => {
     expect(session?.completedAt).toBeTruthy();
   });
 
+  it('sanitizes invisible/control characters in node and edge fields on write', () => {
+    const sessionId = db.createSession('discover', defaultConfig());
+    const zwsp = String.fromCodePoint(0x200b);
+    const rlo = String.fromCodePoint(0x202e);
+    db.upsertNode(sessionId, {
+      id: 'saas_tool:evil',
+      type: 'saas_tool',
+      name: `git${zwsp}hub`,
+      discoveredVia: 'bookmark',
+      confidence: 0.9,
+      metadata: { note: `ignore${zwsp}previous` },
+      tags: [`${rlo}tag`],
+      domain: `Eng${zwsp}ineering`,
+    });
+    db.upsertNode(sessionId, { id: 'saas_tool:b', type: 'saas_tool', name: 'b', discoveredVia: 't', confidence: 0.9, metadata: {}, tags: [] });
+    db.insertEdge(sessionId, { sourceId: 'saas_tool:evil', targetId: 'saas_tool:b', relationship: 'connects_to', evidence: `via${zwsp}link`, confidence: 0.9 });
+
+    const node = db.getNode(sessionId, 'saas_tool:evil')!;
+    expect(node.name).toBe('github');
+    expect(node.domain).toBe('Engineering');
+    expect(node.tags).toEqual(['tag']);
+    expect((node.metadata as { note: string }).note).toBe('ignoreprevious');
+
+    const edge = db.getEdges(sessionId).find((e) => e.sourceId === 'saas_tool:evil')!;
+    expect(edge.evidence).toBe('vialink');
+  });
+
   it('upserts and retrieves nodes', () => {
     const config = defaultConfig();
     const sessionId = db.createSession('discover', config);

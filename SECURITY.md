@@ -40,6 +40,12 @@ agent, or MCP tool). Key guarantees and expectations:
   inject additional commands.
 - **Credentials are redacted** from node ids and metadata before they are
   persisted (`stripSensitive`, `redactValue`).
+- **Untrusted text is sanitized** before it enters the catalog or an LLM context
+  (`sanitizeUntrusted`): invisible Unicode (zero-width, bidi/format controls, soft
+  hyphen, BOM) and control characters are stripped, so hidden prompt-injection
+  payloads in bookmark titles, command output or scanner reports cannot smuggle
+  instructions into the agent. Each scan tool's output is also size-capped
+  (`maxToolResponseBytes`) to bound context exposure.
 - **The HTTP transport requires authentication** when bound to a non-loopback
   host: a bearer token (`--token` / `CARTOGRAPHY_HTTP_TOKEN`) is mandatory, and
   DNS-rebinding protection plus a Host allowlist are enforced.
