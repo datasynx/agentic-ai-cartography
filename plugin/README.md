@@ -51,3 +51,6 @@ marketplace via a `git-subdir` source pointing at this directory:
 
 Add that object to the `plugins` array in the marketplace's
 `.claude-plugin/marketplace.json` to make `cartography@datasynx` installable.
+
+> Step-by-step procedure (pre-flight, validation, verification, rollback):
+> [`SOP-marketplace-registration.md`](./SOP-marketplace-registration.md).
