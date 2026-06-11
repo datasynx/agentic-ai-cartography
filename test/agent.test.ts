@@ -23,6 +23,7 @@ function makeConfig(overrides: Partial<CartographyConfig> = {}): CartographyConf
     maxTurns: 5,
     entryPoints: ['localhost'],
     agentModel: 'claude-sonnet-4-5-20250929',
+    models: { lead: 'claude-sonnet-4-5-20250929', fast: 'claude-haiku-4-5-20251001' },
     outputDir: '/tmp/test-output',
     dbPath: '/tmp/test.db',
     verbose: false,

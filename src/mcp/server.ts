@@ -328,6 +328,22 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
     },
   );
 
+  server.registerTool(
+    'get_activity_events',
+    {
+      title: 'Get activity events (audit trail)',
+      description: 'Recent executed tool calls and their result sizes for the current session.',
+      inputSchema: { limit: z.number().int().min(1).max(500).default(50).optional() },
+      annotations: readOnly,
+    },
+    (args) => {
+      const sid = resolveSession();
+      if (!sid) return json({ error: 'No discovery session found.' });
+      const events = db.getEvents(sid).slice(-(args.limit ?? 50));
+      return json({ count: events.length, events });
+    },
+  );
+
   if (opts.discovery) {
     const discovery = opts.discovery;
     server.registerTool(
@@ -407,6 +423,38 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
           'Read cartography://graph/summary, then cartography://services and cartography://databases. ' +
           'Write a concise onboarding briefing for a new engineer: what the major systems are, how they ' +
           'connect, which data stores are central, and where to look first.' } }],
+    }),
+  );
+
+  server.registerPrompt(
+    'find-single-points-of-failure',
+    { title: 'Find single points of failure', description: 'Rank chokepoints whose loss has the largest blast radius.' },
+    () => ({
+      messages: [{
+        role: 'user', content: { type: 'text', text:
+          'Call get_summary and read topConnected (the most-connected nodes). For each, call get_dependencies ' +
+          '(direction=both) to measure how many services depend on it. Identify single points of failure — nodes ' +
+          'whose loss would disconnect or degrade the largest blast radius — rank them by impact, and recommend ' +
+          'redundancy or mitigation for each.' } }],
+    }),
+  );
+
+  server.registerPrompt(
+    'generate-runbook',
+    {
+      title: 'Generate operations runbook',
+      description: 'Produce an operations/onboarding runbook from the topology.',
+      argsSchema: { service: z.string().optional().describe('Optional service id/name to scope the runbook') },
+    },
+    (args) => ({
+      messages: [{
+        role: 'user', content: { type: 'text', text: args.service
+          ? `Use query_infrastructure to locate "${args.service}", then get_dependencies (direction=both). Write an ` +
+            `operations runbook for it: purpose, upstream/downstream dependencies, startup/shutdown order, health ` +
+            `checks, common failure modes, and escalation steps.`
+          : 'Read cartography://graph/summary, then call get_summary and list_services. Write a system-wide operations ' +
+            'runbook: major components, how they connect, critical data stores, startup/shutdown order, health checks, ' +
+            'and where an on-call engineer should look first.' } }],
     }),
   );
 

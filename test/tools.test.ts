@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { stripSensitive, createScanRunner, clampText } from '../src/tools.js';
+import { stripSensitive, createScanRunner, clampText, buildCartographyToolDefinitions } from '../src/tools.js';
+import { CartographyDB } from '../src/db.js';
 
 describe('stripSensitive', () => {
   it('strips path from tcp addresses', () => {
@@ -164,5 +165,23 @@ describe('createScanRunner (circuit breaker)', () => {
 
     runner('test');
     expect(receivedTimeout).toBe(20_000);
+  });
+});
+
+describe('discovery tool annotations (#71)', () => {
+  it('annotates every tool with read/write hints', async () => {
+    const db = new CartographyDB(':memory:');
+    const defs = await buildCartographyToolDefinitions(db, 'session:test');
+    expect(defs.length).toBeGreaterThan(0);
+    for (const d of defs) {
+      expect(d.annotations, `tool ${d.name} missing annotations`).toBeDefined();
+      expect(typeof d.annotations?.readOnlyHint).toBe('boolean');
+    }
+    const byName = Object.fromEntries(defs.map((d) => [d.name, d.annotations]));
+    expect(byName['scan_aws_resources']).toMatchObject({ readOnlyHint: true, openWorldHint: true });
+    expect(byName['get_catalog']).toMatchObject({ readOnlyHint: true, openWorldHint: false });
+    expect(byName['save_node']).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    expect(byName['save_edge']).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    db.close();
   });
 });

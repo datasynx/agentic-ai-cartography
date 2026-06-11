@@ -182,7 +182,10 @@ export interface CartographyConfig {
   maxDepth: number;
   maxTurns: number;
   entryPoints: string[];
+  /** Lead/discovery model. Back-compat alias for `models.lead` (kept in sync by defaultConfig). */
   agentModel: string;
+  /** Model roles: `lead` drives discovery, `fast` powers cheaper helper tasks (e.g. chat). */
+  models: { lead: string; fast: string };
   organization?: string;
   outputDir: string;
   dbPath: string;
@@ -191,17 +194,29 @@ export interface CartographyConfig {
   maxToolResponseBytes: number;
 }
 
+/** Default lead (discovery) model. */
+export const DEFAULT_LEAD_MODEL = 'claude-sonnet-4-5-20250929';
+/** Default fast model for helper tasks (chat, summaries). */
+export const DEFAULT_FAST_MODEL = 'claude-haiku-4-5-20251001';
+
 export function defaultConfig(overrides: Partial<CartographyConfig> = {}): CartographyConfig {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? '/tmp';
-  return {
+  const base: CartographyConfig = {
     maxDepth: 8,
     maxTurns: 50,
     entryPoints: ['localhost'],
-    agentModel: 'claude-sonnet-4-5-20250929',
+    agentModel: DEFAULT_LEAD_MODEL,
+    models: { lead: DEFAULT_LEAD_MODEL, fast: DEFAULT_FAST_MODEL },
     outputDir: './cartography-output',
     dbPath: `${home}/.cartography/cartography.db`,
     verbose: false,
     maxToolResponseBytes: 100_000,
-    ...overrides,
   };
+  const merged = { ...base, ...overrides };
+  // Keep the invariant agentModel === models.lead so existing agentModel readers
+  // and the new role config stay consistent. An explicit `models` override wins;
+  // otherwise a legacy `agentModel` override flows into the lead role.
+  const lead = overrides.models?.lead ?? merged.agentModel;
+  const fast = overrides.models?.fast ?? merged.models.fast;
+  return { ...merged, agentModel: lead, models: { lead, fast } };
 }

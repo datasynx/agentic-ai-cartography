@@ -130,6 +130,21 @@ describe('CartographyDB', () => {
     expect(events[0]?.eventType).toBe('connection_open');
   });
 
+  it('round-trips audit-log command and result_bytes (#72)', () => {
+    const sessionId = db.createSession('discover', defaultConfig());
+    db.insertEvent(sessionId, {
+      eventType: 'tool_executed',
+      process: 'Bash',
+      pid: 4321,
+      command: 'kubectl get pods -A',
+      resultBytes: 2048,
+    });
+    const events = db.getEvents(sessionId);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.command).toBe('kubectl get pods -A');
+    expect(events[0]?.resultBytes).toBe(2048);
+  });
+
   it('manages tasks', () => {
     const config = defaultConfig();
     const sessionId = db.createSession('discover', config);
@@ -625,11 +640,46 @@ describe('CartographyDB', () => {
       expect(conns).toHaveLength(1);
 
       const version = (migDb as unknown as { db: Database.Database }).db.pragma('user_version', { simple: true });
-      expect(version).toBe(5);
+      expect(version).toBe(6);
 
       // v4 → v5 added the sessions.name column on the pre-existing DB.
       migDb.setSessionName(sessionId, 'migrated · 0 nodes · 2026-06-11');
       expect(migDb.getSession(sessionId)?.name).toBe('migrated · 0 nodes · 2026-06-11');
+
+      migDb.close();
+    } finally {
+      try { rmSync(migPath); } catch { /* ok */ }
+    }
+  });
+
+  it('migrates a v5 database to v6 (adds activity_events audit columns)', () => {
+    const migPath = join(tmpdir(), `cartography-mig-v5-${Date.now()}.db`);
+    try {
+      const raw = new Database(migPath);
+      raw.exec(`
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY, mode TEXT NOT NULL CHECK (mode IN ('discover')),
+          started_at TEXT NOT NULL, completed_at TEXT, config TEXT NOT NULL DEFAULT '{}', name TEXT
+        );
+        CREATE TABLE activity_events (
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL, task_id TEXT,
+          timestamp TEXT NOT NULL, event_type TEXT NOT NULL, process TEXT NOT NULL,
+          pid INTEGER NOT NULL, target TEXT, target_type TEXT,
+          port INTEGER, duration_ms INTEGER
+        );
+      `);
+      raw.pragma('user_version = 5');
+      raw.close();
+
+      const migDb = new CartographyDB(migPath);
+      const version = (migDb as unknown as { db: Database.Database }).db.pragma('user_version', { simple: true });
+      expect(version).toBe(6);
+
+      const sessionId = migDb.createSession('discover', defaultConfig());
+      migDb.insertEvent(sessionId, { eventType: 'tool_executed', process: 'Bash', pid: 1, command: 'ls', resultBytes: 10 });
+      const events = migDb.getEvents(sessionId);
+      expect(events[0]?.command).toBe('ls');
+      expect(events[0]?.resultBytes).toBe(10);
 
       migDb.close();
     } finally {

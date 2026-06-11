@@ -127,6 +127,7 @@ reusable **prompts**.
 | Tool | Read-only | Description |
 | --- | --- | --- |
 | `diff_topology` | ✅ | Compare two discovery sessions and report added/removed/changed nodes and added/removed edges. Defaults to the two most recent sessions (base = second-most-recent, current = most-recent). |
+| `get_activity_events` | ✅ | Recent executed tool calls and their result sizes for the current session. |
 | `get_dependencies` | ✅ | Traverse the dependency graph from a node (downstream/upstream/both) with a depth limit. |
 | `get_node` | ✅ | Fetch a single node with its incident edges. |
 | `get_summary` | ✅ | Low-token overview of the whole landscape (counts, types, domains, most-connected). |
