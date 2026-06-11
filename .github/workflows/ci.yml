@@ -20,8 +20,8 @@ jobs:
     name: Lint & Typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -39,15 +39,15 @@ jobs:
       matrix:
         node: ['20', '22']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
           cache: 'npm'
       - run: npm ci
       - run: npm run test:coverage
       - name: Upload Coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         if: matrix.node == '20'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -58,8 +58,8 @@ jobs:
     name: Audit & Licenses
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -81,8 +81,8 @@ jobs:
     needs: [test]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -109,20 +109,12 @@ jobs:
         # Catches breakage in the mcpb manifest/bundler on every PR. The asset is
         # attached to releases by release.yml, not shipped in the npm tarball.
         run: npm run build:mcpb
-      - name: Validate server.json (version parity + JSON)
-        run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          SERVER_VERSION=$(node -p "require('./server.json').version")
-          if [ "$PKG_VERSION" != "$SERVER_VERSION" ]; then
-            echo "::error::server.json version ($SERVER_VERSION) != package.json version ($PKG_VERSION)"
-            exit 1
-          fi
-          node -e "JSON.parse(require('fs').readFileSync('server.json','utf8'))"
-          echo "server.json valid JSON; version parity OK ($PKG_VERSION)"
+      - name: Validate server.json (parity + structure + schema)
+        run: node scripts/validate-server-json.mjs
       - name: Generate SBOM (CycloneDX)
         run: npm sbom --sbom-format cyclonedx --omit dev > sbom-cyclonedx.json || true
       - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dist
           path: dist/
