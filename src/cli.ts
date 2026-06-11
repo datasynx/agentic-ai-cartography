@@ -565,6 +565,15 @@ function main(): void {
       process.stdout.write(`  Events:  ${stats.events}\n`);
       process.stdout.write(`  Tasks:   ${stats.tasks}\n`);
 
+      const events = db.getEvents(session.id);
+      if (events.length > 0) {
+        process.stdout.write('\n  Recent activity:\n');
+        for (const e of events.slice(-15)) {
+          const kb = e.resultBytes != null ? ` (${(e.resultBytes / 1024).toFixed(1)} KB)` : '';
+          process.stdout.write(`    ${e.timestamp}  ${e.process}  ${(e.command ?? '').slice(0, 60)}${kb}\n`);
+        }
+      }
+
       if (nodes.length > 0) {
         process.stdout.write('\n  Discovered nodes:\n');
         for (const node of nodes.slice(0, 20)) {
@@ -675,9 +684,10 @@ function main(): void {
     .command('chat [session-id]')
     .description('Interactive chat about your mapped infrastructure')
     .option('--db <path>', 'DB path')
-    .option('--model <m>', 'Model', 'claude-sonnet-4-5-20250929')
+    .option('--model <m>', 'Model (defaults to the fast helper model)')
     .action(async (sessionIdArg: string | undefined, opts) => {
       const config = defaultConfig();
+      const model = (opts as { model?: string }).model ?? config.models.fast;
       const db = new CartographyDB((opts as { db?: string }).db ?? config.dbPath);
       const sessions = db.getSessions();
 
@@ -745,7 +755,7 @@ ${infraSummary.substring(0, 12000)}`;
 
         try {
           const resp = await client.messages.create({
-            model: (opts as { model: string }).model,
+            model,
             max_tokens: 1024,
             system: systemPrompt,
             messages: history,

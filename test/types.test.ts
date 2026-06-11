@@ -325,6 +325,24 @@ describe('defaultConfig', () => {
     expect(config.agentModel).toContain('claude');
   });
 
+  it('derives models.lead from agentModel and provides a fast role', () => {
+    const config = defaultConfig();
+    expect(config.models.lead).toBe(config.agentModel);
+    expect(config.models.fast).toContain('haiku');
+  });
+
+  it('routes a legacy agentModel override into models.lead', () => {
+    const config = defaultConfig({ agentModel: 'claude-opus-4-8' });
+    expect(config.models.lead).toBe('claude-opus-4-8');
+    expect(config.agentModel).toBe('claude-opus-4-8');
+  });
+
+  it('lets an explicit models override win and syncs agentModel', () => {
+    const config = defaultConfig({ models: { lead: 'lead-x', fast: 'fast-y' } });
+    expect(config.models).toEqual({ lead: 'lead-x', fast: 'fast-y' });
+    expect(config.agentModel).toBe('lead-x');
+  });
+
   it('allows overriding dbPath', () => {
     const config = defaultConfig({ dbPath: '/custom/path.db' });
     expect(config.dbPath).toBe('/custom/path.db');

@@ -116,9 +116,23 @@ describe('Cartography MCP server', () => {
     await connect();
     const prompts = await client.listPrompts();
     const names = prompts.prompts.map((p) => p.name);
-    expect(names).toEqual(expect.arrayContaining(['audit-attack-surface', 'map-service-dependencies', 'onboard-to-system', 'compare-environments']));
+    expect(names).toEqual(expect.arrayContaining(['audit-attack-surface', 'map-service-dependencies', 'onboard-to-system', 'compare-environments', 'find-single-points-of-failure', 'generate-runbook']));
     const p = await client.getPrompt({ name: 'map-service-dependencies', arguments: { service: 'api' } });
     expect((p.messages[0].content as { text: string }).text).toContain('api');
+    const rb = await client.getPrompt({ name: 'generate-runbook', arguments: { service: 'api' } });
+    expect((rb.messages[0].content as { text: string }).text).toContain('api');
+  });
+
+  it('returns the audit trail via get_activity_events', async () => {
+    const sid = db.getLatestSession()!.id;
+    db.insertEvent(sid, { eventType: 'tool_executed', process: 'Bash', pid: 1, command: 'kubectl get pods', resultBytes: 1234 });
+    await connect();
+    const tools = await client.listTools();
+    expect(tools.tools.map((t) => t.name)).toContain('get_activity_events');
+    const res = await client.callTool({ name: 'get_activity_events', arguments: {} });
+    const out = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+    expect(out.count).toBe(1);
+    expect(out.events[0]).toMatchObject({ process: 'Bash', command: 'kubectl get pods', resultBytes: 1234 });
   });
 
   it('annotates every read-only tool with readOnlyHint and a title', async () => {

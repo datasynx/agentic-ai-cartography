@@ -70,6 +70,8 @@ const EventRowSchema = z.object({
   target_type: z.string().nullable().optional(),
   port: z.number().nullable().optional(),
   duration_ms: z.number().nullable().optional(),
+  command: z.string().nullable().optional(),
+  result_bytes: z.number().nullable().optional(),
 });
 
 const TaskRowSchema = z.object({
@@ -175,6 +177,8 @@ export interface EventRow {
   targetType?: string;
   port?: number;
   durationMs?: number;
+  command?: string;
+  resultBytes?: number;
 }
 
 export interface TaskRow {
@@ -264,7 +268,9 @@ CREATE TABLE IF NOT EXISTS activity_events (
   target TEXT,
   target_type TEXT,
   port INTEGER,
-  duration_ms INTEGER
+  duration_ms INTEGER,
+  command TEXT,
+  result_bytes INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -325,7 +331,7 @@ export class CartographyDB {
     const version = (this.db.pragma('user_version', { simple: true }) as number);
     if (version === 0) {
       this.db.exec(SCHEMA);
-      this.db.pragma('user_version = 5');
+      this.db.pragma('user_version = 6');
       return;
     } else if (version === 1) {
       // v1 → v2: add hex map columns to nodes + connections table
@@ -368,6 +374,14 @@ export class CartographyDB {
       const cols = (this.db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>).map(c => c.name);
       if (!cols.includes('name')) this.db.exec('ALTER TABLE sessions ADD COLUMN name TEXT');
       this.db.pragma('user_version = 5');
+    }
+    // v5 → v6: audit-log columns on activity_events (idempotent column adds)
+    const v5 = this.db.pragma('user_version', { simple: true }) as number;
+    if (v5 < 6) {
+      const cols = (this.db.prepare("PRAGMA table_info(activity_events)").all() as Array<{ name: string }>).map(c => c.name);
+      if (!cols.includes('command')) this.db.exec('ALTER TABLE activity_events ADD COLUMN command TEXT');
+      if (!cols.includes('result_bytes')) this.db.exec('ALTER TABLE activity_events ADD COLUMN result_bytes INTEGER');
+      this.db.pragma('user_version = 6');
     }
   }
 
@@ -559,16 +573,22 @@ export class CartographyDB {
 
   // ── Events ──────────────────────────────
 
-  insertEvent(sessionId: string, event: Pick<EventRow, 'eventType' | 'process' | 'pid' | 'target' | 'targetType' | 'port'>, taskId?: string): void {
+  insertEvent(
+    sessionId: string,
+    event: Pick<EventRow, 'eventType' | 'process' | 'pid' | 'target' | 'targetType' | 'port'>
+      & Partial<Pick<EventRow, 'command' | 'resultBytes'>>,
+    taskId?: string,
+  ): void {
     const id = crypto.randomUUID();
     this.db.prepare(`
       INSERT INTO activity_events
-        (id, session_id, task_id, timestamp, event_type, process, pid, target, target_type, port)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, session_id, task_id, timestamp, event_type, process, pid, target, target_type, port, command, result_bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, sessionId, taskId ?? null, new Date().toISOString(),
       event.eventType, event.process, event.pid,
       event.target ?? null, event.targetType ?? null, event.port ?? null,
+      event.command ?? null, event.resultBytes ?? null,
     );
   }
 
@@ -590,6 +610,8 @@ export class CartographyDB {
         targetType: v.target_type ?? undefined,
         port: v.port ?? undefined,
         durationMs: v.duration_ms ?? undefined,
+        command: v.command ?? undefined,
+        resultBytes: v.result_bytes ?? undefined,
       };
     });
   }

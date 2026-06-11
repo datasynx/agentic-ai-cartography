@@ -125,13 +125,25 @@ export function redactValue(value: unknown): unknown {
   return value;
 }
 
-export async function createCartographyTools(
+/**
+ * Tool annotations — untrusted hints for MCP hosts (host-side gating), never a
+ * security boundary. Mirror the server-side query tools in src/mcp/server.ts.
+ */
+const READ_SCAN = { readOnlyHint: true, openWorldHint: true } as const;   // scanners reach external/system state
+const READ_LOCAL = { readOnlyHint: true, openWorldHint: false } as const; // reads the local catalog / asks the user
+const WRITE_CATALOG = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+
+/**
+ * Build the in-process discovery tool definitions (with read/write annotations).
+ * Exposed for host-side gating and structural tests; wrapped by createCartographyTools.
+ */
+export async function buildCartographyToolDefinitions(
   db: CartographyDB,
   sessionId: string,
   opts: CartographyToolsOptions = {},
-): Promise<McpServerConfig> {
+) {
   // Dynamically import the SDK so missing package doesn't crash at load time
-  const { tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
+  const { tool } = await import('@anthropic-ai/claude-agent-sdk');
 
   const maxResponseBytes = opts.maxResponseBytes ?? 100_000;
   /** Wrap sanitized + truncated scan output in the MCP text-content shape. */
@@ -164,7 +176,7 @@ export async function createCartographyTools(
       };
       db.upsertNode(sessionId, node);
       return { content: [{ type: 'text', text: `✓ Node: ${node.id}` }] };
-    }),
+    }, { annotations: WRITE_CATALOG }),
 
     tool('save_edge', 'Save a relationship (edge) between two nodes — ALWAYS save edges when connections are clear', {
       sourceId: z.string(),
@@ -181,7 +193,7 @@ export async function createCartographyTools(
         confidence: args['confidence'] as number,
       });
       return { content: [{ type: 'text', text: `✓ ${args['sourceId']}→${args['targetId']}` }] };
-    }),
+    }, { annotations: WRITE_CATALOG }),
 
     tool('get_catalog', 'Get the current catalog — use before save_node to avoid duplicates', {
       includeEdges: z.boolean().default(true),
@@ -197,7 +209,7 @@ export async function createCartographyTools(
           }),
         }],
       };
-    }),
+    }, { annotations: READ_LOCAL }),
 
     tool('ask_user', 'Ask the user a question — for clarifications, missing context, or consent (e.g. before scanning browser history)', {
       question: z.string().describe('The question for the user (clear and specific)'),
@@ -215,7 +227,7 @@ export async function createCartographyTools(
       return {
         content: [{ type: 'text', text: '(Non-interactive mode — please continue without this information)' }],
       };
-    }),
+    }, { annotations: READ_LOCAL }),
 
     tool('scan_bookmarks', 'Scan all browser bookmarks — hostnames only, no personal data (Chrome, Chromium, Edge, Brave, Vivaldi, Opera, Firefox)', {
       minConfidence: z.number().min(0).max(1).default(0.5).optional(),
@@ -236,7 +248,7 @@ export async function createCartographyTools(
           }),
         }],
       };
-    }),
+    }, { annotations: READ_SCAN }),
 
     tool('scan_browser_history', 'Scan browser history — anonymized hostnames + visit frequency. ALWAYS call ask_user for consent before using this tool.', {
       minVisits: z.number().min(1).default(3).optional().describe('Minimum visit count to include a host (filters rarely-visited sites)'),
@@ -259,7 +271,7 @@ export async function createCartographyTools(
           }),
         }],
       };
-    }),
+    }, { annotations: READ_SCAN }),
 
     tool('scan_local_databases', 'Scan for local database files and running DB servers — PostgreSQL databases, MySQL, SQLite files from installed apps', {
       deep: z.boolean().default(false).optional().describe('Also search home directory recursively for SQLite/DB files (slower)'),
@@ -352,7 +364,7 @@ export async function createCartographyTools(
 
       const out = Object.entries(results).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
       return textResult(out);
-    }),
+    }, { annotations: READ_SCAN }),
 
     tool('scan_k8s_resources', 'Scan Kubernetes cluster via kubectl — 100% readonly (get, describe)', {
       namespace: z.string().regex(SCAN_ARG_PATTERNS['k8s-namespace'], 'invalid Kubernetes namespace').optional().describe('Filter by namespace — empty = all namespaces'),
@@ -386,7 +398,7 @@ export async function createCartographyTools(
           ];
       const out = sections.map(([l, c]) => `=== ${l} ===\n${runK(c)}`).join('\n\n');
       return textResult(out);
-    }),
+    }, { annotations: READ_SCAN }),
 
     tool('scan_aws_resources', 'Scan AWS infrastructure via AWS CLI — 100% readonly (describe, list)', {
       region: z.string().regex(SCAN_ARG_PATTERNS['aws-region'], 'invalid AWS region').optional().describe('AWS Region — default: AWS_DEFAULT_REGION or profile'),
@@ -413,7 +425,7 @@ export async function createCartographyTools(
       ];
       const out = sections.map(([l, c]) => `=== ${l} ===\n${runAws(c)}`).join('\n\n');
       return textResult(out);
-    }),
+    }, { annotations: READ_SCAN }),
 
     tool('scan_gcp_resources', 'Scan Google Cloud Platform via gcloud CLI — 100% readonly (list, describe)', {
       project: z.string().regex(SCAN_ARG_PATTERNS['gcp-project'], 'invalid GCP project id').optional().describe('GCP Project ID — default: current gcloud project'),
@@ -436,7 +448,7 @@ export async function createCartographyTools(
       ];
       const out = sections.map(([l, c]) => `=== ${l} ===\n${runGcp(c)}`).join('\n\n');
       return textResult(out);
-    }),
+    }, { annotations: READ_SCAN }),
 
     tool('scan_azure_resources', 'Scan Azure infrastructure via az CLI — 100% readonly (list, show)', {
       subscription: z.string().regex(SCAN_ARG_PATTERNS['azure-subscription'], 'invalid Azure subscription id').optional().describe('Azure Subscription ID'),
@@ -463,7 +475,7 @@ export async function createCartographyTools(
       ];
       const out = sections.map(([l, c]) => `=== ${l} ===\n${runAz(c)}`).join('\n\n');
       return textResult(out);
-    }),
+    }, { annotations: READ_SCAN }),
 
     tool('scan_installed_apps', 'Scan all installed apps and tools — IDEs, office, dev tools, business apps, databases', {
       searchHint: z.string().optional().describe('Optional search term to find specific tools (e.g. "hubspot windsurf cursor")'),
@@ -577,12 +589,18 @@ export async function createCartographyTools(
         .join('\n\n');
 
       return textResult(out);
-    }),
+    }, { annotations: READ_SCAN }),
   ];
 
-  return createSdkMcpServer({
-    name: 'cartography',
-    version: '0.1.0',
-    tools,
-  });
+  return tools;
+}
+
+export async function createCartographyTools(
+  db: CartographyDB,
+  sessionId: string,
+  opts: CartographyToolsOptions = {},
+): Promise<McpServerConfig> {
+  const { createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
+  const tools = await buildCartographyToolDefinitions(db, sessionId, opts);
+  return createSdkMcpServer({ name: 'cartography', version: '0.1.0', tools });
 }

@@ -1,6 +1,7 @@
 import type { CartographyDB } from './db.js';
 import { createCartographyTools } from './tools.js';
 import { safetyHook } from './safety.js';
+import { createAuditHook } from './audit.js';
 import type { CartographyConfig } from './types.js';
 import { IS_WIN, IS_MAC, PLATFORM } from './platform.js';
 
@@ -165,7 +166,7 @@ Use ask_user when you need context from the user.`;
     for await (const msg of query({
       prompt: initialPrompt,
       options: {
-        model: config.agentModel,
+        model: config.models.lead,
         maxTurns: config.maxTurns,
         systemPrompt,
         mcpServers: { cartography: tools },
@@ -186,6 +187,7 @@ Use ask_user when you need context from the user.`;
         ],
         hooks: {
           PreToolUse: [{ matcher: 'Bash', hooks: [safetyHook] }],
+          PostToolUse: [{ hooks: [createAuditHook(db, sessionId)] }],
         },
         permissionMode: 'bypassPermissions',
       },
