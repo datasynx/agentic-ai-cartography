@@ -25,3 +25,8 @@ where hosts cap tool output or total tool count.
 
 The `datasynx-cartography` CLI and the embeddable library are thin layers over the
 same core. The MCP server is the headline; everything else is convenience.
+
+## See also
+
+- [Threat model](./threat-model.md) — attacker model, trust boundaries, and the mitigation
+  enforced at each, mapped to the code.

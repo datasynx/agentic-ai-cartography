@@ -21,3 +21,4 @@ Protocol. Install once and any MCP host or agent framework can query it.
 ## Explanation
 
 - [Why MCP-first](https://datasynx.github.io/agentic-ai-cartography/#architecture): The design rationale.
+- [Threat model](https://github.com/datasynx/agentic-ai-cartography/blob/main/docs/explanation/threat-model.md): Attacker model, trust boundaries and mitigations.

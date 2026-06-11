@@ -10,7 +10,7 @@ export { runLocalDiscovery, localDiscoveryFn } from './discovery/local.js';
 export type { LocalDiscoveryOptions } from './discovery/local.js';
 // Semantic search
 export { createSemanticSearch, createLocalEmbedder, createHashEmbedder, VectorStore } from './semantic/search.js';
-export type { EmbeddingProvider } from './semantic/search.js';
+export type { EmbeddingProvider, SemanticSearchOptions } from './semantic/search.js';
 // Install harness — register the MCP server into any host's native config
 export {
   planInstall, applyInstall, renderDiff, defaultContext, currentOs,

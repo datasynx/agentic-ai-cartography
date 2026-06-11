@@ -50,4 +50,8 @@ agent, or MCP tool). Key guarantees and expectations:
   host: a bearer token (`--token` / `CARTOGRAPHY_HTTP_TOKEN`) is mandatory, and
   DNS-rebinding protection plus a Host allowlist are enforced.
 
+For the structured reasoning behind these guarantees — attacker model, assets, trust
+boundaries, and the mitigation mapped to each — see
+[docs/explanation/threat-model.md](docs/explanation/threat-model.md).
+
 If you find a way around any of these, it is a vulnerability — please report it.
