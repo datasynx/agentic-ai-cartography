@@ -10,13 +10,20 @@ import type { ConfigFormat } from './types.js';
 
 export function parseConfig(text: string, format: ConfigFormat): Record<string, unknown> {
   if (!text.trim()) return {};
-  switch (format) {
-    case 'json':
-      return JSON.parse(text) as Record<string, unknown>;
-    case 'toml':
-      return parseToml(text) as Record<string, unknown>;
-    case 'yaml':
-      return (parseYaml(text) as Record<string, unknown>) ?? {};
+  try {
+    switch (format) {
+      case 'json':
+        return JSON.parse(text) as Record<string, unknown>;
+      case 'toml':
+        return parseToml(text) as Record<string, unknown>;
+      case 'yaml':
+        return (parseYaml(text) as Record<string, unknown>) ?? {};
+    }
+  } catch (err) {
+    // Fail loudly with an actionable message rather than crashing with a raw
+    // parser stack or silently discarding (and then clobbering) the user's config.
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to parse existing ${format.toUpperCase()} config: ${detail}`);
   }
 }
 
