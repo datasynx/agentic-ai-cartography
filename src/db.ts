@@ -5,8 +5,9 @@ import { z } from 'zod';
 import { NODE_TYPES, EDGE_RELATIONSHIPS } from './types.js';
 import type {
   CartographyConfig, DiscoveryNode, DiscoveryEdge,
-  NodeRow, EdgeRow, SessionRow, Connection,
+  NodeRow, EdgeRow, SessionRow, Connection, TopologyDiff,
 } from './types.js';
+import { diffTopology } from './diff.js';
 
 /** Parse a JSON column, falling back to `fallback` if the stored value is corrupt. */
 function safeJsonParse<T>(raw: string, fallback: T): T {
@@ -382,6 +383,28 @@ export class CartographyDB {
       startedAt: v.started_at,
       completedAt: v.completed_at ?? undefined,
       config: v.config,
+    };
+  }
+
+  /**
+   * Compare two discovery sessions and report drift (added/removed/changed nodes
+   * and added/removed edges). Read-only; no schema changes. Throws if either
+   * session id does not exist.
+   */
+  diffSessions(baseId: string, currentId: string): TopologyDiff {
+    const base = this.getSession(baseId);
+    if (!base) throw new Error(`Base session not found: ${baseId}`);
+    const current = this.getSession(currentId);
+    if (!current) throw new Error(`Current session not found: ${currentId}`);
+
+    const baseData = { nodes: this.getNodes(baseId), edges: this.getEdges(baseId) };
+    const curData = { nodes: this.getNodes(currentId), edges: this.getEdges(currentId) };
+    const delta = diffTopology(baseData, curData);
+
+    return {
+      base: { sessionId: baseId, startedAt: base.startedAt, nodeCount: baseData.nodes.length, edgeCount: baseData.edges.length },
+      current: { sessionId: currentId, startedAt: current.startedAt, nodeCount: curData.nodes.length, edgeCount: curData.edges.length },
+      ...delta,
     };
   }
 

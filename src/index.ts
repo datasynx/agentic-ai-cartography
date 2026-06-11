@@ -30,6 +30,9 @@ export { checkReadOnly, isReadOnlyCommand, assertReadOnly, splitSegments } from 
 export type { PolicyResult, ShellKind } from './allowlist.js';
 export { runDiscovery } from './agent.js';
 export type { DiscoveryEvent } from './agent.js';
+// Topology diffing / drift detection
+export { diffTopology, stableStringify } from './diff.js';
+export type { TopologyInput, TopologyDelta } from './diff.js';
 export {
   exportAll,
   exportJSON,
@@ -38,6 +41,7 @@ export {
   exportDiscoveryApp,
   generateTopologyMermaid,
   generateDependencyMermaid,
+  generateDiffMermaid,
 } from './exporter.js';
 export {
   hexToPixel, pixelToHex, hexCorners, hexNeighbors,

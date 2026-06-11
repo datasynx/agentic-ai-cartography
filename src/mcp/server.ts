@@ -290,6 +290,44 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
     },
   );
 
+  server.registerTool(
+    'diff_topology',
+    {
+      title: 'Diff topology (drift detection)',
+      description:
+        'Compare two discovery sessions and report added/removed/changed nodes and added/removed edges. ' +
+        'Defaults to the two most recent sessions (base = second-most-recent, current = most-recent).',
+      inputSchema: {
+        base: z.string().optional().describe('Baseline session id (default: second-most-recent session)'),
+        current: z.string().optional().describe('Current session id (default: most-recent session)'),
+      },
+      annotations: readOnly,
+    },
+    (args) => {
+      // getSessions() is ordered newest-first (rowid DESC): [0] = latest, [1] = previous.
+      const sessions = db.getSessions();
+      const currentId = args.current ?? sessions[0]?.id;
+      const baseId = args.base ?? sessions[1]?.id;
+      if (!baseId || !currentId) return json({ error: 'Need at least two discovery sessions to diff.' });
+      if (baseId === currentId) return json({ error: 'Base and current session are the same.' });
+      const d = db.diffSessions(baseId, currentId);
+      return json({
+        base: d.base,
+        current: d.current,
+        summary: d.summary,
+        nodes: {
+          added: d.nodes.added.map(compactNode),
+          removed: d.nodes.removed.map(compactNode),
+          changed: d.nodes.changed.map((c) => ({ ...compactNode(c.after), changedFields: c.changedFields })),
+        },
+        edges: {
+          added: d.edges.added.map((e) => ({ from: e.sourceId, to: e.targetId, rel: e.relationship })),
+          removed: d.edges.removed.map((e) => ({ from: e.sourceId, to: e.targetId, rel: e.relationship })),
+        },
+      });
+    },
+  );
+
   if (opts.discovery) {
     const discovery = opts.discovery;
     server.registerTool(
@@ -342,6 +380,18 @@ export function createMcpServer(opts: CreateMcpServerOptions = {}): McpServer {
           `Use query_infrastructure to locate "${args.service}", then get_dependencies (direction=both) to ` +
           `map everything it depends on and everything that depends on it. Present the result as a clear ` +
           `dependency tree and call out single points of failure.` } }],
+    }),
+  );
+
+  server.registerPrompt(
+    'compare-environments',
+    { title: 'Compare environments', description: 'Summarize infrastructure drift between two discovery snapshots.' },
+    () => ({
+      messages: [{
+        role: 'user', content: { type: 'text', text:
+          'Call diff_topology to compare the two most recent discovery sessions. Summarize what was added, ' +
+          'removed, and changed. Flag newly externally-reachable services and removed dependencies that could ' +
+          'indicate an outage or decommission. Recommend what an operator should verify.' } }],
     }),
   );
 

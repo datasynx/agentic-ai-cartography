@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CartographyDB } from './db.js';
-import type { NodeRow, EdgeRow } from './types.js';
+import type { NodeRow, EdgeRow, TopologyDiff } from './types.js';
 import { NODE_TYPE_GROUPS } from './types.js';
 import { buildMapData } from './mapper.js';
 import { shadeVariant } from './cluster.js';
@@ -182,6 +182,74 @@ export function generateDependencyMermaid(nodes: NodeRow[], edges: EdgeRow[]): s
   for (const edge of depEdges) {
     const label = EDGE_LABELS[edge.relationship] ?? edge.relationship;
     lines.push(`    ${sanitize(edge.sourceId)} -->|"${label}"| ${sanitize(edge.targetId)}`);
+  }
+
+  return lines.join('\n');
+}
+
+// ── Diff / Drift Mermaid ───────────────────────────────────────────────────────
+
+const DIFF_CLASSES: Record<'added' | 'removed' | 'changed' | 'context', string> = {
+  added:   'fill:#0d3d0d,stroke:#22c55e,color:#86efac',
+  removed: 'fill:#3d0d0d,stroke:#ef4444,color:#fca5a5',
+  changed: 'fill:#3d2f0d,stroke:#f59e0b,color:#fcd34d',
+  context: 'fill:#1e1e1e,stroke:#555555,color:#999999',
+};
+
+function diffNodeLabel(node: NodeRow, suffix?: string): string {
+  const icon = MERMAID_ICONS[node.type] ?? '?';
+  const extra = suffix ? `<br/><small>Δ ${suffix}</small>` : '';
+  return `["${icon} <b>${node.name}</b><br/><small>${node.type}</small>${extra}"]`;
+}
+
+/**
+ * Render a topology diff as a Mermaid graph: added nodes/edges in green, removed
+ * in red, changed in amber. Endpoints of added/removed edges that are otherwise
+ * unchanged are drawn as neutral "context" nodes so every edge has both ends.
+ */
+export function generateDiffMermaid(diff: TopologyDiff): string {
+  const total =
+    diff.summary.nodesAdded + diff.summary.nodesRemoved + diff.summary.nodesChanged +
+    diff.summary.edgesAdded + diff.summary.edgesRemoved;
+  if (total === 0) return 'graph TB\n    nodrift["✓ No drift between the two sessions"]';
+
+  const lines: string[] = ['graph TB'];
+  for (const [k, style] of Object.entries(DIFF_CLASSES)) lines.push(`    classDef ${k} ${style}`);
+  lines.push('');
+
+  type Cls = 'added' | 'removed' | 'changed' | 'context';
+  const rank: Record<Cls, number> = { added: 3, removed: 3, changed: 3, context: 0 };
+  const entries = new Map<string, { node: NodeRow; cls: Cls; suffix?: string }>();
+  const place = (node: NodeRow, cls: Cls, suffix?: string) => {
+    const prev = entries.get(node.id);
+    if (prev && rank[prev.cls] >= rank[cls]) return;
+    entries.set(node.id, { node, cls, suffix });
+  };
+
+  for (const n of diff.nodes.added) place(n, 'added');
+  for (const n of diff.nodes.removed) place(n, 'removed');
+  for (const c of diff.nodes.changed) place(c.after, 'changed', c.changedFields.join(', '));
+
+  // Stub a neutral context node for an edge endpoint we have no full record for.
+  const contextNode = (id: string): NodeRow => ({
+    id, type: 'unknown', name: id, discoveredVia: 'diff',
+    confidence: 1, metadata: {}, tags: [], sessionId: '', discoveredAt: '', depth: 0,
+  });
+  const ensureEndpoint = (id: string) => { if (!entries.has(id)) place(contextNode(id), 'context'); };
+  for (const e of [...diff.edges.added, ...diff.edges.removed]) { ensureEndpoint(e.sourceId); ensureEndpoint(e.targetId); }
+
+  for (const { node, cls, suffix } of entries.values()) {
+    lines.push(`    ${sanitize(node.id)}${diffNodeLabel(node, suffix)}:::${cls}`);
+  }
+  lines.push('');
+
+  for (const e of diff.edges.added) {
+    const label = EDGE_LABELS[e.relationship] ?? e.relationship;
+    lines.push(`    ${sanitize(e.sourceId)} ==>|"+ ${label}"| ${sanitize(e.targetId)}`);
+  }
+  for (const e of diff.edges.removed) {
+    const label = EDGE_LABELS[e.relationship] ?? e.relationship;
+    lines.push(`    ${sanitize(e.sourceId)} -.->|"- ${label}"| ${sanitize(e.targetId)}`);
   }
 
   return lines.join('\n');

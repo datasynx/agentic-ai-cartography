@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import {
   generateTopologyMermaid,
   generateDependencyMermaid,
+  generateDiffMermaid,
   exportBackstageYAML,
   exportCartographyMap,
   exportJGF,
@@ -14,7 +15,7 @@ import {
 } from '../src/exporter.js';
 import { CartographyDB } from '../src/db.js';
 import { defaultConfig } from '../src/types.js';
-import type { NodeRow, EdgeRow } from '../src/types.js';
+import type { NodeRow, EdgeRow, TopologyDiff } from '../src/types.js';
 
 const mockNodes: NodeRow[] = [
   {
@@ -55,6 +56,44 @@ const mockEdges: EdgeRow[] = [
     discoveredAt: new Date().toISOString(),
   },
 ];
+
+describe('generateDiffMermaid', () => {
+  const emptyDiff: TopologyDiff = {
+    base: { sessionId: 'a', startedAt: '2026-01-01T00:00:00Z', nodeCount: 1, edgeCount: 0 },
+    current: { sessionId: 'b', startedAt: '2026-01-02T00:00:00Z', nodeCount: 1, edgeCount: 0 },
+    nodes: { added: [], removed: [], changed: [], unchanged: 1 },
+    edges: { added: [], removed: [], unchanged: 0 },
+    summary: { nodesAdded: 0, nodesRemoved: 0, nodesChanged: 0, edgesAdded: 0, edgesRemoved: 0 },
+  };
+
+  it('reports no drift for an empty diff', () => {
+    const out = generateDiffMermaid(emptyDiff);
+    expect(out).toContain('No drift');
+  });
+
+  it('colors added/removed/changed with distinct classes and applies them', () => {
+    const diff: TopologyDiff = {
+      ...emptyDiff,
+      nodes: {
+        added: [mockNodes[0]!],
+        removed: [mockNodes[1]!],
+        changed: [{ id: 'host:c', before: mockNodes[0]!, after: { ...mockNodes[0]!, id: 'host:c', name: 'x' }, changedFields: ['name'], confidenceDelta: 0 }],
+        unchanged: 0,
+      },
+      edges: { added: [mockEdges[0]!], removed: [], unchanged: 0 },
+      summary: { nodesAdded: 1, nodesRemoved: 1, nodesChanged: 1, edgesAdded: 1, edgesRemoved: 0 },
+    };
+    const out = generateDiffMermaid(diff);
+    expect(out).toContain('classDef added');
+    expect(out).toContain('classDef removed');
+    expect(out).toContain('classDef changed');
+    expect(out).toContain(':::added');
+    expect(out).toContain(':::removed');
+    expect(out).toContain(':::changed');
+    expect(out).toContain('==>'); // added edge thick arrow
+    expect(out).toContain('Δ name'); // changed-field annotation
+  });
+});
 
 describe('generateTopologyMermaid', () => {
   it('starts with graph TB', () => {
