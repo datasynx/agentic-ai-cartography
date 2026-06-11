@@ -48,6 +48,23 @@ Next: the [How-to guides](/how-to/) for specific tasks, or the [Reference](/refe
 
 # How to install Cartography into a client
 
+## Claude Code — one-step plugin (recommended)
+
+Cartography ships as a Claude Code plugin in the shared Datasynx marketplace, so
+no manual config editing is needed:
+
+```text
+/plugin marketplace add datasynx/claude-plugins
+/plugin install cartography@datasynx
+```
+
+Verify the server is live with `/mcp`. This is the same flow as the
+[`shadowing`](https://github.com/datasynx/agentic-ai-shadowing) plugin; the
+plugin manifest lives in [`plugin/`](https://github.com/datasynx/agentic-ai-cartography/tree/main/plugin)
+of this repository.
+
+## Every other host — the `install` harness
+
 The `install` command parses your host's existing config and merges in the
 Cartography MCP server **without clobbering** your other servers.
 

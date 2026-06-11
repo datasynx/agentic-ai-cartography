@@ -224,6 +224,13 @@ npx -p @datasynx/agentic-ai-cartography cartography-mcp</code></pre>
 
       <section id="install">
         <h2>Install into a client</h2>
+        <h3>Claude Code — one-step plugin</h3>
+        <p>Install from the shared Datasynx marketplace (same flow as
+        <a href="https://github.com/datasynx/agentic-ai-shadowing">Shadowing</a>) — no manual config:</p>
+        <pre><code>/plugin marketplace add datasynx/claude-plugins
+/plugin install cartography@datasynx</code></pre>
+        <p>Verify with <code>/mcp</code>. Every other host uses the <code>install</code> harness below.</p>
+        <h3>Any other host — the install harness</h3>
         <p>The harness parses your host's existing config and merges in the Cartography server entry
         <strong>without clobbering</strong> your other servers.</p>
         <pre><code>datasynx-cartography list-clients                 # supported hosts
