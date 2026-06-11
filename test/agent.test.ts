@@ -103,7 +103,7 @@ describe('agent.ts — runDiscovery', () => {
           content: [
             {
               type: 'tool_use',
-              name: 'mcp__cartograph__save_node',
+              name: 'mcp__cartography__save_node',
               input: { id: 'test:node', type: 'host' },
             },
           ],
@@ -122,7 +122,7 @@ describe('agent.ts — runDiscovery', () => {
 
     const toolCall = events.find(e => e.kind === 'tool_call') as Extract<DiscoveryEvent, { kind: 'tool_call' }>;
     expect(toolCall).toBeDefined();
-    expect(toolCall.tool).toBe('mcp__cartograph__save_node');
+    expect(toolCall.tool).toBe('mcp__cartography__save_node');
     expect(toolCall.input).toEqual({ id: 'test:node', type: 'host' });
   });
 
