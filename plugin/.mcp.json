@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cartography": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "-p", "@datasynx/agentic-ai-cartography", "cartography-mcp"]
+    }
+  }
+}

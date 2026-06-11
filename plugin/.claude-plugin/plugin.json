@@ -1,0 +1,22 @@
+{
+  "name": "cartography",
+  "displayName": "Datasynx Cartography",
+  "version": "2.0.0",
+  "description": "Give any agent read-only awareness of your system landscape — local services, databases, SaaS, installed apps and their dependencies — via an MCP server with progressive disclosure, recursive dependency traversal and semantic search. Fully local, no LLM required.",
+  "author": {
+    "name": "Datasynx AI",
+    "url": "https://github.com/datasynx"
+  },
+  "homepage": "https://datasynx.github.io/agentic-ai-cartography/",
+  "repository": "https://github.com/datasynx/agentic-ai-cartography",
+  "license": "MIT",
+  "keywords": [
+    "cartography",
+    "infrastructure",
+    "mcp",
+    "dependency-graph",
+    "discovery",
+    "topology"
+  ],
+  "mcpServers": "./.mcp.json"
+}

@@ -120,7 +120,14 @@ npm run build:mcpb     # → dist/cartography.mcpb (validated against the mcpb v
 
 ### Connect your client (copy-paste)
 
-**Claude Code**
+**Claude Code** — install as a plugin from the Datasynx marketplace (recommended):
+```text
+/plugin marketplace add datasynx/claude-plugins
+/plugin install cartography@datasynx
+```
+This wires up the MCP server in one step (verify with `/mcp`) — the same flow as
+[`shadowing`](https://github.com/datasynx/agentic-ai-shadowing). The plugin lives
+in [`plugin/`](plugin/). Prefer to wire it by hand instead?
 ```bash
 claude mcp add cartography -- npx -p @datasynx/agentic-ai-cartography cartography-mcp
 ```

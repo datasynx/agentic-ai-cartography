@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Claude Code plugin** (`plugin/`) — Cartography is now installable in one step
+  from the shared Datasynx marketplace (`/plugin marketplace add datasynx/claude-plugins`
+  then `/plugin install cartography@datasynx`), mirroring the Shadowing plugin.
+  The marketplace references this repo's `plugin/` directory via a `git-subdir`
+  source. README and docs now lead the Claude Code install with the plugin flow,
+  keeping `claude mcp add` as the manual alternative.
+
 ## [2.0.0] - 2026-06-04
 
 Major release — **the package is now MCP-first**. The Model Context Protocol server
