@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stripSensitive, createScanRunner } from '../src/tools.js';
+import { stripSensitive, createScanRunner, clampText } from '../src/tools.js';
 
 describe('stripSensitive', () => {
   it('strips path from tcp addresses', () => {
@@ -75,6 +75,30 @@ describe('stripSensitive', () => {
 
   it('preserves bare IP without port', () => {
     expect(stripSensitive('10.0.0.1')).toBe('10.0.0.1');
+  });
+});
+
+describe('clampText (output limit + sanitization)', () => {
+  it('returns short output unchanged', () => {
+    expect(clampText('hello', 100)).toBe('hello');
+  });
+
+  it('truncates output over the limit and appends a notice', () => {
+    const out = clampText('x'.repeat(500), 100);
+    expect(out.startsWith('x'.repeat(100))).toBe(true);
+    expect(out).toContain('output truncated');
+    expect(out).toContain('400 more characters');
+  });
+
+  it('sanitizes invisible characters before measuring/returning', () => {
+    const zwsp = String.fromCodePoint(0x200b);
+    expect(clampText(`a${zwsp}b${zwsp}c`, 100)).toBe('abc');
+  });
+
+  it('counts length after sanitization (invisible chars do not consume budget)', () => {
+    const zwsp = String.fromCodePoint(0x200b);
+    const raw = ('a' + zwsp).repeat(100); // 200 chars raw, 100 after strip
+    expect(clampText(raw, 100)).toBe('a'.repeat(100));
   });
 });
 

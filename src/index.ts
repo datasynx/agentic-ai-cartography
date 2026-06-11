@@ -23,7 +23,7 @@ export type {
   ClientSpec, ConfigFormat, OsKind, ResolveContext, Scope, ServerEntry,
   InstallPlan, PlanOptions, EntryOptions,
 } from './installer/index.js';
-export { createCartographyTools, stripSensitive, createScanRunner, assertSafeScanArg, redactSecrets, redactValue, SCAN_ARG_PATTERNS } from './tools.js';
+export { createCartographyTools, stripSensitive, createScanRunner, assertSafeScanArg, redactSecrets, redactValue, clampText, SCAN_ARG_PATTERNS } from './tools.js';
 export type { ScanArgKind } from './tools.js';
 export { safetyHook } from './safety.js';
 export { checkReadOnly, isReadOnlyCommand, assertReadOnly, splitSegments } from './allowlist.js';
@@ -33,6 +33,8 @@ export type { DiscoveryEvent } from './agent.js';
 // Topology diffing / drift detection
 export { diffTopology, stableStringify } from './diff.js';
 export type { TopologyInput, TopologyDelta } from './diff.js';
+// Untrusted-text sanitization (invisible/control-char stripping)
+export { sanitizeUntrusted, sanitizeValue } from './sanitize.js';
 export {
   exportAll,
   exportJSON,

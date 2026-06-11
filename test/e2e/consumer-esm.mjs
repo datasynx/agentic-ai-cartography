@@ -18,6 +18,7 @@ const expected = [
   'exportAll',
   'diffTopology',
   'generateDiffMermaid',
+  'sanitizeUntrusted',
   'defaultConfig',
 ];
 

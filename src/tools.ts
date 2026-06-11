@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { CartographyDB } from './db.js';
 import { NODE_TYPES, EDGE_RELATIONSHIPS } from './types.js';
+import { sanitizeUntrusted } from './sanitize.js';
 import { scanAllBookmarks, scanAllHistory } from './bookmarks.js';
 import { logDebug } from './logger.js';
 import {
@@ -47,6 +48,20 @@ export function createScanRunner(
 export interface CartographyToolsOptions {
   /** Called when the agent needs a human answer. Return the user's response. */
   onAskUser?: (question: string, context?: string) => Promise<string>;
+  /** Max characters of a single tool response (sanitized + truncated). Default 100 000. */
+  maxResponseBytes?: number;
+}
+
+/**
+ * Sanitize untrusted scan output (strip invisible/control characters) and cap it
+ * at `max` characters so a single verbose scan can never blow the agent's context
+ * window. Appends an explicit truncation notice when clamped.
+ */
+export function clampText(raw: string, max: number): string {
+  const clean = sanitizeUntrusted(raw);
+  if (clean.length <= max) return clean;
+  return clean.slice(0, max) +
+    `\n\n… [output truncated: ${clean.length - max} more characters omitted — narrow the scan (e.g. a namespace/region/hint) or query the catalog instead]`;
 }
 
 export function stripSensitive(target: string): string {
@@ -117,6 +132,10 @@ export async function createCartographyTools(
 ): Promise<McpServerConfig> {
   // Dynamically import the SDK so missing package doesn't crash at load time
   const { tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
+
+  const maxResponseBytes = opts.maxResponseBytes ?? 100_000;
+  /** Wrap sanitized + truncated scan output in the MCP text-content shape. */
+  const textResult = (raw: string) => ({ content: [{ type: 'text' as const, text: clampText(raw, maxResponseBytes) }] });
 
   const tools = [
     tool('save_node', 'Save an infrastructure node to the catalog', {
@@ -332,7 +351,7 @@ export async function createCartographyTools(
       }
 
       const out = Object.entries(results).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
-      return { content: [{ type: 'text', text: out }] };
+      return textResult(out);
     }),
 
     tool('scan_k8s_resources', 'Scan Kubernetes cluster via kubectl — 100% readonly (get, describe)', {
@@ -366,7 +385,7 @@ export async function createCartographyTools(
             ['CONFIGMAPS_SYSTEM', 'kubectl get configmaps -n kube-system 2>/dev/null | head -30'],
           ];
       const out = sections.map(([l, c]) => `=== ${l} ===\n${runK(c)}`).join('\n\n');
-      return { content: [{ type: 'text', text: out }] };
+      return textResult(out);
     }),
 
     tool('scan_aws_resources', 'Scan AWS infrastructure via AWS CLI — 100% readonly (describe, list)', {
@@ -393,7 +412,7 @@ export async function createCartographyTools(
         ['VPC', `aws ec2 describe-vpcs ${pf} --query "Vpcs[*].[VpcId,CidrBlock,IsDefault]" --output table`],
       ];
       const out = sections.map(([l, c]) => `=== ${l} ===\n${runAws(c)}`).join('\n\n');
-      return { content: [{ type: 'text', text: out }] };
+      return textResult(out);
     }),
 
     tool('scan_gcp_resources', 'Scan Google Cloud Platform via gcloud CLI — 100% readonly (list, describe)', {
@@ -416,7 +435,7 @@ export async function createCartographyTools(
         ['SPANNER', `gcloud spanner instances list ${pf}`],
       ];
       const out = sections.map(([l, c]) => `=== ${l} ===\n${runGcp(c)}`).join('\n\n');
-      return { content: [{ type: 'text', text: out }] };
+      return textResult(out);
     }),
 
     tool('scan_azure_resources', 'Scan Azure infrastructure via az CLI — 100% readonly (list, show)', {
@@ -443,7 +462,7 @@ export async function createCartographyTools(
         ['FUNCTIONS', `az functionapp list ${sf} ${rf} --output table`],
       ];
       const out = sections.map(([l, c]) => `=== ${l} ===\n${runAz(c)}`).join('\n\n');
-      return { content: [{ type: 'text', text: out }] };
+      return textResult(out);
     }),
 
     tool('scan_installed_apps', 'Scan all installed apps and tools — IDEs, office, dev tools, business apps, databases', {
@@ -557,7 +576,7 @@ export async function createCartographyTools(
         .map(([k, v]) => `=== ${k} ===\n${v}`)
         .join('\n\n');
 
-      return { content: [{ type: 'text', text: out }] };
+      return textResult(out);
     }),
   ];
 

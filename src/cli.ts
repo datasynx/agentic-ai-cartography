@@ -1112,10 +1112,10 @@ ${infraSummary.substring(0, 12000)}`;
       // 1. Node.js Version
       const nodeVer = process.versions.node;
       const [major] = nodeVer.split('.').map(Number);
-      if ((major ?? 0) >= 18) {
+      if ((major ?? 0) >= 20) {
         ok(`Node.js ${nodeVer}`);
       } else {
-        err(`Node.js ${nodeVer} — requires >=18`);
+        err(`Node.js ${nodeVer} — requires >=20`);
         allGood = false;
       }
 

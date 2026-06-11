@@ -27,6 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged interactive default. Non-text modes keep stdout machine-clean (progress
   stays on stderr) and skip interactive review/follow-up — making discovery
   pipeline/CI-friendly.
+- **Configurable tool-output limit** — `CartographyConfig.maxToolResponseBytes`
+  (default 100 000) caps each scan tool's response; oversized output is truncated
+  with an explicit notice instead of silently flooding the agent's context window.
+  Exposed as the pure `clampText(raw, max)` helper.
+
+### Security
+
+- **Untrusted-text sanitization** — new `sanitizeUntrusted` / `sanitizeValue` strip
+  invisible Unicode (zero-width spaces, bidi/format controls, soft hyphen, BOM) and
+  C0/C1 control characters (preserving tab/newline/CR) and NFC-normalize. Applied at
+  the catalog write chokepoint (`upsertNode`/`insertEdge` — node name/domain/tags/
+  metadata and edge evidence) and to scan-tool output, so hidden prompt-injection
+  payloads cannot reach the catalog or an LLM context.
 
 ### Fixed
 
@@ -34,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   renderer used `mcp__cartograph__*` (missing the `y`) while the in-process MCP server is
   registered as `cartography`. Corrected to `mcp__cartography__*`, so the tool allowlist
   now actually matches and the discovery progress display renders tool names correctly.
+- **`doctor` Node.js check** now requires `>=20`, matching `engines.node` (was `>=18`).
+- **`config.maxDepth`** is now applied — surfaced to the discovery agent as a crawl-depth
+  bound in the system prompt (it was previously defined but unused).
 
 - **Claude Code plugin** (`plugin/`) — Cartography is now installable in one step
   from the shared Datasynx marketplace (`/plugin marketplace add datasynx/claude-plugins`

@@ -27,7 +27,7 @@ export async function runDiscovery(
   hint?: string,
 ): Promise<void> {
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
-  const tools = await createCartographyTools(db, sessionId, { onAskUser });
+  const tools = await createCartographyTools(db, sessionId, { onAskUser, maxResponseBytes: config.maxToolResponseBytes });
 
   const hintSection = hint
     ? `\n⚡ USER HINT (HIGH PRIORITY): The user wants to find these specific tools: "${hint}"\n  → Run scan_installed_apps(searchHint: "${hint}") IMMEDIATELY and save found tools as saas_tool nodes!\n`
@@ -138,6 +138,7 @@ RULES:
 • metadata allowed: { description, category, port, version, path } — no passwords
 • Call get_catalog before save_node → avoid duplicates
 • Save edges whenever connections are clearly identifiable
+• Max crawl depth: ${config.maxDepth} hops from an entry point — do not chase leads deeper than this
 
 Entry points: ${config.entryPoints.join(', ')}`;
 
