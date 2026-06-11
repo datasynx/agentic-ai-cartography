@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Continuous Cartography — topology diffing / drift detection.** Compare two
+  discovery snapshots to surface added/removed/changed nodes and added/removed
+  edges. Read-only, deterministic, no schema migration.
+  - Engine: `diffTopology(base, current)` (pure) + `CartographyDB.diffSessions(baseId, currentId)`.
+    Nodes keyed by `id`, edges by `(source, target, relationship)`. Drift is detected on a
+    stable field projection (`DRIFT_FIELDS`); `confidence` changes are reported as
+    `confidenceDelta` but never on their own mark a node as changed.
+  - MCP tool **`diff_topology`** (read-only; defaults to the two most recent sessions) and
+    prompt **`compare-environments`**.
+  - CLI **`datasynx-cartography diff [base] [current]`** with `--format text|json|mermaid`
+    and `-o, --output <file>`.
+  - Exporter **`generateDiffMermaid`** — added=green, removed=red, changed=amber.
+- **Headless discovery output** — `discover --output-format text|json|stream-json`.
+  `stream-json` emits one JSON event per line (NDJSON) on stdout plus a final
+  `{kind:"result",…}` line; `json` emits the final catalog object; `text` is the
+  unchanged interactive default. Non-text modes keep stdout machine-clean (progress
+  stays on stderr) and skip interactive review/follow-up — making discovery
+  pipeline/CI-friendly.
+
+### Fixed
+
+- **MCP tool prefix typo** — the discovery agent's `allowedTools` and the CLI progress
+  renderer used `mcp__cartograph__*` (missing the `y`) while the in-process MCP server is
+  registered as `cartography`. Corrected to `mcp__cartography__*`, so the tool allowlist
+  now actually matches and the discovery progress display renders tool names correctly.
+
 - **Claude Code plugin** (`plugin/`) — Cartography is now installable in one step
   from the shared Datasynx marketplace (`/plugin marketplace add datasynx/claude-plugins`
   then `/plugin install cartography@datasynx`), mirroring the Shadowing plugin.

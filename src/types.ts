@@ -143,6 +143,37 @@ export interface SessionRow {
   config: string;
 }
 
+// ── Diff / Drift ─────────────────────────
+
+/**
+ * Node fields whose change marks a node as `changed` in a topology diff.
+ * `confidence` is deliberately excluded — it fluctuates between scans (noise)
+ * and is reported separately as `confidenceDelta` rather than triggering drift.
+ */
+export const DRIFT_FIELDS = ['type', 'name', 'domain', 'subDomain', 'qualityScore', 'metadata', 'tags'] as const;
+export type DriftField = typeof DRIFT_FIELDS[number];
+
+export interface NodeChange {
+  id: string;
+  before: NodeRow;
+  after: NodeRow;
+  /** Which of DRIFT_FIELDS differ between `before` and `after`. */
+  changedFields: DriftField[];
+  /** Informational confidence delta (after − before); does not itself trigger drift. */
+  confidenceDelta: number;
+}
+
+export interface TopologyDiff {
+  base: { sessionId: string; startedAt: string; nodeCount: number; edgeCount: number };
+  current: { sessionId: string; startedAt: string; nodeCount: number; edgeCount: number };
+  nodes: { added: NodeRow[]; removed: NodeRow[]; changed: NodeChange[]; unchanged: number };
+  edges: { added: EdgeRow[]; removed: EdgeRow[]; unchanged: number };
+  summary: {
+    nodesAdded: number; nodesRemoved: number; nodesChanged: number;
+    edgesAdded: number; edgesRemoved: number;
+  };
+}
+
 // ── Config ───────────────────────────────
 
 export interface CartographyConfig {

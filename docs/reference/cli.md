@@ -5,7 +5,8 @@
 
 | Command | Purpose |
 | --- | --- |
-| `discover` | Scan and map your infrastructure. |
+| `discover` | Scan and map your infrastructure (`--output-format text\|json\|stream-json`). |
+| `diff [base] [current]` | Compare two sessions for drift (`--format text\|json\|mermaid`). |
 | `seed` | Manually add known tools/DBs/APIs. |
 | `install --client <id>` | Register the MCP server into a host's config. |
 | `list-clients` | List supported hosts. |

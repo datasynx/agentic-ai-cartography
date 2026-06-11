@@ -70,7 +70,7 @@ describe('Cartography MCP server', () => {
     await connect();
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name);
-    expect(names).toEqual(expect.arrayContaining(['get_summary', 'query_infrastructure', 'get_dependencies', 'list_services', 'get_node', 'search_topology']));
+    expect(names).toEqual(expect.arrayContaining(['get_summary', 'query_infrastructure', 'get_dependencies', 'list_services', 'get_node', 'search_topology', 'diff_topology']));
 
     const res = await client.callTool({ name: 'query_infrastructure', arguments: { query: 'postgres' } });
     const out = JSON.parse((res.content as Array<{ text: string }>)[0].text);
@@ -86,11 +86,37 @@ describe('Cartography MCP server', () => {
     expect(ids).toContain('database_server:pg');
   });
 
+  it('diffs the two most recent sessions via diff_topology', async () => {
+    // Second (current) session: drop pg, add a cache, change the API name.
+    const sid2 = db.createSession('discover', defaultConfig());
+    db.upsertNode(sid2, { id: 'saas_tool:app', type: 'saas_tool' as never, name: 'App', discoveredVia: 'test', confidence: 0.9, metadata: {}, tags: [], domain: 'Engineering' });
+    db.upsertNode(sid2, { id: 'web_service:api', type: 'web_service' as never, name: 'API v2', discoveredVia: 'test', confidence: 0.9, metadata: {}, tags: [], domain: 'Engineering' });
+    db.upsertNode(sid2, { id: 'cache_server:redis', type: 'cache_server' as never, name: 'Redis', discoveredVia: 'test', confidence: 0.9, metadata: {}, tags: [] });
+    db.endSession(sid2);
+
+    await connect();
+    const res = await client.callTool({ name: 'diff_topology', arguments: {} });
+    const out = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+    expect(out.nodes.added.map((n: { id: string }) => n.id)).toContain('cache_server:redis');
+    expect(out.nodes.removed.map((n: { id: string }) => n.id)).toContain('database_server:pg');
+    const changed = out.nodes.changed.find((n: { id: string }) => n.id === 'web_service:api');
+    expect(changed.changedFields).toContain('name');
+    expect(out.summary.nodesAdded).toBe(1);
+    expect(out.summary.nodesRemoved).toBe(1);
+  });
+
+  it('reports an error when fewer than two sessions exist', async () => {
+    await connect();
+    const res = await client.callTool({ name: 'diff_topology', arguments: {} });
+    const out = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+    expect(out.error).toMatch(/two discovery sessions/i);
+  });
+
   it('exposes prompts', async () => {
     await connect();
     const prompts = await client.listPrompts();
     const names = prompts.prompts.map((p) => p.name);
-    expect(names).toEqual(expect.arrayContaining(['audit-attack-surface', 'map-service-dependencies', 'onboard-to-system']));
+    expect(names).toEqual(expect.arrayContaining(['audit-attack-surface', 'map-service-dependencies', 'onboard-to-system', 'compare-environments']));
     const p = await client.getPrompt({ name: 'map-service-dependencies', arguments: { service: 'api' } });
     expect((p.messages[0].content as { text: string }).text).toContain('api');
   });
@@ -98,7 +124,7 @@ describe('Cartography MCP server', () => {
   it('annotates every read-only tool with readOnlyHint and a title', async () => {
     await connect();
     const tools = await client.listTools();
-    const readOnly = ['get_summary', 'query_infrastructure', 'search_topology', 'list_services', 'get_node', 'get_dependencies'];
+    const readOnly = ['get_summary', 'query_infrastructure', 'search_topology', 'list_services', 'get_node', 'get_dependencies', 'diff_topology'];
     for (const name of readOnly) {
       const t = tools.tools.find((x) => x.name === name);
       expect(t, `tool ${name} present`).toBeDefined();

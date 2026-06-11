@@ -2,10 +2,11 @@ import { Command } from 'commander';
 import { checkPrerequisites } from './preflight.js';
 import { CartographyDB } from './db.js';
 import { defaultConfig } from './types.js';
+import type { TopologyDiff } from './types.js';
 import { runDiscovery } from './agent.js';
 import type { DiscoveryEvent } from './agent.js';
-import { exportAll } from './exporter.js';
-import { readFileSync, existsSync } from 'fs';
+import { exportAll, generateDiffMermaid } from './exporter.js';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
@@ -77,6 +78,7 @@ function main(): void {
     .option('--org <name>', 'Organization name (for Backstage)')
     .option('-o, --output <dir>', 'Output directory', './datasynx-output')
     .option('--db <path>', 'DB path')
+    .option('--output-format <fmt>', 'Progress/result format: text, json, stream-json', 'text')
     .option('-v, --verbose', 'Show agent reasoning', false)
     .action(async (opts) => {
       checkPrerequisites();
@@ -94,6 +96,16 @@ function main(): void {
         process.exitCode = 2;
         return;
       }
+
+      const fmt = (opts.outputFormat ?? 'text') as 'text' | 'json' | 'stream-json';
+      if (!['text', 'json', 'stream-json'].includes(fmt)) {
+        process.stderr.write(`❌ Invalid --output-format: "${opts.outputFormat}" (must be text, json, or stream-json)\n`);
+        process.exitCode = 2;
+        return;
+      }
+      // Headless modes keep stdout machine-readable: human progress (spinner, banners)
+      // goes to stderr only, and interactive review/follow-up are skipped entirely.
+      const isText = fmt === 'text';
 
       setVerbose(opts.verbose);
 
@@ -146,11 +158,13 @@ function main(): void {
       let nodeCount = 0;
       let edgeCount = 0;
 
-      w('\n');
-      w(`  ${bold('CARTOGRAPHY')}  ${dim(config.entryPoints.join(', '))}\n`);
-      w(`  ${dim('Model: ' + config.agentModel + ' | MaxTurns: ' + config.maxTurns)}\n`);
-      w(dim('  ────────────────────────────────────────────────\n'));
-      w('\n');
+      if (isText) {
+        w('\n');
+        w(`  ${bold('CARTOGRAPHY')}  ${dim(config.entryPoints.join(', '))}\n`);
+        w(`  ${dim('Model: ' + config.agentModel + ' | MaxTurns: ' + config.maxTurns)}\n`);
+        w(dim('  ────────────────────────────────────────────────\n'));
+        w('\n');
+      }
 
       const logLine = (icon: string, msg: string) => {
         stopSpinner();
@@ -159,6 +173,11 @@ function main(): void {
       };
 
       const handleEvent = (event: DiscoveryEvent) => {
+        if (!isText) {
+          // stream-json emits one JSON object per line on stdout; json buffers (final catalog below).
+          if (fmt === 'stream-json') process.stdout.write(JSON.stringify(event) + '\n');
+          return;
+        }
         switch (event.kind) {
           case 'turn':
             turnNum = event.turn;
@@ -176,7 +195,7 @@ function main(): void {
             break;
 
           case 'tool_call': {
-            const toolName = event.tool.replace('mcp__cartograph__', '');
+            const toolName = event.tool.replace('mcp__cartography__', '');
 
             if (toolName === 'Bash') {
               const cmd = (event.input['command'] as string ?? '').substring(0, 70);
@@ -231,6 +250,7 @@ function main(): void {
 
       // Human-in-the-loop: agent can ask clarifying questions
       const onAskUser = async (question: string, context?: string): Promise<string> => {
+        if (!isText) return '(Non-interactive mode — please continue without this information)';
         stopSpinner();
         w('\n');
         w(dim('  ────────────────────────────────────────────────\n'));
@@ -274,6 +294,23 @@ function main(): void {
         edges: stats.edges,
         durationSec: parseFloat(totalSec),
       });
+
+      if (!isText) {
+        // Headless: emit machine-readable result on stdout, write artifacts, finish.
+        const durationMs = Date.now() - startTime;
+        if (fmt === 'stream-json') {
+          process.stdout.write(JSON.stringify({ kind: 'result', sessionId, nodes: stats.nodes, edges: stats.edges, durationMs }) + '\n');
+        } else {
+          process.stdout.write(JSON.stringify(
+            { sessionId, stats, nodes: db.getNodes(sessionId), edges: db.getEdges(sessionId), durationMs },
+            null, 2,
+          ) + '\n');
+        }
+        exportAll(db, sessionId, config.outputDir, ['discovery']);
+        db.close();
+        activeDb = null;
+        return;
+      }
 
       w('\n');
       w(dim('  ────────────────────────────────────────────────\n'));
@@ -423,6 +460,73 @@ function main(): void {
       process.stderr.write(`✓ Exported to: ${opts.output}\n`);
 
       db.close();
+    });
+
+  // ── DIFF / DRIFT ───────────────────────────────────────────────────────────
+
+  const renderDiffText = (d: TopologyDiff): string => {
+    const out: string[] = [];
+    out.push(`${bold('Topology diff')}  ${dim(d.base.sessionId.slice(0, 8))} → ${dim(d.current.sessionId.slice(0, 8))}`);
+    out.push(`  base:    ${d.base.nodeCount} nodes, ${d.base.edgeCount} edges  ${dim(d.base.startedAt)}`);
+    out.push(`  current: ${d.current.nodeCount} nodes, ${d.current.edgeCount} edges  ${dim(d.current.startedAt)}`);
+    out.push('');
+    out.push(`  nodes: ${green('+' + d.summary.nodesAdded)} ${red('-' + d.summary.nodesRemoved)} ${yellow('~' + d.summary.nodesChanged)}    edges: ${green('+' + d.summary.edgesAdded)} ${red('-' + d.summary.edgesRemoved)}`);
+    if (d.summary.nodesAdded + d.summary.nodesRemoved + d.summary.nodesChanged + d.summary.edgesAdded + d.summary.edgesRemoved === 0) {
+      out.push('');
+      out.push(`  ${green('✓')} No drift between the two sessions.`);
+      return out.join('\n');
+    }
+    out.push('');
+    for (const n of d.nodes.added) out.push(`  ${green('+')} ${n.id} ${dim('(' + n.type + ')')}`);
+    for (const n of d.nodes.removed) out.push(`  ${red('-')} ${n.id} ${dim('(' + n.type + ')')}`);
+    for (const c of d.nodes.changed) out.push(`  ${yellow('~')} ${c.id} ${dim('[' + c.changedFields.join(', ') + ']')}`);
+    for (const e of d.edges.added) out.push(`  ${green('+')} edge ${e.sourceId} ${dim('─' + e.relationship + '→')} ${e.targetId}`);
+    for (const e of d.edges.removed) out.push(`  ${red('-')} edge ${e.sourceId} ${dim('─' + e.relationship + '→')} ${e.targetId}`);
+    return out.join('\n');
+  };
+
+  program
+    .command('diff [base] [current]')
+    .description('Compare two discovery sessions (drift detection). Defaults to the two most recent.')
+    .option('--format <fmt>', 'Output format: text, json, mermaid', 'text')
+    .option('-o, --output <file>', 'Write to a file instead of stdout')
+    .option('--db <path>', 'DB path')
+    .action((base: string | undefined, current: string | undefined, opts) => {
+      const config = defaultConfig(opts.db ? { dbPath: opts.db } : {});
+      const db = new CartographyDB(config.dbPath);
+      activeDb = db;
+      try {
+        // getSessions() is newest-first (rowid DESC): [0] = latest, [1] = previous.
+        const sessions = db.getSessions();
+        const currentId = current ?? sessions[0]?.id;
+        const baseId = base ?? sessions[1]?.id;
+        if (!baseId || !currentId) {
+          process.stderr.write('❌ Need at least two discovery sessions to diff\n');
+          process.exitCode = 1;
+          return;
+        }
+        if (baseId === currentId) {
+          process.stderr.write('❌ Base and current session are the same\n');
+          process.exitCode = 1;
+          return;
+        }
+        const d = db.diffSessions(baseId, currentId);
+        const out = opts.format === 'json' ? JSON.stringify(d, null, 2)
+          : opts.format === 'mermaid' ? generateDiffMermaid(d)
+          : renderDiffText(d);
+        if (opts.output) {
+          writeFileSync(opts.output, out + '\n');
+          process.stderr.write(`✓ Wrote diff to: ${opts.output}\n`);
+        } else {
+          process.stdout.write(out + '\n');
+        }
+      } catch (err) {
+        process.stderr.write(`❌ ${err instanceof Error ? err.message : String(err)}\n`);
+        process.exitCode = 1;
+      } finally {
+        db.close();
+        activeDb = null;
+      }
     });
 
   program

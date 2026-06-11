@@ -16,6 +16,8 @@ const expected = [
   'checkReadOnly',
   'runDiscovery',
   'exportAll',
+  'diffTopology',
+  'generateDiffMermaid',
   'defaultConfig',
 ];
 
