@@ -65,8 +65,7 @@ export async function startMcp(opts: StartMcpOptions = {}): Promise<void> {
 
   let search: SearchFn | undefined;
   if (opts.semantic !== false) {
-    search = await createSemanticSearch(db);
-    log('semantic search: ready');
+    search = await createSemanticSearch(db, undefined, { log });
   }
   const discovery = localDiscoveryFn();
 

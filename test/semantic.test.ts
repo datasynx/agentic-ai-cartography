@@ -65,4 +65,10 @@ describe('semantic search (sqlite-vec + hash embedder)', () => {
     const res = await search(db, sid, 'database', { types: ['cache_server'], limit: 5 });
     for (const r of res) expect(r.node.type).toBe('cache_server');
   });
+
+  it('logs readiness when semantic search is available', async () => {
+    const msgs: string[] = [];
+    await createSemanticSearch(db, createHashEmbedder(256), { log: (m) => msgs.push(m) });
+    expect(msgs).toContain('semantic search: ready');
+  });
 });

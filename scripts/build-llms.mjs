@@ -36,7 +36,10 @@ const SECTIONS = [
   },
   {
     heading: 'Explanation',
-    pages: [{ file: 'docs/explanation/index.md', url: `${SITE}/#architecture`, title: 'Why MCP-first', desc: 'The design rationale.' }],
+    pages: [
+      { file: 'docs/explanation/index.md', url: `${SITE}/#architecture`, title: 'Why MCP-first', desc: 'The design rationale.' },
+      { file: 'docs/explanation/threat-model.md', url: 'https://github.com/datasynx/agentic-ai-cartography/blob/main/docs/explanation/threat-model.md', title: 'Threat model', desc: 'Attacker model, trust boundaries and mitigations.' },
+    ],
   },
 ];
 

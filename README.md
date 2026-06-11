@@ -271,7 +271,8 @@ Cartography runs natively on **Linux**, **macOS**, and **Windows** — no WSL re
 - **Optional — semantic search** auto-upgrades when `sqlite-vec` and a local embedder
   (`@huggingface/transformers`) are present; otherwise it falls back to lexical search.
   These ship as `optionalDependencies` and are lazy-loaded, so installs that skip them
-  pay no cost.
+  pay no cost. On startup the server logs `semantic search: ready` when the upgrade is
+  active, or names the missing dependency and that it is using lexical search when it isn't.
 
 ---
 
