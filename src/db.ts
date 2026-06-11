@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
-import { NODE_TYPES, EDGE_RELATIONSHIPS } from './types.js';
+import { NODE_TYPES, EDGE_RELATIONSHIPS, NODE_TYPE_GROUPS } from './types.js';
 import type {
   CartographyConfig, DiscoveryNode, DiscoveryEdge,
   NodeRow, EdgeRow, SessionRow, Connection, TopologyDiff,
@@ -27,6 +27,7 @@ const SessionRowSchema = z.object({
   started_at: z.string(),
   completed_at: z.string().nullable().optional(),
   config: z.string(),
+  name: z.string().nullable().optional(),
 });
 
 const NodeRowSchema = z.object({
@@ -119,6 +120,38 @@ export interface GraphSummary {
   topConnected: Array<{ id: string; name: string; type: string; degree: number }>;
 }
 
+/** Map a node type to its semantic group (or 'other' if ungrouped). */
+function typeGroup(type: string): string {
+  for (const [group, types] of Object.entries(NODE_TYPE_GROUPS)) {
+    if ((types as readonly string[]).includes(type)) return group;
+  }
+  return 'other';
+}
+
+/**
+ * Derive a deterministic, human-friendly session label from its graph summary,
+ * e.g. `"infra+data · 42 nodes · 2026-06-11"`. Pure: same summary + timestamp
+ * always yields the same name. No LLM call.
+ */
+export function deriveSessionName(summary: GraphSummary, startedAt: string): string {
+  const date = startedAt.slice(0, 10);
+  const count = summary.totals.nodes;
+  if (count === 0) return `empty · 0 nodes · ${date}`;
+
+  const byGroup = new Map<string, number>();
+  for (const [type, n] of Object.entries(summary.nodesByType)) {
+    const g = typeGroup(type);
+    byGroup.set(g, (byGroup.get(g) ?? 0) + n);
+  }
+  const topGroups = [...byGroup.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 2)
+    .map(([g]) => g);
+
+  const noun = count === 1 ? 'node' : 'nodes';
+  return `${topGroups.join('+')} · ${count} ${noun} · ${date}`;
+}
+
 /** Result of a recursive dependency traversal. */
 export interface TraversalResult {
   root?: NodeRow;
@@ -178,7 +211,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   mode TEXT NOT NULL CHECK (mode IN ('discover')),
   started_at TEXT NOT NULL,
   completed_at TEXT,
-  config TEXT NOT NULL DEFAULT '{}'
+  config TEXT NOT NULL DEFAULT '{}',
+  name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
@@ -291,7 +325,7 @@ export class CartographyDB {
     const version = (this.db.pragma('user_version', { simple: true }) as number);
     if (version === 0) {
       this.db.exec(SCHEMA);
-      this.db.pragma('user_version = 4');
+      this.db.pragma('user_version = 5');
       return;
     } else if (version === 1) {
       // v1 → v2: add hex map columns to nodes + connections table
@@ -327,6 +361,13 @@ export class CartographyDB {
         CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(session_id, target_id);
       `);
       this.db.pragma('user_version = 4');
+    }
+    // v4 → v5: human-friendly session names (idempotent column add)
+    const v4 = this.db.pragma('user_version', { simple: true }) as number;
+    if (v4 < 5) {
+      const cols = (this.db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>).map(c => c.name);
+      if (!cols.includes('name')) this.db.exec('ALTER TABLE sessions ADD COLUMN name TEXT');
+      this.db.pragma('user_version = 5');
     }
   }
 
@@ -384,7 +425,13 @@ export class CartographyDB {
       startedAt: v.started_at,
       completedAt: v.completed_at ?? undefined,
       config: v.config,
+      name: v.name ?? undefined,
     };
+  }
+
+  /** Set (or clear) a session's human-friendly name. */
+  setSessionName(id: string, name: string): void {
+    this.db.prepare('UPDATE sessions SET name = ? WHERE id = ?').run(name, id);
   }
 
   /**
