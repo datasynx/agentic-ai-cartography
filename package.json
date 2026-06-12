@@ -87,6 +87,9 @@
     "provenance": true
   },
   "license": "MIT",
+  "overrides": {
+    "tmp": "^0.2.7"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.10.0",

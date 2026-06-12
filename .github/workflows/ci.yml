@@ -67,6 +67,11 @@ jobs:
       - name: Dependency Audit (production tree — what consumers install)
         run: npm audit --omit=dev --audit-level=high
       - name: Dependency Audit (full tree — advisory only, non-blocking)
+        # Residual highs are expected to come ONLY from npm's own bundled tree
+        # (node_modules/npm/node_modules/*, e.g. picomatch) — unfixable from this
+        # repo and gone on the next runner npm bump. The dev-chain `tmp` highs are
+        # pinned out via package.json `overrides` (see issue #50). A NEW high in
+        # our own dependency tree should be investigated, not absorbed here.
         run: npm audit --audit-level=high || true
       - name: License Check
         # Block genuinely problematic copyleft/source-available licenses.
